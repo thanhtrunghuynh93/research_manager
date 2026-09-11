@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditEvent
+from app.core.clock import now
 from app.core.authz import Scope
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.identity import models as identity_models
@@ -97,11 +98,24 @@ async def test_ending_a_membership_removes_access_and_advances_the_epoch(
         )
     ).scalar_one()
 
-    await service.end_membership(db, prof_scope, membership.id, left_on=date(2026, 10, 1))
+    await service.end_membership(db, prof_scope, membership.id)
 
     scope = await identity_service.scope_for(db, student_a)
-    assert scope.project_ids == frozenset()
+    assert scope.project_ids == frozenset(), "removal takes effect now, not tomorrow"
     assert scope.access_epoch > before
+
+
+async def test_a_departure_dated_in_the_future_keeps_access_until_then(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    project = await _project(db, prof_scope)
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    later = now().date() + timedelta(days=30)
+
+    await service.end_membership(db, prof_scope, membership.id, left_on=later)
+
+    scope = await identity_service.scope_for(db, student_a)
+    assert scope.project_ids == frozenset({project.id})
 
 
 async def test_ending_a_membership_keeps_the_history(
