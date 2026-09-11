@@ -77,6 +77,11 @@ async def get_user_in_workspace(
     ).scalar_one_or_none()
 
 
+async def get_user_by_id(session: AsyncSession, user_id: UUID) -> User | None:
+    """Unauthenticated lookup: used when a token, not a session, identifies the user."""
+    return await session.get(User, user_id)
+
+
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
     """Unauthenticated lookup: login and recovery run before a Scope exists."""
     return (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
@@ -119,6 +124,19 @@ async def revoke_session_by_token(
         await session.execute(
             update(Session)
             .where(Session.token_hash == token_hash, Session.revoked_at.is_(None))
+            .values(revoked_at=at)
+            .returning(Session)
+        )
+    ).scalar_one_or_none()
+
+
+async def revoke_session_by_id(
+    session: AsyncSession, session_id: UUID, at: datetime
+) -> Session | None:
+    return (
+        await session.execute(
+            update(Session)
+            .where(Session.id == session_id, Session.revoked_at.is_(None))
             .values(revoked_at=at)
             .returning(Session)
         )

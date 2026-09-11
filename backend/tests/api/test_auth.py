@@ -29,7 +29,7 @@ async def test_login_sets_an_httponly_session_cookie(
     cookie = response.headers["set-cookie"]
     assert cookie.startswith(f"{SESSION_COOKIE}=")
     assert "HttpOnly" in cookie
-    assert "SameSite=Lax" in cookie
+    assert "samesite=lax" in cookie.lower()  # the attribute value is case-insensitive
 
 
 async def test_the_cookie_authenticates_the_next_request(

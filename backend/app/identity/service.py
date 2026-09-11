@@ -247,25 +247,37 @@ async def login(session: AsyncSession, *, email: str, password: str) -> LoggedIn
     if security.needs_rehash(user.password_hash or ""):
         user.password_hash = security.hash_password(password)
 
+    return await _open_session(session, user)
+
+
+async def start_session(session: AsyncSession, *, user_id: UUID) -> LoggedIn:
+    """Open a session for a user who has just proved control of their mailbox (invitation accept)."""
+    user = await repository.get_user_by_id(session, user_id)
+    if user is None or user.state is not UserState.ACTIVE:
+        raise UnauthenticatedError(INVALID_CREDENTIALS)
+    return await _open_session(session, user)
+
+
+async def _open_session(session: AsyncSession, user: User) -> LoggedIn:
     at = now()
     token, token_hash = security.mint_token()
-    session.add(
-        Session(
-            workspace_id=user.workspace_id,
-            user_id=user.id,
-            token_hash=token_hash,
-            created_at=at,
-            last_seen_at=at,
-            expires_at=security.absolute_expiry(at),
-        )
+    row = Session(
+        workspace_id=user.workspace_id,
+        user_id=user.id,
+        token_hash=token_hash,
+        created_at=at,
+        last_seen_at=at,
+        expires_at=security.absolute_expiry(at),
     )
+    session.add(row)
+    await session.flush()
     write_audit(
         session,
         workspace_id=user.workspace_id,
         actor_id=user.id,
         action="session.created",
         target_table="sessions",
-        target_id=None,
+        target_id=row.id,
     )
     await session.flush()
     return LoggedIn(user=UserOut.model_validate(user), token=token)
@@ -298,6 +310,18 @@ async def resolve_session(session: AsyncSession, *, token: str) -> AuthContext |
 
 async def logout(session: AsyncSession, *, token: str) -> None:
     revoked = await repository.revoke_session_by_token(session, security.hash_token(token), now())
+    _audit_session_revoked(session, revoked)
+    await session.flush()
+
+
+async def logout_session(session: AsyncSession, *, session_id: UUID) -> None:
+    """Sign out the caller's own session, identified by the resolved context rather than the token."""
+    revoked = await repository.revoke_session_by_id(session, session_id, now())
+    _audit_session_revoked(session, revoked)
+    await session.flush()
+
+
+def _audit_session_revoked(session: AsyncSession, revoked: Session | None) -> None:
     if revoked is None:
         return
     write_audit(
@@ -308,7 +332,6 @@ async def logout(session: AsyncSession, *, token: str) -> None:
         target_table="sessions",
         target_id=revoked.id,
     )
-    await session.flush()
 
 
 # ------------------------------------------------------------------ account lifecycle
