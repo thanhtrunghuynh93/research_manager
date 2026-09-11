@@ -1,0 +1,131 @@
+/** UI-02: obligations, the next deadline, draft state, and one way into the weekly flow. */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter } from "react-router-dom";
+
+import { StudentHomePage } from "@/features/me/pages/StudentHomePage";
+import "@/lib/i18n";
+import { server } from "@/test/setup";
+
+const PERIOD = {
+  id: "p1",
+  local_start: "2026-09-14",
+  local_end: "2026-09-20",
+  start_utc: "2026-09-13T17:00:00Z",
+  end_utc: "2026-09-20T17:00:00Z",
+  meeting_date: "2026-09-21",
+  deadline_utc: "2026-09-20T16:59:00Z",
+  reminder_due_utc: "2026-09-20T17:00:00Z",
+};
+
+function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <StudentHomePage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function handlers({
+  obligations = [
+    { id: "o1", period_id: "p1", project_id: "pr1", student_id: "s1", state: "required" },
+  ],
+  report = null as unknown,
+  reportStatus = 404,
+} = {}) {
+  return [
+    http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
+    http.get("/api/v1/periods/p1/obligations", () => HttpResponse.json(obligations)),
+    http.get("/api/v1/projects", () =>
+      HttpResponse.json({ items: [{ id: "pr1", title: "Baseline evaluation", status: "active" }] }),
+    ),
+    http.get("/api/v1/periods/p1/report", () =>
+      report === null
+        ? HttpResponse.json({ title: "Not found", status: 404, detail: "report not found" }, { status: reportStatus })
+        : HttpResponse.json(report),
+    ),
+  ];
+}
+
+test("shows the current week, its deadline, and what is owed", async () => {
+  server.use(...handlers());
+  renderPage();
+
+  expect(await screen.findByText(/Baseline evaluation/)).toBeInTheDocument();
+  // 23:59 on 20 September in the workspace timezone, not the raw UTC instant.
+  expect(screen.getByTestId("next-deadline")).toHaveTextContent("23:59");
+  expect(screen.getByTestId("next-deadline")).toHaveTextContent("Sep 20, 2026");
+});
+
+test("offers to start the package when nothing is drafted yet", async () => {
+  server.use(...handlers());
+  renderPage();
+
+  const link = await screen.findByRole("link", { name: /start this week|open this week/i });
+  expect(link).toHaveAttribute("href", "/report/p1");
+});
+
+test("shows the draft state once work is saved", async () => {
+  server.use(
+    ...handlers({
+      report: {
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "draft",
+        draft_content: {},
+        draft_saved_at: "2026-09-18T04:00:00Z",
+        first_submitted_at: null,
+        current_version_id: null,
+      },
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByTestId("report-state")).toHaveTextContent(/draft/i);
+});
+
+test("says when a revision was requested", async () => {
+  server.use(
+    ...handlers({
+      report: {
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "revision_requested",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-20T10:00:00Z",
+        current_version_id: "v1",
+      },
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByTestId("report-state")).toHaveTextContent(/revision/i);
+});
+
+test("shows an excused project as excused rather than owed", async () => {
+  server.use(
+    ...handlers({
+      obligations: [
+        {
+          id: "o1",
+          period_id: "p1",
+          project_id: "pr1",
+          student_id: "s1",
+          state: "excused",
+          excuse_reason: "Approved leave",
+        },
+      ],
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByText(/excused/i)).toBeInTheDocument();
+  expect(screen.getByText(/Approved leave/)).toBeInTheDocument();
+});

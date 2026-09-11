@@ -1,8 +1,20 @@
 {
-  "app": { "title": "Research Management" },
-  "common": { "loading": "Loading…", "save": "Save", "cancel": "Cancel" },
+  "app": {
+    "title": "Research Management"
+  },
+  "common": {
+    "loading": "Loading…",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
   "status": {
     "title": "System status",
     "unreachable": "The API is unreachable."
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "signOut": "Sign out"
   }
 }
