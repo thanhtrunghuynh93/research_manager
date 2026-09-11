@@ -32,3 +32,6 @@ infra/.env
 # Local data
 infra/data/
 *.log
+
+# Claude Code local settings
+.claude/
