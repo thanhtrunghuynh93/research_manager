@@ -12,11 +12,12 @@ Search, downloads, exports, and AI retrieval reuse the same predicates (architec
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from app.core.errors import ForbiddenError
@@ -24,6 +25,11 @@ from app.core.types import Role
 
 PolicyBuilder = Callable[["Scope"], ColumnElement[bool]]
 _POLICIES: dict[type[Any], PolicyBuilder] = {}
+
+# A student's Scope carries the projects they are currently a member of. identity resolves the
+# session but sits below projects in the layer order, so projects registers the loader here.
+ProjectIdsLoader = Callable[[AsyncSession, UUID, UUID], Awaitable[frozenset[UUID]]]
+_project_ids_loader: ProjectIdsLoader | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,3 +73,18 @@ def visible_to(scope: Scope, model: type[Any]) -> ColumnElement[bool]:
 
 def registered_models() -> frozenset[type[Any]]:
     return frozenset(_POLICIES)
+
+
+def register_project_ids_loader(loader: ProjectIdsLoader) -> ProjectIdsLoader:
+    global _project_ids_loader
+    _project_ids_loader = loader
+    return loader
+
+
+async def load_project_ids(
+    session: AsyncSession, workspace_id: UUID, user_id: UUID
+) -> frozenset[UUID]:
+    """Empty until the projects module registers its loader: no memberships, no project access."""
+    if _project_ids_loader is None:
+        return frozenset()
+    return await _project_ids_loader(session, workspace_id, user_id)
