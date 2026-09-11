@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.fake import FakeGateway
 from app.assessment import models, service
 from app.core.authz import Scope
-from app.core.errors import ForbiddenError, ValidationError
+from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -156,7 +156,7 @@ async def test_a_revised_report_creates_a_new_version_and_leaves_the_approved_on
             {
                 "project_id": project.id,
                 "stage": "implementation",
-                "work_performed": "Implemented the loader, reproduced the baseline, added ablation.",
+                "work_performed": "Implemented the loader, reproduced it, added the ablation.",
                 "results": "Within one point, and the ablation isolates the gain.",
                 "next_plan": {},
             }
@@ -249,7 +249,7 @@ async def test_a_student_cannot_request_a_correction_on_someone_elses_assessment
     await service.approve(db, prof_scope, assessment.id)
     scope = await identity_service.scope_for(db, student_b)
 
-    with pytest.raises(Exception):
+    with pytest.raises(NotFoundError):
         await service.request_correction(db, scope, assessment.id, body="not mine")
 
 

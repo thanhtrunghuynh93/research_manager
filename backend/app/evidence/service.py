@@ -71,6 +71,7 @@ from app.evidence.schemas import (
 )
 from app.identity import service as identity_service
 from app.projects import service as projects_service
+from app.reporting import service as reporting_service
 
 log = logging.getLogger(__name__)
 
@@ -943,6 +944,41 @@ async def search_evidence(
     ]
 
 
+async def search_evidence_window(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    project_id: UUID,
+    since: datetime,
+    until: datetime,
+    merged_within: tuple[datetime, datetime] | None = None,
+) -> list[EvidenceHit]:
+    """Everything in a window rather than the best matches for a query (ASSESS-01).
+
+    `merged_within` is reserved for repository work authored before the window and integrated
+    inside it; the caller flags those items rather than counting them as the week's work (REPO-06).
+    """
+    rows = await repo.chunks_in_window(
+        session, scope, project_id=project_id, since=since, until=until
+    )
+    return [
+        EvidenceHit(
+            chunk_id=chunk.id,
+            evidence_ref_id=chunk.evidence_ref_id,
+            text=chunk.text,
+            score=0.0,
+            source_kind=reference.source_kind,
+            source_id=reference.source_id,
+            source_version=reference.source_version,
+            locator=reference.locator,
+            project_id=chunk.project_id,
+            source_time=chunk.source_time,
+            visibility=chunk.visibility,
+        )
+        for chunk, reference in rows
+    ]
+
+
 async def chunks_for_reference(session: AsyncSession, evidence_ref_id: UUID) -> list[EvidenceChunk]:
     """Job-level read, used by the snapshot builder and by tests of the access label."""
     return await repo.chunks_for_reference(session, evidence_ref_id)
@@ -987,3 +1023,41 @@ async def _require_repository(
     if repository is None:
         raise NotFoundError("repository not found")
     return repository
+
+
+# ------------------------------------------------------------------ reactions to reporting
+
+
+async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
+    """Index the submitted entries so an assessment has something to cite (ASSESS-01).
+
+    Reporting emits; evidence reacts. A report entry is the student's own account of their work, so
+    it is indexed as `student_private` and owned by them: it supports their assessment and appears
+    in their retrieval, and never in another student's (AUTH-02).
+    """
+    for entry in await reporting_service.entries_for_indexing(
+        session, report_version_id=event.report_version_id
+    ):
+        await index_evidence(
+            session,
+            workspace_id=event.workspace_id,
+            project_id=entry.project_id,
+            owner_student_id=event.student_id,
+            visibility=Visibility.STUDENT_PRIVATE,
+            source_kind=EvidenceSourceKind.REPORT_ENTRY,
+            source_id=entry.id,
+            source_version=str(entry.version_no),
+            locator=f"report entry, {entry.stage}",
+            text=entry.text,
+            source_time=entry.submitted_at,
+        )
+
+
+def register_subscriptions() -> None:
+    """Called on import, like the visibility policies, so any process that ingests has it wired."""
+    from app.reporting import events as reporting_events
+
+    reporting_events.subscribe(reporting_events.ReportSubmitted, _on_report_submitted)
+
+
+register_subscriptions()

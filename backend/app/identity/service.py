@@ -125,6 +125,11 @@ async def advance_access_epoch(session: AsyncSession, workspace_id: UUID) -> int
     return await repository.bump_access_epoch(session, workspace_id)
 
 
+async def access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
+    """Job-level read: the epoch a snapshot or cached answer was built under (AUTH-03)."""
+    return await repository.access_epoch(session, workspace_id)
+
+
 async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:
     """Job-level read: who to address a professor-facing notification to (UI-07)."""
     return await repository.professor_ids(session, workspace_id)

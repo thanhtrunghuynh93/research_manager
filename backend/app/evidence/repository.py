@@ -354,6 +354,31 @@ async def chunks_for_reference(session: AsyncSession, evidence_ref_id: UUID) -> 
     )
 
 
+async def chunks_in_window(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    project_id: UUID,
+    since: datetime,
+    until: datetime,
+) -> list[tuple[EvidenceChunk, EvidenceReference]]:
+    """Everything the caller may see in a window, for the snapshot builder (ASSESS-01)."""
+    from app.evidence.index.retrieval import visible_chunks
+
+    rows = await session.execute(
+        select(EvidenceChunk, EvidenceReference)
+        .join(EvidenceReference, EvidenceReference.id == EvidenceChunk.evidence_ref_id)
+        .where(
+            visible_chunks(scope),
+            EvidenceChunk.project_id == project_id,
+            EvidenceChunk.source_time >= since,
+            EvidenceChunk.source_time < until,
+        )
+        .order_by(EvidenceChunk.source_time, EvidenceChunk.chunk_no)
+    )
+    return [(chunk, reference) for chunk, reference in rows]
+
+
 async def list_contributions(
     session: AsyncSession,
     scope: Scope,

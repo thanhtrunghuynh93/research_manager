@@ -70,13 +70,13 @@ def progress_index(
     renormalised over what is left.
     """
     applicable: dict[str, int] = {}
-    for dimension, weight in weights.items():
+    for dimension in weights:
         value = ratings.get(dimension, UNKNOWN)
         if value == NOT_APPLICABLE:
             continue
         if value == UNKNOWN:
             return None
-        rating = int(value)  # type: ignore[arg-type]
+        rating = int(value)
         if not 0 <= rating <= MAX_RATING:
             raise ValueError(f"a rating must be between 0 and {MAX_RATING}, got {rating}")
         applicable[dimension] = rating
@@ -115,9 +115,7 @@ def plan_completion(items: list[PlanItem] | None) -> Decimal | None:
     return (achieved / total_weight * 100).quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
-def coverage_pct(
-    sufficiency: Mapping[str, bool], weights: Mapping[str, Decimal]
-) -> Decimal:
+def coverage_pct(sufficiency: Mapping[str, bool], weights: Mapping[str, Decimal]) -> Decimal:
     """ASSESS-06: the share of applicable rubric weight supported well enough to rate.
 
     A dimension absent from `sufficiency` is not applicable and is excluded from both sides, so a
@@ -155,9 +153,7 @@ def confidence(coverage: Decimal, status: SourceStatus) -> tuple[Confidence, lis
         reasons.append("the connected repository has not synced recently, so its evidence is stale")
         level = Confidence.LOW
     if not status.baseline_available:
-        reasons.append(
-            "no plan baseline was in effect, so commitment completion is unavailable"
-        )
+        reasons.append("no plan baseline was in effect, so commitment completion is unavailable")
         level = Confidence.LOW
     if status.unverifiable_claims:
         reasons.append(

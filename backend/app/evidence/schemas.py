@@ -154,6 +154,8 @@ class EvidenceReferenceOut(BaseModel):
 class EvidenceHit(BaseModel):
     """One retrieved chunk with everything a citation needs (QA-03)."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     chunk_id: UUID
     evidence_ref_id: UUID
     text: str
@@ -164,3 +166,4 @@ class EvidenceHit(BaseModel):
     locator: str
     project_id: UUID | None = None
     source_time: datetime
+    visibility: Visibility = Visibility.PROJECT_SHARED

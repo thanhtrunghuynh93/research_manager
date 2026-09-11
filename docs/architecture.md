@@ -449,7 +449,7 @@ def coverage_pct(sufficiency: dict[str, bool], weights) -> Decimal
 def confidence(coverage: Decimal, source_status: SourceStatus) -> tuple[Level, list[str]]  # rule table, reasons listed
 ```
 
-Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25, 15 give 78.75 and display 79 (ASSESS-04). Confidence rules are a small table (for example: coverage ≥ 90 % and fresh sync → high; any `unverifiable` discrepancy on a rated dimension → at most medium; stale repository or missing baseline → low with the reason named), stored in `rubric_versions.calculation_rules` so a change is versioned (ASSESS-06, ASSESS-09).
+Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25, 15 give 78.75 and display 79 (ASSESS-04). Confidence rules are a small table (for example: coverage ≥ 90 % and fresh sync → high; any `unverifiable` discrepancy on a rated dimension → at most medium; stale repository or missing baseline → low with the reason named), stored in `rubric_versions.calculation_rules` so a change is versioned (ASSESS-06, ASSESS-09). `SourceStatus.repository_fresh` is `None` when a project has no repository at all, which is not a gap in coverage: a literature or theory project reaches full coverage through other artifacts (AC-05).
 
 ### 9.5 Versioning triggers (ASSESS-08, ASSESS-09, AC-03, AC-17)
 

@@ -36,9 +36,7 @@ WEIGHTS = {
 
 def test_the_worked_example_from_the_specification() -> None:
     """ASSESS-04: ratings 3, 4, 3, 2 with the default weights give 78.75, displayed as 79."""
-    index = progress_index(
-        {"progress": 3, "learning": 4, "rigor": 3, "artifacts": 2}, WEIGHTS
-    )
+    index = progress_index({"progress": 3, "learning": 4, "rigor": 3, "artifacts": 2}, WEIGHTS)
 
     assert index == 79
 
@@ -55,18 +53,14 @@ def test_full_marks_and_no_marks() -> None:
 
 def test_rounding_is_half_up() -> None:
     # 30x3 + 30x3 + 25x3 + 15x4 over 4 = 78.75 -> 79; the mirror case rounds up too.
-    assert progress_index(
-        {"progress": 3, "learning": 3, "rigor": 3, "artifacts": 4}, WEIGHTS
-    ) == 79
+    assert progress_index({"progress": 3, "learning": 3, "rigor": 3, "artifacts": 4}, WEIGHTS) == 79
     assert progress_index({"a": 1, "b": 2}, {"a": Decimal(1), "b": Decimal(1)}) == 38  # 37.5
 
 
 def test_an_unknown_dimension_withholds_the_index() -> None:
     # ASSESS-04: otherwise display "Not rated — insufficient evidence".
     assert (
-        progress_index(
-            {"progress": 3, "learning": UNKNOWN, "rigor": 3, "artifacts": 2}, WEIGHTS
-        )
+        progress_index({"progress": 3, "learning": UNKNOWN, "rigor": 3, "artifacts": 2}, WEIGHTS)
         is None
     )
 
@@ -75,9 +69,7 @@ def test_an_unknown_is_not_a_zero() -> None:
     withheld = progress_index(
         {"progress": 3, "learning": UNKNOWN, "rigor": 3, "artifacts": 2}, WEIGHTS
     )
-    as_zero = progress_index(
-        {"progress": 3, "learning": 0, "rigor": 3, "artifacts": 2}, WEIGHTS
-    )
+    as_zero = progress_index({"progress": 3, "learning": 0, "rigor": 3, "artifacts": 2}, WEIGHTS)
 
     assert withheld is None
     assert as_zero == 49, "a zero is a finding; an unknown is an absence of evidence"

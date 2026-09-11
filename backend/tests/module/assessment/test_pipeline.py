@@ -48,7 +48,9 @@ async def _week(
     return period, project
 
 
-def _entry(project_id: object, work: str = "Implemented the data loader and ran the baseline.") -> dict:
+def _entry(
+    project_id: object, work: str = "Implemented the data loader and ran the baseline."
+) -> dict:
     return {
         "project_id": project_id,
         "stage": "implementation",
@@ -143,9 +145,13 @@ async def test_the_index_is_computed_from_the_ratings(
             "rate_rubric": RubricOutput(
                 dimensions={
                     "progress": DimensionRating(rating="3", rationale="met", evidence_ref_ids=[]),
-                    "learning": DimensionRating(rating="4", rationale="beyond", evidence_ref_ids=[]),
+                    "learning": DimensionRating(
+                        rating="4", rationale="beyond", evidence_ref_ids=[]
+                    ),
                     "rigor": DimensionRating(rating="3", rationale="met", evidence_ref_ids=[]),
-                    "artifacts": DimensionRating(rating="2", rationale="partial", evidence_ref_ids=[]),
+                    "artifacts": DimensionRating(
+                        rating="2", rationale="partial", evidence_ref_ids=[]
+                    ),
                 }
             )
         }
@@ -178,7 +184,9 @@ async def test_an_unknown_dimension_withholds_the_index(
                         rating="unknown", rationale="nothing settles this", evidence_ref_ids=[]
                     ),
                     "rigor": DimensionRating(rating="3", rationale="met", evidence_ref_ids=[]),
-                    "artifacts": DimensionRating(rating="2", rationale="partial", evidence_ref_ids=[]),
+                    "artifacts": DimensionRating(
+                        rating="2", rationale="partial", evidence_ref_ids=[]
+                    ),
                 }
             )
         }
@@ -307,9 +315,7 @@ async def test_reported_activity_alone_does_not_raise_a_rating(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # AC-14: repetitive commits or verbose text do not increase research-progress ratings.
-    period, project, version = await _submit(
-        db, prof_scope, student_a, work="Did work. " * 200
-    )
+    period, project, version = await _submit(db, prof_scope, student_a, work="Did work. " * 200)
 
     assessment = await service.run_pipeline(
         db,

@@ -117,7 +117,7 @@ class FakeGateway:
             # Without evidence there is nothing to rate, which is `unknown`, not zero.
             rating = self.default_rating if evidence_ids else "unknown"
             rated[dimension] = DimensionRating(
-                rating=rating,  # type: ignore[arg-type]
+                rating=rating,
                 rationale=(
                     f"derived from {len(evidence_ids)} piece(s) of evidence in the snapshot"
                     if evidence_ids

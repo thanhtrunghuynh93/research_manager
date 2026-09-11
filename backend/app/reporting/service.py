@@ -575,6 +575,88 @@ async def unfulfilled_entries(
     return unfulfilled
 
 
+@dataclass(frozen=True, slots=True)
+class EntryForAssessment:
+    id: UUID
+    project_id: UUID
+    stage: str
+    text: str
+    changed_in_version_id: UUID
+
+
+async def entry_for_assessment(
+    session: AsyncSession, *, report_version_id: UUID | None, project_id: UUID
+) -> EntryForAssessment | None:
+    """The project's entry in one submitted version, flattened to the text an assessment reads.
+
+    `changed_in_version_id` is what decides whether a new assessment is due: an entry carried
+    forward unchanged still points at the version its content last moved in (AC-17).
+    """
+    if report_version_id is None:
+        return None
+    entries = await repository.entries_of_version(session, report_version_id)
+    entry = entries.get(project_id)
+    if entry is None:
+        return None
+
+    parts = [
+        entry.work_performed,
+        entry.results,
+        entry.deviations,
+        entry.questions,
+    ]
+    return EntryForAssessment(
+        id=entry.id,
+        project_id=entry.project_id,
+        stage=entry.stage,
+        text="\n\n".join(part for part in parts if part),
+        changed_in_version_id=entry.content_changed_in_version_id,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class EntryForIndexing:
+    id: UUID
+    project_id: UUID
+    stage: str
+    text: str
+    version_no: int
+    submitted_at: datetime
+
+
+async def entries_for_indexing(
+    session: AsyncSession, *, report_version_id: UUID
+) -> list[EntryForIndexing]:
+    """The entries of one submitted version, flattened for the evidence index (ASSESS-01)."""
+    version = await session.get(ReportVersion, report_version_id)
+    if version is None:
+        return []
+
+    entries = await repository.entries_of_version(session, report_version_id)
+    flattened = []
+    for entry in entries.values():
+        parts = [
+            entry.work_performed,
+            entry.results,
+            entry.deviations,
+            entry.questions,
+        ]
+        text = "\n\n".join(part for part in parts if part)
+        if not text.strip():
+            continue
+        flattened.append(
+            EntryForIndexing(
+                id=entry.id,
+                project_id=entry.project_id,
+                stage=entry.stage,
+                text=text,
+                version_no=version.version_no,
+                submitted_at=version.submitted_at,
+            )
+        )
+    return flattened
+
+
 async def mark_reminder_dispatched(
     session: AsyncSession, period_id: UUID, *, at: datetime | None = None
 ) -> None:

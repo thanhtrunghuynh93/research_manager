@@ -686,6 +686,30 @@ async def reporting_memberships(
     return [MembershipOut.model_validate(row) for row in rows]
 
 
+async def effective_baseline_for_student(
+    session: AsyncSession,
+    *,
+    workspace_id: UUID,
+    student_id: UUID,
+    project_id: UUID,
+    period_id: UUID,
+) -> PlanBaselineOut | None:
+    """Job-level read: the plan commitments are measured against, or None (ASSESS-05)."""
+    membership = await repository.active_membership(session, project_id, student_id)
+    if membership is None:
+        return None
+    scope = Scope(
+        workspace_id=workspace_id,
+        user_id=student_id,
+        role=Role.PROF,
+        project_ids=frozenset({project_id}),
+        access_epoch=0,
+    )
+    return await effective_baseline(
+        session, scope, membership_id=membership.id, period_id=period_id
+    )
+
+
 async def project_title(session: AsyncSession, project_id: UUID) -> str:
     """Job-level read: the name to put in a notification, with no other project detail."""
     project = await session.get(Project, project_id)

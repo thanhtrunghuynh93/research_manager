@@ -180,6 +180,7 @@ layers = ["app.assistant", "app.assessment", "app.evidence", "app.reporting", "a
 [[tool.importlinter.contracts]]
 name = "Only assessment and assistant use the AI gateway"
 type = "forbidden"
+allow_indirect_imports = "true"   # the API calls assessment.service, which may reach the gateway
 source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.api", "app.core"]
 forbidden_modules = ["app.ai"]
 

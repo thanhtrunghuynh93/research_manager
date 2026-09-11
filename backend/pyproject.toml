@@ -118,6 +118,9 @@ layers = [
 [[tool.importlinter.contracts]]
 name = "Only assessment and assistant use the AI gateway"
 type = "forbidden"
+# Direct imports only: the API calls assessment.service, which is exactly the module allowed to
+# reach the gateway. What this forbids is any other module importing it itself.
+allow_indirect_imports = "true"
 source_modules = [
   "app.identity",
   "app.projects",

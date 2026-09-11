@@ -30,6 +30,251 @@
         "title": "AcceptInvitationIn",
         "type": "object"
       },
+      "ApproveIn": {
+        "properties": {
+          "override": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          }
+        },
+        "title": "ApproveIn",
+        "type": "object"
+      },
+      "AssessmentOut": {
+        "properties": {
+          "analysis_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Run Id"
+          },
+          "baseline_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Id"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "confidence_reasons": {
+            "items": {},
+            "title": "Confidence Reasons",
+            "type": "array"
+          },
+          "coverage_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Coverage Pct",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "effective_ratings": {
+            "additionalProperties": true,
+            "title": "Effective Ratings",
+            "type": "object"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "narrative": {
+            "additionalProperties": true,
+            "title": "Narrative",
+            "type": "object"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "plan_completion": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Completion"
+          },
+          "progress_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Index"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "prompt_versions": {
+            "additionalProperties": true,
+            "title": "Prompt Versions",
+            "type": "object"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ratings": {
+            "additionalProperties": true,
+            "title": "Ratings",
+            "type": "object"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "report_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Version Id"
+          },
+          "review_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rubric_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric Version Id"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "student_id",
+          "project_id",
+          "period_id",
+          "version_no",
+          "ratings",
+          "coverage_pct",
+          "confidence",
+          "confidence_reasons",
+          "narrative",
+          "prompt_versions",
+          "created_at"
+        ],
+        "title": "AssessmentOut",
+        "type": "object"
+      },
       "CalendarConfigIn": {
         "properties": {
           "effective_from": {
@@ -113,6 +358,25 @@
           "effective_from"
         ],
         "title": "CalendarConfigOut",
+        "type": "object"
+      },
+      "CorrectionIn": {
+        "properties": {
+          "body": {
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {},
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "CorrectionIn",
         "type": "object"
       },
       "DraftIn": {
@@ -345,6 +609,71 @@
           "reason"
         ],
         "title": "ExtensionIn",
+        "type": "object"
+      },
+      "FeedbackKind": {
+        "enum": [
+          "professor_comment",
+          "student_response",
+          "correction_request"
+        ],
+        "title": "FeedbackKind",
+        "type": "string"
+      },
+      "FeedbackOut": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {},
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FeedbackKind"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_table": {
+            "title": "Subject Table",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "required": [
+          "id",
+          "subject_table",
+          "subject_id",
+          "author_id",
+          "kind",
+          "visibility",
+          "body",
+          "evidence_refs",
+          "created_at"
+        ],
+        "title": "FeedbackOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1992,6 +2321,94 @@
         "title": "ResearchStage",
         "type": "string"
       },
+      "ReviewOut": {
+        "properties": {
+          "assessment_version_id": {
+            "format": "uuid",
+            "title": "Assessment Version Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ReviewState"
+          }
+        },
+        "required": [
+          "id",
+          "assessment_version_id",
+          "state",
+          "created_at"
+        ],
+        "title": "ReviewOut",
+        "type": "object"
+      },
+      "ReviewState": {
+        "description": "ASSESS-08: a draft is the professor's to approve; only an approved version is published.",
+        "enum": [
+          "draft",
+          "approved",
+          "superseded",
+          "withdrawn"
+        ],
+        "title": "ReviewState",
+        "type": "string"
+      },
       "RevisionRequestIn": {
         "properties": {
           "project_id": {
@@ -2105,6 +2522,44 @@
         "title": "RolePatch",
         "type": "object"
       },
+      "SnapshotItemOut": {
+        "properties": {
+          "evidence_ref_id": {
+            "format": "uuid",
+            "title": "Evidence Ref Id",
+            "type": "string"
+          },
+          "integration_of_earlier_work": {
+            "title": "Integration Of Earlier Work",
+            "type": "boolean"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "required": [
+          "evidence_ref_id",
+          "text",
+          "locator",
+          "visibility",
+          "source_version",
+          "integration_of_earlier_work"
+        ],
+        "title": "SnapshotItemOut",
+        "type": "object"
+      },
       "SubmitIn": {
         "properties": {
           "entries": {
@@ -2119,6 +2574,56 @@
           "entries"
         ],
         "title": "SubmitIn",
+        "type": "object"
+      },
+      "SupervisionNoteIn": {
+        "properties": {
+          "body": {
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "period_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "SupervisionNoteIn",
         "type": "object"
       },
       "TaskIn": {
@@ -2444,6 +2949,73 @@
         "title": "TimingStatus",
         "type": "string"
       },
+      "TrendPoint": {
+        "description": "ASSESS-10: one point in a trajectory, labelled with the rubric behind it (AC-10).",
+        "properties": {
+          "assessment_id": {
+            "format": "uuid",
+            "title": "Assessment Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "plan_completion": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Completion"
+          },
+          "progress_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Index"
+          },
+          "rubric_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric Version Id"
+          }
+        },
+        "required": [
+          "period_id",
+          "assessment_id",
+          "confidence",
+          "created_at"
+        ],
+        "title": "TrendPoint",
+        "type": "object"
+      },
       "UserOut": {
         "properties": {
           "created_at": {
@@ -2601,6 +3173,15 @@
         ],
         "title": "VersionOut",
         "type": "object"
+      },
+      "Visibility": {
+        "enum": [
+          "professor_only",
+          "student_private",
+          "project_shared"
+        ],
+        "title": "Visibility",
+        "type": "string"
       }
     }
   },
@@ -2653,6 +3234,383 @@
         "summary": "Readiness",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/assessments": {
+      "get": {
+        "description": "A student sees only versions a review has approved (ASSESS-08).",
+        "operationId": "list_assessments_api_v1_assessments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AssessmentOut"
+                  },
+                  "title": "Response List Assessments Api V1 Assessments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assessments the caller may see",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}": {
+      "get": {
+        "operationId": "get_assessment_api_v1_assessments__assessment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One assessment",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/approve": {
+      "post": {
+        "description": "An override needs a recorded reason; the model's own output is kept beside it.",
+        "operationId": "approve_api_v1_assessments__assessment_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish an assessment",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/corrections": {
+      "post": {
+        "operationId": "request_correction_api_v1_assessments__assessment_id__corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request a correction, with evidence",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/evidence": {
+      "get": {
+        "description": "UI-05: the claims, the evidence, and the draft are read side by side.",
+        "operationId": "assessment_evidence_api_v1_assessments__assessment_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SnapshotItemOut"
+                  },
+                  "title": "Response Assessment Evidence Api V1 Assessments  Assessment Id  Evidence Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The evidence snapshot this assessment was made from",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/feedback": {
+      "get": {
+        "operationId": "list_feedback_api_v1_assessments__assessment_id__feedback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeedbackOut"
+                  },
+                  "title": "Response List Feedback Api V1 Assessments  Assessment Id  Feedback Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Feedback on an assessment",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_api_v1_assessments__assessment_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assessment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assessment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw an assessment",
+        "tags": [
+          "assessments"
         ]
       }
     },
@@ -4715,6 +5673,52 @@
         ]
       }
     },
+    "/api/v1/supervision-notes": {
+      "post": {
+        "description": "QA-06: private to the professor. Never indexed, never in a snapshot, never in an answer.",
+        "operationId": "add_supervision_note_api_v1_supervision_notes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupervisionNoteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Add Supervision Note Api V1 Supervision Notes Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record a private supervision note",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
     "/api/v1/tasks/{task_id}": {
       "patch": {
         "operationId": "update_task_api_v1_tasks__task_id__patch",
@@ -4765,6 +5769,64 @@
         "summary": "Update a task or report progress on it",
         "tags": [
           "milestones"
+        ]
+      }
+    },
+    "/api/v1/trends": {
+      "get": {
+        "description": "Each point carries the rubric that produced it, so a change reads as a break (AC-10).",
+        "operationId": "progress_series_api_v1_trends_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Student Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrendPoint"
+                  },
+                  "title": "Response Progress Series Api V1 Trends Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A student's trajectory on one project",
+        "tags": [
+          "assessments"
         ]
       }
     },

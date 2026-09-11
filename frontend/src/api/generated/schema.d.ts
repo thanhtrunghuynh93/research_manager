@@ -38,6 +38,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Assessments the caller may see
+         * @description A student sees only versions a review has approved (ASSESS-08).
+         */
+        get: operations["list_assessments_api_v1_assessments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessments/{assessment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One assessment */
+        get: operations["get_assessment_api_v1_assessments__assessment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessments/{assessment_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish an assessment
+         * @description An override needs a recorded reason; the model's own output is kept beside it.
+         */
+        post: operations["approve_api_v1_assessments__assessment_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessments/{assessment_id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request a correction, with evidence */
+        post: operations["request_correction_api_v1_assessments__assessment_id__corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessments/{assessment_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The evidence snapshot this assessment was made from
+         * @description UI-05: the claims, the evidence, and the draft are read side by side.
+         */
+        get: operations["assessment_evidence_api_v1_assessments__assessment_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessments/{assessment_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Feedback on an assessment */
+        get: operations["list_feedback_api_v1_assessments__assessment_id__feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessments/{assessment_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw an assessment */
+        post: operations["withdraw_api_v1_assessments__assessment_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/accept-invitation": {
         parameters: {
             query?: never;
@@ -677,6 +805,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supervision-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a private supervision note
+         * @description QA-06: private to the professor. Never indexed, never in a snapshot, never in an answer.
+         */
+        post: operations["add_supervision_note_api_v1_supervision_notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}": {
         parameters: {
             query?: never;
@@ -692,6 +840,26 @@ export interface paths {
         head?: never;
         /** Update a task or report progress on it */
         patch: operations["update_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A student's trajectory on one project
+         * @description Each point carries the rubric that produced it, so a change reads as a break (AC-10).
+         */
+        get: operations["progress_series_api_v1_trends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/users": {
@@ -826,6 +994,93 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** ApproveIn */
+        ApproveIn: {
+            /** Override */
+            override?: {
+                [key: string]: unknown;
+            } | null;
+            /** Rationale */
+            rationale?: string | null;
+        };
+        /** AssessmentOut */
+        AssessmentOut: {
+            /** Analysis Run Id */
+            analysis_run_id?: string | null;
+            /** Baseline Id */
+            baseline_id?: string | null;
+            /** Confidence */
+            confidence: string;
+            /** Confidence Reasons */
+            confidence_reasons: unknown[];
+            /** Coverage Pct */
+            coverage_pct: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Effective Ratings */
+            effective_ratings?: {
+                [key: string]: unknown;
+            };
+            /** Entry Id */
+            entry_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Name */
+            model_name?: string | null;
+            /** Narrative */
+            narrative: {
+                [key: string]: unknown;
+            };
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /** Plan Completion */
+            plan_completion?: string | null;
+            /** Progress Index */
+            progress_index?: number | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Prompt Versions */
+            prompt_versions: {
+                [key: string]: unknown;
+            };
+            /** Published At */
+            published_at?: string | null;
+            /** Ratings */
+            ratings: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Report Version Id */
+            report_version_id?: string | null;
+            review_state?: components["schemas"]["ReviewState"] | null;
+            /** Rubric Version Id */
+            rubric_version_id?: string | null;
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Version No */
+            version_no: number;
+        };
         /** CalendarConfigIn */
         CalendarConfigIn: {
             /**
@@ -876,6 +1131,13 @@ export interface components {
             version: number;
             /** Week Start Weekday */
             week_start_weekday: number;
+        };
+        /** CorrectionIn */
+        CorrectionIn: {
+            /** Body */
+            body: string;
+            /** Evidence */
+            evidence?: unknown[];
         };
         /** DraftIn */
         DraftIn: {
@@ -996,6 +1258,42 @@ export interface components {
              * Format: date-time
              */
             until: string;
+        };
+        /**
+         * FeedbackKind
+         * @enum {string}
+         */
+        FeedbackKind: "professor_comment" | "student_response" | "correction_request";
+        /** FeedbackOut */
+        FeedbackOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evidence Refs */
+            evidence_refs: unknown[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["FeedbackKind"];
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Subject Table */
+            subject_table: string;
+            visibility: components["schemas"]["Visibility"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1637,6 +1935,41 @@ export interface components {
          * @enum {string}
          */
         ResearchStage: "literature_review" | "theory" | "data_preparation" | "implementation" | "experimentation" | "analysis" | "writing";
+        /** ReviewOut */
+        ReviewOut: {
+            /**
+             * Assessment Version Id
+             * Format: uuid
+             */
+            assessment_version_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Override */
+            override?: {
+                [key: string]: unknown;
+            } | null;
+            /** Published At */
+            published_at?: string | null;
+            /** Rationale */
+            rationale?: string | null;
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            state: components["schemas"]["ReviewState"];
+        };
+        /**
+         * ReviewState
+         * @description ASSESS-08: a draft is the professor's to approve; only an approved version is published.
+         * @enum {string}
+         */
+        ReviewState: "draft" | "approved" | "superseded" | "withdrawn";
         /** RevisionRequestIn */
         RevisionRequestIn: {
             /** Project Id */
@@ -1687,10 +2020,38 @@ export interface components {
         RolePatch: {
             role: components["schemas"]["Role"];
         };
+        /** SnapshotItemOut */
+        SnapshotItemOut: {
+            /**
+             * Evidence Ref Id
+             * Format: uuid
+             */
+            evidence_ref_id: string;
+            /** Integration Of Earlier Work */
+            integration_of_earlier_work: boolean;
+            /** Locator */
+            locator: string;
+            /** Source Version */
+            source_version: string;
+            /** Text */
+            text: string;
+            visibility: components["schemas"]["Visibility"];
+        };
         /** SubmitIn */
         SubmitIn: {
             /** Entries */
             entries: components["schemas"]["EntryIn"][];
+        };
+        /** SupervisionNoteIn */
+        SupervisionNoteIn: {
+            /** Body */
+            body: string;
+            /** Period Id */
+            period_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Student Id */
+            student_id?: string | null;
         };
         /** TaskIn */
         TaskIn: {
@@ -1786,6 +2147,35 @@ export interface components {
          * @enum {string}
          */
         TimingStatus: "on_time" | "late" | "excused";
+        /**
+         * TrendPoint
+         * @description ASSESS-10: one point in a trajectory, labelled with the rubric behind it (AC-10).
+         */
+        TrendPoint: {
+            /**
+             * Assessment Id
+             * Format: uuid
+             */
+            assessment_id: string;
+            /** Confidence */
+            confidence: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /** Plan Completion */
+            plan_completion?: string | null;
+            /** Progress Index */
+            progress_index?: number | null;
+            /** Rubric Version Id */
+            rubric_version_id?: string | null;
+        };
         /** UserOut */
         UserOut: {
             /**
@@ -1860,6 +2250,11 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /**
+         * Visibility
+         * @enum {string}
+         */
+        Visibility: "professor_only" | "student_private" | "project_shared";
     };
     responses: never;
     parameters: never;
@@ -1907,6 +2302,233 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Readiness"];
+                };
+            };
+        };
+    };
+    list_assessments_api_v1_assessments_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                project_id?: string | null;
+                period_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_assessment_api_v1_assessments__assessment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_api_v1_assessments__assessment_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_correction_api_v1_assessments__assessment_id__corrections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assessment_evidence_api_v1_assessments__assessment_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_feedback_api_v1_assessments__assessment_id__feedback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_api_v1_assessments__assessment_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assessment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3301,6 +3923,41 @@ export interface operations {
             };
         };
     };
+    add_supervision_note_api_v1_supervision_notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupervisionNoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_task_api_v1_tasks__task_id__patch: {
         parameters: {
             query?: never;
@@ -3323,6 +3980,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_series_api_v1_trends_get: {
+        parameters: {
+            query: {
+                student_id: string;
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendPoint"][];
                 };
             };
             /** @description Validation Error */
