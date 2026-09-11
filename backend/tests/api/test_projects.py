@@ -45,9 +45,7 @@ async def test_a_student_cannot_create_a_project(
 ) -> None:
     await _sign_in(client, student_a)
 
-    response = await client.post(
-        "/api/v1/projects", json={"title": "Mine", "stage": "theory"}
-    )
+    response = await client.post("/api/v1/projects", json={"title": "Mine", "stage": "theory"})
 
     assert response.status_code == 403
 

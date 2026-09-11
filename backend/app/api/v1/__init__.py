@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, FastAPI
 
-from app.api.v1 import auth, health, users
+from app.api.v1 import auth, health, milestones, projects, users
 
 API_PREFIX = "/api"
 V1_PREFIX = "/api/v1"
@@ -16,7 +16,8 @@ def include_routers(app: FastAPI) -> None:
     v1 = APIRouter(prefix=V1_PREFIX)
     v1.include_router(auth.router)
     v1.include_router(users.router)
-    # v1.include_router(projects.router)      projects
+    v1.include_router(projects.router)
+    v1.include_router(milestones.router)
     # v1.include_router(reports.router)       reporting
     # ...
     app.include_router(v1)

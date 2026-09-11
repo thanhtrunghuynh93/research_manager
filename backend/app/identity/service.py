@@ -116,6 +116,15 @@ async def list_users(
     )
 
 
+async def advance_access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
+    """AUTH-03: call after any change elsewhere that narrows what someone may see.
+
+    The projects module calls it when a membership ends; cached answers and snapshots built under
+    the previous epoch stop being served (architecture §6.3).
+    """
+    return await repository.bump_access_epoch(session, workspace_id)
+
+
 # ------------------------------------------------------------------ enrollment (AUTH-01)
 
 

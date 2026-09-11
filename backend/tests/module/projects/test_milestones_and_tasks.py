@@ -93,9 +93,7 @@ async def test_an_edit_that_changes_no_baseline_field_needs_no_reason(
     assert len(await service.list_milestone_revisions(db, prof_scope, milestone.id)) == 1
 
 
-async def test_a_retained_revision_cannot_be_rewritten(
-    db: AsyncSession, prof_scope: Scope
-) -> None:
+async def test_a_retained_revision_cannot_be_rewritten(db: AsyncSession, prof_scope: Scope) -> None:
     project = await _project(db, prof_scope)
     milestone = await service.create_milestone(db, prof_scope, project.id, title="Reproduce")
 
@@ -119,12 +117,8 @@ async def test_project_progress_uses_milestone_weights_not_student_scores(
     light = await service.create_milestone(
         db, prof_scope, project.id, title="Write-up", weight=Decimal(1)
     )
-    await service.update_milestone(
-        db, prof_scope, heavy.id, accepted_completion=Decimal("1.00")
-    )
-    await service.update_milestone(
-        db, prof_scope, light.id, accepted_completion=Decimal("0.50")
-    )
+    await service.update_milestone(db, prof_scope, heavy.id, accepted_completion=Decimal("1.00"))
+    await service.update_milestone(db, prof_scope, light.id, accepted_completion=Decimal("0.50"))
 
     progress = await service.project_progress(db, prof_scope, project.id)
 
@@ -181,9 +175,7 @@ async def test_a_task_links_to_a_milestone_in_the_same_project(
         )
 
 
-async def test_partial_completion_must_carry_a_reason(
-    db: AsyncSession, prof_scope: Scope
-) -> None:
+async def test_partial_completion_must_carry_a_reason(db: AsyncSession, prof_scope: Scope) -> None:
     # PROJ-03: completion may be partial and must include a reason and evidence.
     project = await _project(db, prof_scope)
     task = await service.create_task(db, prof_scope, project.id, title="Run the sweep")

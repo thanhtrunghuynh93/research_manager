@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditEvent
-from app.core.clock import now
 from app.core.authz import Scope
+from app.core.clock import now
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
@@ -50,9 +50,7 @@ async def test_the_professor_creates_a_project_with_its_research_record(
     assert project.venue_target == "ICLR 2027"
 
 
-async def test_a_student_cannot_create_a_project(
-    db: AsyncSession, student_a_scope: Scope
-) -> None:
+async def test_a_student_cannot_create_a_project(db: AsyncSession, student_a_scope: Scope) -> None:
     with pytest.raises(ForbiddenError):
         await _project(db, student_a_scope)
 
@@ -129,10 +127,14 @@ async def test_ending_a_membership_keeps_the_history(
 
     assert ended.left_on == date(2026, 10, 1)
     rows = (
-        await db.execute(
-            select(models.ProjectMembership).where(models.ProjectMembership.id == membership.id)
+        (
+            await db.execute(
+                select(models.ProjectMembership).where(models.ProjectMembership.id == membership.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1, "the row stays; only left_on is written"
 
 
