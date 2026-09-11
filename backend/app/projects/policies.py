@@ -16,6 +16,7 @@ from app.core.authz import Scope, register_policy, register_project_ids_loader
 from app.core.clock import now
 from app.projects.models import (
     Milestone,
+    PlanBaseline,
     Project,
     ProjectMembership,
     ResearchDecision,
@@ -65,6 +66,20 @@ def membership_visible_to(scope: Scope) -> ColumnElement[bool]:
         or_(
             ProjectMembership.project_id.in_(scope.project_ids),
             ProjectMembership.student_id == scope.user_id,
+        ),
+    )
+
+
+@register_policy(PlanBaseline)
+def plan_baseline_visible_to(scope: Scope) -> ColumnElement[bool]:
+    """A student sees the plan they are assessed against; the professor sees every plan."""
+    same_workspace = PlanBaseline.workspace_id == scope.workspace_id
+    if scope.is_prof:
+        return same_workspace
+    return and_(
+        same_workspace,
+        PlanBaseline.membership_id.in_(
+            select(ProjectMembership.id).where(ProjectMembership.student_id == scope.user_id)
         ),
     )
 

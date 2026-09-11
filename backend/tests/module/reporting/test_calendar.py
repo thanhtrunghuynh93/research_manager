@@ -227,3 +227,95 @@ async def test_periods_cannot_be_generated_without_a_calendar(
 ) -> None:
     with pytest.raises(NotFoundError):
         await service.ensure_periods(db, prof_scope, through=date(2026, 10, 4))
+
+
+async def test_freezing_carries_the_previous_weeks_plan_into_the_new_baseline(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    # PROJ-04: next-week plans submitted in the previous report become the next baseline.
+    from app.identity import service as identity_service
+    from app.projects import service as projects_service
+
+    await _calendar(db, prof_scope)
+    project = await projects_service.create_project(
+        db, prof_scope, title="Baseline", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    periods = await service.ensure_periods(db, prof_scope, through=date(2026, 10, 4))
+    await service.ensure_obligations(db, prof_scope, periods[0].id)
+    student_scope = await identity_service.scope_for(db, student_a)
+    await service.submit_report(
+        db,
+        student_scope,
+        period_id=periods[0].id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Built the loader",
+                "next_plan": {
+                    "items": [
+                        {"planned_outcome": "Run the baseline end to end", "weight": 2},
+                        {"planned_outcome": "Draft the method section", "weight": 1},
+                    ]
+                },
+            }
+        ],
+    )
+
+    await service.ensure_obligations(db, prof_scope, periods[1].id)
+    baselines = await service.freeze_baselines(db, prof_scope, periods[1].id)
+
+    assert len(baselines) == 1
+    assert baselines[0].state.value == "frozen"
+    assert [item.planned_outcome for item in baselines[0].items] == [
+        "Run the baseline end to end",
+        "Draft the method section",
+    ]
+
+
+async def test_freezing_with_no_previous_plan_records_an_empty_baseline(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    # AC-18: a new member has no previous report, so there is nothing to freeze.
+    from app.projects import service as projects_service
+
+    await _calendar(db, prof_scope)
+    project = await projects_service.create_project(
+        db, prof_scope, title="Baseline", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
+    await service.ensure_obligations(db, prof_scope, period.id)
+
+    baselines = await service.freeze_baselines(db, prof_scope, period.id)
+
+    assert [b.state.value for b in baselines] == ["empty"]
+
+
+async def test_freezing_twice_changes_nothing(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    from app.projects import service as projects_service
+
+    await _calendar(db, prof_scope)
+    project = await projects_service.create_project(
+        db, prof_scope, title="Baseline", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
+    await service.ensure_obligations(db, prof_scope, period.id)
+
+    first = await service.freeze_baselines(db, prof_scope, period.id)
+    second = await service.freeze_baselines(db, prof_scope, period.id)
+
+    assert [b.id for b in first] == [b.id for b in second]

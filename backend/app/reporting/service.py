@@ -21,6 +21,7 @@ from app.core.clock import now
 from app.core.errors import NotFoundError, ValidationError
 from app.core.types import Role
 from app.projects import service as projects_service
+from app.projects.schemas import PlanBaselineOut
 from app.reporting import calendar, events, policies, repository  # noqa: F401  (policies register)
 from app.reporting.models import (
     CalendarConfig,
@@ -229,6 +230,73 @@ async def extend_obligation(
     )
     await session.flush()
     return ObligationOut.model_validate(obligation)
+
+
+async def freeze_baselines(
+    session: AsyncSession, scope: Scope, period_id: UUID
+) -> list[PlanBaselineOut]:
+    """PROJ-04: at the start of a period, fix the plan each membership will be assessed against.
+
+    The plan comes from the next-week plan in the previous period's report entry. When there is
+    none — a new member, a missing or late report, a paused project — the baseline is recorded as
+    empty and the student enters a first plan in the current report (AC-18).
+    """
+    scope.require_prof()
+    period = await _require_period(session, scope, period_id)
+    previous = await repository.period_before(session, scope.workspace_id, period.local_start)
+
+    frozen: list[PlanBaselineOut] = []
+    for obligation in await repository.list_obligations(session, scope, period_id):
+        existing = await projects_service.latest_baseline(
+            session, scope, membership_id=obligation.membership_id, period_id=period_id
+        )
+        if existing is not None:
+            frozen.append(existing)
+            continue
+
+        items, source_entry_id = await _carried_plan(
+            session, scope, previous, obligation.student_id, obligation.project_id
+        )
+        frozen.append(
+            await projects_service.freeze_baseline(
+                session,
+                scope,
+                membership_id=obligation.membership_id,
+                period_id=period_id,
+                items=items,
+                source_entry_id=source_entry_id,
+            )
+        )
+    return frozen
+
+
+async def _carried_plan(
+    session: AsyncSession,
+    scope: Scope,
+    previous: ReportingPeriod | None,
+    student_id: UUID,
+    project_id: UUID,
+) -> tuple[list[dict[str, Any]], UUID | None]:
+    """The `next_plan` items from last week's entry for this project, if there is one."""
+    if previous is None:
+        return [], None
+    report = await repository.get_report(
+        session, scope, period_id=previous.id, student_id=student_id
+    )
+    if report is None or report.current_version_id is None:
+        return [], None
+
+    entries = await repository.entries_of_version(session, report.current_version_id)
+    entry = entries.get(project_id)
+    if entry is None:
+        return [], None
+
+    items = entry.next_plan.get("items") if isinstance(entry.next_plan, dict) else None
+    if not isinstance(items, list) or not items:
+        return [], entry.id
+    return [
+        item for item in items if isinstance(item, dict) and item.get("planned_outcome")
+    ], entry.id
 
 
 # ------------------------------------------------------------------ drafts and submission

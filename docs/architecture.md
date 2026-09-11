@@ -226,7 +226,7 @@ stateDiagram-v2
     superseded --> proposed: new version marked student-proposed
 ```
 
-The freeze point is `reporting_periods.start_utc` by default. A periodic task `freeze_baselines(period_id)` runs at period start and inserts a `frozen` or `empty` row per required obligation. Commitment completion (ASSESS-05) is computed only against rows in state `frozen` or `accepted`; otherwise the assessment shows completion as unavailable.
+The freeze point is `reporting_periods.start_utc` by default. A periodic task `freeze_baselines(period_id)` runs at period start and inserts a `frozen` or `empty` row per required obligation; it is idempotent, so a membership that already has a baseline for the period keeps it. Baseline rows carry their own database guard rather than the blanket immutability trigger: the content columns can never change, and the only state moves the guard admits are the two in the diagram above — a proposal the professor accepts, and a version a later one supersedes. Commitment completion (ASSESS-05) is computed only against rows in state `frozen` or `accepted`; otherwise the assessment shows completion as unavailable.
 
 ### 5.6 File storage
 

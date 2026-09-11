@@ -11,8 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import Scope, visible_to
 from app.core.pagination import decode_cursor, encode_cursor
 from app.projects.models import (
+    BaselineState,
     Milestone,
     MilestoneRevision,
+    PlanBaseline,
+    PlanBaselineItem,
     Project,
     ProjectMembership,
     ProjectStatus,
@@ -228,3 +231,85 @@ async def count_open_blockers(session: AsyncSession, scope: Scope, project_id: U
             )
         )
     ).scalar_one()
+
+
+IN_EFFECT = (BaselineState.FROZEN, BaselineState.ACCEPTED)
+
+
+async def baseline_in_effect(
+    session: AsyncSession, scope: Scope, *, membership_id: UUID, period_id: UUID
+) -> PlanBaseline | None:
+    """ASSESS-05: only a frozen or accepted plan is a commitment to measure against."""
+    return (
+        await session.execute(
+            select(PlanBaseline).where(
+                PlanBaseline.membership_id == membership_id,
+                PlanBaseline.period_id == period_id,
+                PlanBaseline.state.in_(IN_EFFECT),
+                visible_to(scope, PlanBaseline),
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def latest_baseline(
+    session: AsyncSession, scope: Scope, *, membership_id: UUID, period_id: UUID
+) -> PlanBaseline | None:
+    return (
+        await session.execute(
+            select(PlanBaseline)
+            .where(
+                PlanBaseline.membership_id == membership_id,
+                PlanBaseline.period_id == period_id,
+                visible_to(scope, PlanBaseline),
+            )
+            .order_by(PlanBaseline.version_no.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def get_baseline(
+    session: AsyncSession, scope: Scope, baseline_id: UUID
+) -> PlanBaseline | None:
+    return (
+        await session.execute(
+            select(PlanBaseline).where(
+                PlanBaseline.id == baseline_id, visible_to(scope, PlanBaseline)
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def list_baselines(
+    session: AsyncSession, scope: Scope, *, membership_id: UUID, period_id: UUID
+) -> list[PlanBaseline]:
+    return list(
+        (
+            await session.execute(
+                select(PlanBaseline)
+                .where(
+                    PlanBaseline.membership_id == membership_id,
+                    PlanBaseline.period_id == period_id,
+                    visible_to(scope, PlanBaseline),
+                )
+                .order_by(PlanBaseline.version_no)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def baseline_items(session: AsyncSession, baseline_id: UUID) -> list[PlanBaselineItem]:
+    return list(
+        (
+            await session.execute(
+                select(PlanBaselineItem)
+                .where(PlanBaselineItem.baseline_id == baseline_id)
+                .order_by(PlanBaselineItem.position, PlanBaselineItem.id)
+            )
+        )
+        .scalars()
+        .all()
+    )

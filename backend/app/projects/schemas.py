@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
+from app.projects.models import BaselineState as BaselineState
 from app.projects.models import MilestoneStatus as MilestoneStatus
 from app.projects.models import ProjectStatus as ProjectStatus
 from app.projects.models import ResearchStage as ResearchStage
@@ -214,3 +215,45 @@ class ProjectProgressOut(BaseModel):
     completed_milestones: int
     overdue_milestones: int
     open_blockers: int
+
+
+class PlanBaselineItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    task_id: UUID | None = None
+    planned_outcome: str
+    weight: Decimal
+    acceptance_criteria: str
+    position: int
+
+
+class PlanBaselineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    membership_id: UUID
+    period_id: UUID
+    version_no: int
+    state: BaselineState
+    frozen_at: datetime | None = None
+    source_entry_id: UUID | None = None
+    supersedes_id: UUID | None = None
+    change_reason: str | None = None
+    proposed_by: UUID | None = None
+    approved_by: UUID | None = None
+    approved_at: datetime | None = None
+    created_at: datetime
+    items: list[PlanBaselineItemOut] = Field(default_factory=list)
+
+
+class PlanItemIn(BaseModel):
+    planned_outcome: str = Field(min_length=1)
+    weight: Decimal = Field(default=Decimal(1), ge=0)
+    acceptance_criteria: str = ""
+    task_id: UUID | None = None
+
+
+class BaselineChangeIn(BaseModel):
+    items: list[PlanItemIn]
+    reason: str = Field(min_length=1)

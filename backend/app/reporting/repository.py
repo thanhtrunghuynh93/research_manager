@@ -59,6 +59,22 @@ async def last_period(session: AsyncSession, workspace_id: UUID) -> ReportingPer
     ).scalar_one_or_none()
 
 
+async def period_before(
+    session: AsyncSession, workspace_id: UUID, local_start: date
+) -> ReportingPeriod | None:
+    return (
+        await session.execute(
+            select(ReportingPeriod)
+            .where(
+                ReportingPeriod.workspace_id == workspace_id,
+                ReportingPeriod.local_start < local_start,
+            )
+            .order_by(ReportingPeriod.local_start.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 async def list_periods(
     session: AsyncSession, scope: Scope, *, through: date | None = None
 ) -> list[ReportingPeriod]:

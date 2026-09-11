@@ -20,6 +20,7 @@ from app.core.authz import Scope
 from app.core.errors import ForbiddenError, ValidationError
 from app.identity import models as identity_models
 from app.projects import models, service
+from app.reporting import service as reporting_service
 
 pytestmark = pytest.mark.module
 
@@ -32,6 +33,15 @@ PLAN = [
 async def _membership(
     db: AsyncSession, scope: Scope, student: identity_models.User
 ) -> tuple[object, object]:
+    """A membership and a real reporting period for it, since a baseline belongs to a week."""
+    await reporting_service.configure_calendar(
+        db,
+        scope,
+        timezone="Asia/Ho_Chi_Minh",
+        meeting_weekday=0,
+        week_start_weekday=0,
+        effective_from=date(2026, 9, 14),
+    )
     project = await service.create_project(
         db, scope, title="Baseline evaluation", stage="implementation"
     )
@@ -39,17 +49,17 @@ async def _membership(
     membership = await service.add_member(
         db, scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
     )
-    return project, membership
+    period = (await reporting_service.ensure_periods(db, scope, through=date(2026, 9, 20)))[0]
+    return period, membership
 
 
 async def test_a_frozen_baseline_records_the_plan_and_its_source(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    _, membership = await _membership(db, prof_scope, student_a)
-    period_id = membership.id  # any stable identifier; reporting supplies the real period
+    period, membership = await _membership(db, prof_scope, student_a)
 
     baseline = await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=period_id, items=PLAN
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
 
     assert baseline.state is models.BaselineState.FROZEN
@@ -65,10 +75,10 @@ async def test_no_plan_at_the_freeze_point_gives_an_empty_baseline(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # AC-18: a new member, a missing report, or a paused project leaves nothing to freeze.
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
 
     baseline = await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=[]
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=[]
     )
 
     assert baseline.state is models.BaselineState.EMPTY
@@ -78,15 +88,15 @@ async def test_no_plan_at_the_freeze_point_gives_an_empty_baseline(
 async def test_commitment_completion_is_unavailable_until_a_plan_is_accepted(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    # ASSESS-05: with no frozen or accepted baseline there is nothing to measure commitments against.
-    _, membership = await _membership(db, prof_scope, student_a)
+    # ASSESS-05: with no frozen or accepted baseline there is nothing to measure against.
+    period, membership = await _membership(db, prof_scope, student_a)
     await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=[]
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=[]
     )
 
     assert (
         await service.effective_baseline(
-            db, prof_scope, membership_id=membership.id, period_id=membership.id
+            db, prof_scope, membership_id=membership.id, period_id=period.id
         )
         is None
     )
@@ -95,19 +105,19 @@ async def test_commitment_completion_is_unavailable_until_a_plan_is_accepted(
 async def test_a_student_proposes_a_first_plan_and_the_professor_accepts_it(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, student_a_scope: Scope
 ) -> None:
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=[]
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=[]
     )
     scope = await _student_scope(db, student_a)
 
     proposed = await service.propose_baseline(
-        db, scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+        db, scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
     assert proposed.state is models.BaselineState.PROPOSED
     assert (
         await service.effective_baseline(
-            db, prof_scope, membership_id=membership.id, period_id=membership.id
+            db, prof_scope, membership_id=membership.id, period_id=period.id
         )
         is None
     ), "a proposal is not yet a commitment"
@@ -118,7 +128,7 @@ async def test_a_student_proposes_a_first_plan_and_the_professor_accepts_it(
     assert accepted.approved_by == prof_scope.user_id
     assert accepted.approved_at is not None
     effective = await service.effective_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id
+        db, prof_scope, membership_id=membership.id, period_id=period.id
     )
     assert effective is not None and effective.id == accepted.id
 
@@ -126,13 +136,13 @@ async def test_a_student_proposes_a_first_plan_and_the_professor_accepts_it(
 async def test_a_student_cannot_accept_their_own_plan(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=[]
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=[]
     )
     scope = await _student_scope(db, student_a)
     proposed = await service.propose_baseline(
-        db, scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+        db, scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
 
     with pytest.raises(ForbiddenError):
@@ -144,9 +154,9 @@ async def test_a_later_change_creates_a_version_and_keeps_the_original(
 ) -> None:
     # PROJ-04: later changes require a new version, timestamp, and reason, and must not erase the
     # commitments originally missed.
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     original = await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
 
     revised = await service.supersede_baseline(
@@ -160,7 +170,7 @@ async def test_a_later_change_creates_a_version_and_keeps_the_original(
     assert revised.version_no == 2
     assert revised.change_reason.startswith("Compute was unavailable")
     history = await service.list_baselines(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id
+        db, prof_scope, membership_id=membership.id, period_id=period.id
     )
     superseded = next(b for b in history if b.id == original.id)
     assert superseded.state is models.BaselineState.SUPERSEDED
@@ -173,9 +183,9 @@ async def test_a_later_change_creates_a_version_and_keeps_the_original(
 async def test_a_change_without_a_reason_is_refused(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     original = await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
 
     with pytest.raises(ValidationError):
@@ -186,9 +196,9 @@ async def test_a_professor_approved_change_is_distinguishable_from_a_student_pro
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # PROJ-04: professor-approved changes must be distinguishable from student-proposed changes.
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     frozen = await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
     scope = await _student_scope(db, student_a)
 
@@ -212,16 +222,16 @@ async def test_only_one_baseline_is_in_effect_at_a_time(
     # The invariant from requirements section 9, enforced by a partial unique index.
     from sqlalchemy.exc import IntegrityError
 
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
 
     db.add(
         models.PlanBaseline(
             workspace_id=prof_scope.workspace_id,
             membership_id=membership.id,
-            period_id=membership.id,
+            period_id=period.id,
             version_no=99,
             state=models.BaselineState.FROZEN,
         )
@@ -234,9 +244,9 @@ async def test_only_one_baseline_is_in_effect_at_a_time(
 async def test_a_frozen_plan_cannot_be_edited_in_place(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     baseline = await service.freeze_baseline(
-        db, prof_scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
 
     with pytest.raises(Exception, match="immutable|frozen"):
@@ -251,12 +261,12 @@ async def test_a_frozen_plan_cannot_be_edited_in_place(
 async def test_only_the_professor_freezes_a_baseline(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    _, membership = await _membership(db, prof_scope, student_a)
+    period, membership = await _membership(db, prof_scope, student_a)
     scope = await _student_scope(db, student_a)
 
     with pytest.raises(ForbiddenError):
         await service.freeze_baseline(
-            db, scope, membership_id=membership.id, period_id=membership.id, items=PLAN
+            db, scope, membership_id=membership.id, period_id=period.id, items=PLAN
         )
 
 
