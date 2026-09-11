@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
 from app.core.clock import now
+from app.core.errors import ValidationError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.notifications import models, service
@@ -64,7 +65,9 @@ async def _week(
     await db.execute(
         update(reporting_models.ReportingPeriod)
         .where(reporting_models.ReportingPeriod.id == period.id)
-        .values(deadline_utc=now() - timedelta(hours=1), reminder_due_utc=now() - timedelta(minutes=1))
+        .values(
+            deadline_utc=now() - timedelta(hours=1), reminder_due_utc=now() - timedelta(minutes=1)
+        )
     )
     return Week(period, projects)
 
@@ -172,10 +175,16 @@ async def test_running_the_job_again_sends_nothing_more(
     assert len(first) == 1
     assert second == []
     rows = (
-        await db.execute(
-            select(models.Notification).where(models.Notification.kind == service.MISSED_DEADLINE)
+        (
+            await db.execute(
+                select(models.Notification).where(
+                    models.Notification.kind == service.MISSED_DEADLINE
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
@@ -248,7 +257,7 @@ async def test_a_missed_deadline_notification_cannot_be_muted(
     # A student must not be able to silence the one message that says they owe work.
     week = await _week(db, prof_scope, [student_a])
     scope = await identity_service.scope_for(db, student_a)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         await service.mute(db, scope, kind=service.MISSED_DEADLINE)
 
     sent = await service.dispatch_missed_deadline(db, week.period.id)

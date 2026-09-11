@@ -125,6 +125,17 @@ async def advance_access_epoch(session: AsyncSession, workspace_id: UUID) -> int
     return await repository.bump_access_epoch(session, workspace_id)
 
 
+async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:
+    """Job-level read: who to address a professor-facing notification to (UI-07)."""
+    return await repository.professor_ids(session, workspace_id)
+
+
+async def contact_for_job(session: AsyncSession, user_id: UUID) -> UserOut | None:
+    """Job-level read: the address and language to send to. The worker has no Scope."""
+    user = await repository.get_user_by_id(session, user_id)
+    return None if user is None else UserOut.model_validate(user)
+
+
 # ------------------------------------------------------------------ enrollment (AUTH-01)
 
 
@@ -195,7 +206,8 @@ async def invite_user(
             locale=user.locale,
             token=token,
             expires_at=invitation.expires_at,
-        )
+        ),
+        session,
     )
     _log_token_link("invitation", address, f"/accept-invitation?token={token}")
     return Invited(invitation=InvitationOut.model_validate(invitation), token=token)
@@ -389,7 +401,8 @@ async def deactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) ->
     await events.emit(
         events.UserDeactivated(
             workspace_id=scope.workspace_id, user_id=user.id, actor_id=scope.user_id
-        )
+        ),
+        session,
     )
     return UserOut.model_validate(user)
 
@@ -523,7 +536,8 @@ async def request_password_reset(session: AsyncSession, *, email: str) -> ResetR
             locale=user.locale,
             token=token,
             expires_at=reset.expires_at,
-        )
+        ),
+        session,
     )
     _log_token_link("password reset", address, f"/reset-password?token={token}")
     return ResetRequested(user_id=user.id, token=token)
@@ -742,7 +756,8 @@ async def _issue_recovery_link(
             locale=user.locale,
             token=token,
             expires_at=reset.expires_at,
-        )
+        ),
+        session,
     )
     return RecoveryLink(user_id=user.id, token=token, expires_at=reset.expires_at)
 

@@ -21,9 +21,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 log = logging.getLogger(__name__)
 
-Handler = Callable[[Any], Awaitable[None]]
+Handler = Callable[[Any, "AsyncSession"], Awaitable[None]]
 _subscribers: dict[type[Any], list[Handler]] = {}
 
 
@@ -57,10 +59,13 @@ class UserDeactivated:
 
 
 def subscribe(event_type: type[Any], handler: Handler) -> Handler:
-    _subscribers.setdefault(event_type, []).append(handler)
+    """Idempotent: registering the same handler twice still delivers the event once."""
+    handlers = _subscribers.setdefault(event_type, [])
+    if handler not in handlers:
+        handlers.append(handler)
     return handler
 
 
-async def emit(event: Any) -> None:
+async def emit(event: Any, session: AsyncSession) -> None:
     for handler in _subscribers.get(type(event), []):
-        await handler(event)
+        await handler(event, session)

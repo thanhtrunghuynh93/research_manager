@@ -15,7 +15,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
 from app.core.pagination import decode_cursor, encode_cursor
-from app.identity.models import Invitation, PasswordReset, Session, User, Workspace
+from app.core.types import Role
+from app.identity.models import (
+    Invitation,
+    PasswordReset,
+    Session,
+    User,
+    UserState,
+    Workspace,
+)
 
 
 async def get_workspace(session: AsyncSession, workspace_id: UUID) -> Workspace | None:
@@ -81,6 +89,17 @@ async def get_user_by_id(session: AsyncSession, user_id: UUID) -> User | None:
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
     """Unauthenticated lookup: login and recovery run before a Scope exists."""
     return (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
+
+
+async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:
+    rows = await session.execute(
+        select(User.id).where(
+            User.workspace_id == workspace_id,
+            User.role == Role.PROF,
+            User.state == UserState.ACTIVE,
+        )
+    )
+    return list(rows.scalars().all())
 
 
 async def get_invitation_by_token(session: AsyncSession, token_hash: str) -> Invitation | None:

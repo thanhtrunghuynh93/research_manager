@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
 from app.reporting.models import (
     CalendarConfig,
+    ObligationState,
     ProjectReportEntry,
     ReportingObligation,
     ReportingPeriod,
@@ -136,6 +137,102 @@ async def obligation_for_membership(
             )
         )
     ).scalar_one_or_none()
+
+
+async def period_row(session: AsyncSession, period_id: UUID) -> ReportingPeriod | None:
+    """Job-level read: the worker has no Scope, and a period is workspace-wide anyway."""
+    return await session.get(ReportingPeriod, period_id)
+
+
+async def periods_awaiting_reminder(
+    session: AsyncSession, *, instant: datetime
+) -> list[ReportingPeriod]:
+    """REP-08: periods whose reminder is due and has not been dispatched."""
+    return list(
+        (
+            await session.execute(
+                select(ReportingPeriod)
+                .where(
+                    ReportingPeriod.reminder_due_utc <= instant,
+                    ReportingPeriod.reminder_dispatched_at.is_(None),
+                )
+                .order_by(ReportingPeriod.reminder_due_utc)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def periods_with_deadline_between(
+    session: AsyncSession, *, start: datetime, end: datetime
+) -> list[ReportingPeriod]:
+    return list(
+        (
+            await session.execute(
+                select(ReportingPeriod).where(
+                    ReportingPeriod.deadline_utc > start, ReportingPeriod.deadline_utc <= end
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def required_obligations_at(
+    session: AsyncSession, period_id: UUID, *, instant: datetime
+) -> list[ReportingObligation]:
+    """Required, not excused, and with no extension still running at `instant` (REP-08)."""
+    return list(
+        (
+            await session.execute(
+                select(ReportingObligation)
+                .where(
+                    ReportingObligation.period_id == period_id,
+                    ReportingObligation.state == ObligationState.REQUIRED,
+                    or_(
+                        ReportingObligation.extension_until_utc.is_(None),
+                        ReportingObligation.extension_until_utc <= instant,
+                    ),
+                )
+                .order_by(ReportingObligation.student_id, ReportingObligation.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def submitted_project_ids(
+    session: AsyncSession, *, period_id: UUID, student_id: UUID
+) -> set[UUID]:
+    """The projects this student's current version actually carries an entry for."""
+    report = (
+        await session.execute(
+            select(WeeklyReport).where(
+                WeeklyReport.period_id == period_id, WeeklyReport.student_id == student_id
+            )
+        )
+    ).scalar_one_or_none()
+    if report is None or report.current_version_id is None:
+        return set()
+    rows = await session.execute(
+        select(ProjectReportEntry.project_id).where(
+            ProjectReportEntry.report_version_id == report.current_version_id
+        )
+    )
+    return set(rows.scalars().all())
+
+
+async def mark_reminder_dispatched(
+    session: AsyncSession, period_id: UUID, *, instant: datetime
+) -> None:
+    await session.execute(
+        update(ReportingPeriod)
+        .where(ReportingPeriod.id == period_id, ReportingPeriod.reminder_dispatched_at.is_(None))
+        .values(reminder_dispatched_at=instant)
+    )
 
 
 async def get_report(

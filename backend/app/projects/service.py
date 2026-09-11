@@ -686,6 +686,12 @@ async def reporting_memberships(
     return [MembershipOut.model_validate(row) for row in rows]
 
 
+async def project_title(session: AsyncSession, project_id: UUID) -> str:
+    """Job-level read: the name to put in a notification, with no other project detail."""
+    project = await session.get(Project, project_id)
+    return "" if project is None else project.title
+
+
 async def student_project_ids(
     session: AsyncSession, workspace_id: UUID, student_id: UUID
 ) -> frozenset[UUID]:

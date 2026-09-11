@@ -140,7 +140,7 @@ A module reads another module's data only through that module's `service.py`; it
 | Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
 | Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `feedback`, `supervision_notes` |
 | Assistant | `conversations`, `messages`, `answer_cache` |
-| Operations | `notifications`, `email_deliveries`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
+| Operations | `notifications`, `email_deliveries`, `notification_preferences`, `reminder_rules`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
 
 Every table carries `workspace_id`; composite foreign keys `(workspace_id, x_id)` enforce the same-workspace invariant from requirements section 9.
 
@@ -325,7 +325,12 @@ sequenceDiagram
     E->>DB: UPDATE email_deliveries SET state, attempts, last_error
 ```
 
-Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. `send_email` retries five times with exponential backoff up to two hours; after that the notification stays visible in-app with `delivery_state = failed` and the professor overview shows a mail-delivery warning.
+Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. Delivery is a queued row rather than one job per message: `dispatch_missed_deadline` writes an
+`email_deliveries` row in state `queued` in the same transaction as the notification, and a periodic
+`send_queued_emails` task drains them. That keeps the attempt count and the last error in one place
+and gives the same at-least-once behaviour, since both the notification and its delivery row are
+keyed. A send is attempted five times; after that the notification stays visible in-app with
+`state = failed` and the professor overview shows a mail-delivery warning.
 
 ### 7.3 Pre-deadline reminders (REP-07)
 
@@ -522,7 +527,7 @@ class EmailSender(Protocol):
     async def send(self, to: str, template: str, params: dict, idempotency_key: str) -> DeliveryResult: ...
 ```
 
-`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). Users can mute non-critical kinds in `notification_preferences`; `missed_deadline` and `revision_requested` cannot be muted.
+`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). Users can mute non-critical kinds in `notification_preferences`; `missed_deadline`, `revision_requested`, and the professor's `unfulfilled_obligations` summary cannot be muted. `kind` is free text drawn from a vocabulary in `notifications/service.py`, because a pre-deadline reminder carries its configured offset in the kind (`reminder:48h`).
 
 ## 14 Frontend architecture
 

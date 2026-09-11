@@ -8,6 +8,7 @@ them run afterwards.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -418,7 +419,9 @@ async def submit_report(
             report_version_id=version.id,
             student_id=report.student_id,
             period_id=period_id,
-        )
+            resubmitted=previous_version_id is not None,
+        ),
+        session,
     )
     return await _version_out(session, scope, version)
 
@@ -462,6 +465,17 @@ async def request_revision(
         after={"project_id": str(project_id) if project_id else None, "reason": reason},
     )
     await session.flush()
+    await events.emit(
+        events.RevisionRequested(
+            workspace_id=scope.workspace_id,
+            report_id=report.id,
+            period_id=report.period_id,
+            student_id=report.student_id,
+            project_id=project_id,
+            reason=reason,
+        ),
+        session,
+    )
     return RevisionRequestOut.model_validate(request)
 
 
@@ -488,6 +502,84 @@ async def get_version(session: AsyncSession, scope: Scope, version_id: UUID) -> 
     if version is None:
         raise NotFoundError("report version not found")
     return await _version_out(session, scope, version)
+
+
+# ------------------------------------------------------------------ job-level reads (REP-08)
+#
+# The worker has no Scope: it acts for the system, not for a person. These functions are the only
+# unscoped entry points, and each one returns facts about obligations rather than report content.
+
+
+@dataclass(frozen=True, slots=True)
+class UnfulfilledEntry:
+    student_id: UUID
+    project_id: UUID
+    project_title: str
+
+
+async def period_for_job(session: AsyncSession, period_id: UUID) -> PeriodOut | None:
+    row = await repository.period_row(session, period_id)
+    return None if row is None else PeriodOut.model_validate(row)
+
+
+async def period_timezone(session: AsyncSession, period_id: UUID) -> str:
+    """The timezone the period's deadline was expressed in, for rendering it back (REP-01)."""
+    row = await repository.period_row(session, period_id)
+    if row is None:
+        raise NotFoundError("reporting period not found")
+    config = await session.get(CalendarConfig, row.calendar_config_id)
+    return "UTC" if config is None else config.timezone
+
+
+async def periods_awaiting_reminder(
+    session: AsyncSession, *, at: datetime | None = None
+) -> list[PeriodOut]:
+    rows = await repository.periods_awaiting_reminder(session, instant=at or now())
+    return [PeriodOut.model_validate(row) for row in rows]
+
+
+async def periods_with_deadline_between(
+    session: AsyncSession, *, start: datetime, end: datetime
+) -> list[PeriodOut]:
+    rows = await repository.periods_with_deadline_between(session, start=start, end=end)
+    return [PeriodOut.model_validate(row) for row in rows]
+
+
+async def unfulfilled_entries(
+    session: AsyncSession, period_id: UUID, *, at: datetime | None = None
+) -> list[UnfulfilledEntry]:
+    """REP-08: an obligation is unfulfilled when no package has been submitted or a required
+    project entry is missing, with no recorded exemption and no extension still running.
+
+    Evaluated at `at`, which the caller sets to the moment it is about to act, so a submission at
+    23:59 is seen (AC-19).
+    """
+    instant = at or now()
+    unfulfilled: list[UnfulfilledEntry] = []
+    submitted_by_student: dict[UUID, set[UUID]] = {}
+
+    for obligation in await repository.required_obligations_at(session, period_id, instant=instant):
+        if obligation.student_id not in submitted_by_student:
+            submitted_by_student[obligation.student_id] = await repository.submitted_project_ids(
+                session, period_id=period_id, student_id=obligation.student_id
+            )
+        if obligation.project_id in submitted_by_student[obligation.student_id]:
+            continue
+        unfulfilled.append(
+            UnfulfilledEntry(
+                student_id=obligation.student_id,
+                project_id=obligation.project_id,
+                project_title=await projects_service.project_title(session, obligation.project_id),
+            )
+        )
+    return unfulfilled
+
+
+async def mark_reminder_dispatched(
+    session: AsyncSession, period_id: UUID, *, at: datetime | None = None
+) -> None:
+    await repository.mark_reminder_dispatched(session, period_id, instant=at or now())
+    await session.flush()
 
 
 # ------------------------------------------------------------------ helpers
