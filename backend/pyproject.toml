@@ -25,6 +25,7 @@ dependencies = [
   "openai>=1.50",
   "prometheus-client>=0.21",
   "orjson>=3.10",
+  "pyjwt[crypto]>=2.9",
 ]
 
 [dependency-groups]
