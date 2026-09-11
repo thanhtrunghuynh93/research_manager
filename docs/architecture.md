@@ -137,7 +137,7 @@ A module reads another module's data only through that module's `service.py`; it
 | Identity | `workspaces`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
 | Projects | `projects`, `project_memberships`, `milestones`, `milestone_revisions`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
 | Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
-| Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
+| Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `webhook_deliveries`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
 | Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `feedback`, `supervision_notes` |
 | Assistant | `conversations`, `messages`, `answer_cache` |
 | Operations | `notifications`, `email_deliveries`, `notification_preferences`, `reminder_rules`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
@@ -359,7 +359,7 @@ GitHub implementation: a GitHub App installed by the professor on selected repos
 
 `repository_events` — `id, workspace_id, repository_id, provider_event_id TEXT, kind ENUM(commit, pr_opened, pr_merged, review, issue, check_run, push_force), source_version TEXT (sha or object id), actors JSONB [{role: author|committer|reviewer|merger, login, email, is_bot}], authored_at NULL, committed_at NULL, merged_at NULL, event_at, ingested_at, paths TEXT[], stats JSONB {additions, deletions, files}, payload_key TEXT (MinIO), truncated BOOL, live_available BOOL`
 
-`uq_repo_event (repository_id, provider_event_id)` makes reprocessing idempotent (REPO-05, AC-09). Commit author time, commit time, merge time, and ingestion time are separate columns (REPO-06). A `push_force` event marks affected `repository_events.live_available = false` while their retained payloads stay in MinIO.
+`uq_repo_event (repository_id, provider_event_id)` makes reprocessing idempotent (REPO-05, AC-09). Commit author time, commit time, merge time, and ingestion time are separate columns (REPO-06). A `push_force` event marks affected `repository_events.live_available = false` while their retained payloads stay in MinIO. Events carry their own database guard rather than the blanket immutability trigger: every column the provider gave us is frozen, and `live_available` is the single exception, because it records our observation that the object is gone rather than a fact the provider reported.
 
 ### 8.3 Sync run lifecycle (REPO-05)
 

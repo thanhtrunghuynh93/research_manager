@@ -255,8 +255,12 @@ async def test_a_repository_serving_two_projects_uses_path_rules(
         ]
     )
     projects, repository = await _setup(db, prof_scope, connector, projects=2)
-    await service.link_project(db, prof_scope, repository.id, projects[0].id, path_rules=["baseline/**"])
-    await service.link_project(db, prof_scope, repository.id, projects[1].id, path_rules=["theory/**"])
+    await service.link_project(
+        db, prof_scope, repository.id, projects[0].id, path_rules=["baseline/**"]
+    )
+    await service.link_project(
+        db, prof_scope, repository.id, projects[1].id, path_rules=["theory/**"]
+    )
     await service.map_identity(
         db, prof_scope, student_id=student_a.id, provider="github", login="student-a"
     )
@@ -355,9 +359,7 @@ async def test_a_student_sees_the_contributions_attributed_to_them(
     projects, repository = await _setup(db, prof_scope, connector)
     await service.link_project(db, prof_scope, repository.id, projects[0].id)
     for student, login in ((student_a, "student-a"), (student_b, "student-b")):
-        await projects_service.add_member(
-            db, prof_scope, projects[0].id, student_id=student.id
-        )
+        await projects_service.add_member(db, prof_scope, projects[0].id, student_id=student.id)
         await service.map_identity(
             db, prof_scope, student_id=student.id, provider="github", login=login
         )

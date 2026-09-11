@@ -129,7 +129,7 @@ class AuthorizationError(ConnectorError):
     """The credential no longer grants access; a retry cannot help until a person fixes it."""
 
 
-class RateLimited(ConnectorError):
+class RateLimitedError(ConnectorError):
     """The provider asked us to slow down; progress so far is kept and the run is partial."""
 
     def __init__(self, detail: str = "", retry_after_seconds: int | None = None) -> None:
@@ -140,9 +140,7 @@ class RateLimited(ConnectorError):
 class RepositoryConnector(Protocol):
     provider: Provider
 
-    def verify_webhook(
-        self, headers: dict[str, str], body: bytes
-    ) -> WebhookEvent | None: ...
+    def verify_webhook(self, headers: dict[str, str], body: bytes) -> WebhookEvent | None: ...
 
     async def repo_visibility(self, repo: RepoRef) -> Visibility: ...
 

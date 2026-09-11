@@ -12,8 +12,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.core.audit  # noqa: F401  (every module with ORM models is imported for autogenerate)
-import app.identity.models  # noqa: F401
 import app.evidence.models  # noqa: F401
+import app.identity.models  # noqa: F401
 import app.notifications.models  # noqa: F401
 import app.projects.models  # noqa: F401
 import app.reporting.models  # noqa: F401

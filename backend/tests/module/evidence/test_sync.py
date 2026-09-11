@@ -22,7 +22,7 @@ from app.evidence.connectors.base import (
     CommitMeta,
     Issue,
     PullRequest,
-    RateLimited,
+    RateLimitedError,
     Review,
 )
 from app.evidence.connectors.fake import FakeRepositoryConnector
@@ -33,7 +33,9 @@ pytestmark = pytest.mark.module
 WEEK = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
 
 
-def _commit(sha: str, *, authored: datetime, committed: datetime | None = None, **kwargs) -> CommitMeta:
+def _commit(
+    sha: str, *, authored: datetime, committed: datetime | None = None, **kwargs
+) -> CommitMeta:
     return CommitMeta(
         sha=sha,
         message=kwargs.pop("message", f"Work on {sha}"),
@@ -113,7 +115,10 @@ async def test_an_initial_sync_ingests_every_kind_of_event(
                 updated_at=WEEK + timedelta(hours=2),
                 merged_at=WEEK + timedelta(hours=2),
                 merge_commit_sha="ccc",
-                actors=[Actor(role="author", login="student-a"), Actor(role="merger", login="prof")],
+                actors=[
+                    Actor(role="author", login="student-a"),
+                    Actor(role="merger", login="prof"),
+                ],
             )
         ],
         issues=[
@@ -126,7 +131,13 @@ async def test_an_initial_sync_ingests_every_kind_of_event(
                 actors=[Actor(role="author", login="student-a")],
             )
         ],
-        check_runs={"aaa": [CheckSummary(external_id="c1", name="tests", conclusion="success", completed_at=WEEK)]},
+        check_runs={
+            "aaa": [
+                CheckSummary(
+                    external_id="c1", name="tests", conclusion="success", completed_at=WEEK
+                )
+            ]
+        },
     )
     connector.reviews[7] = [
         Review(
@@ -171,7 +182,9 @@ async def test_the_same_range_synced_again_creates_no_duplicate(
 async def test_pagination_walks_every_page(db: AsyncSession, prof_scope: Scope) -> None:
     connector = FakeRepositoryConnector(
         page_size=2,
-        commits=[_commit(f"sha{index}", authored=WEEK + timedelta(minutes=index)) for index in range(5)],
+        commits=[
+            _commit(f"sha{index}", authored=WEEK + timedelta(minutes=index)) for index in range(5)
+        ],
     )
     _, repository = await _connected(db, prof_scope, connector)
 
@@ -200,10 +213,12 @@ async def test_the_watermark_means_the_next_sync_asks_for_less(
 async def test_a_rate_limit_after_progress_leaves_the_run_partial(
     db: AsyncSession, prof_scope: Scope
 ) -> None:
-    # REPO-05 / architecture §8.3: keep what was fetched, advance to the last good page, retry later.
+    # REPO-05 / architecture §8.3: keep what was fetched and retry from the last good page.
     connector = FakeRepositoryConnector(
         page_size=2,
-        commits=[_commit(f"sha{index}", authored=WEEK + timedelta(minutes=index)) for index in range(6)],
+        commits=[
+            _commit(f"sha{index}", authored=WEEK + timedelta(minutes=index)) for index in range(6)
+        ],
         rate_limit_after_pages=1,
     )
     _, repository = await _connected(db, prof_scope, connector)
@@ -243,7 +258,7 @@ async def test_a_failed_sync_never_implies_an_absence_of_work(
     connector = FakeRepositoryConnector(commits=[_commit("aaa", authored=WEEK)])
     _, repository = await _connected(db, prof_scope, connector)
     await service.sync_repository(db, prof_scope, repository.id, connector=connector)
-    connector.fail_with = RateLimited("slow down")
+    connector.fail_with = RateLimitedError("slow down")
 
     await service.sync_repository(db, prof_scope, repository.id, connector=connector)
 
@@ -341,9 +356,7 @@ async def test_a_force_push_marks_the_live_source_unavailable(
     assert any(e.kind is models.EventKind.PUSH_FORCE for e in events)
 
 
-async def test_an_ingested_event_cannot_be_rewritten(
-    db: AsyncSession, prof_scope: Scope
-) -> None:
+async def test_an_ingested_event_cannot_be_rewritten(db: AsyncSession, prof_scope: Scope) -> None:
     connector = FakeRepositoryConnector(commits=[_commit("aaa", authored=WEEK)])
     _, repository = await _connected(db, prof_scope, connector)
     await service.sync_repository(db, prof_scope, repository.id, connector=connector)
@@ -357,9 +370,7 @@ async def test_an_ingested_event_cannot_be_rewritten(
     await db.rollback()
 
 
-async def test_a_repository_can_serve_several_projects(
-    db: AsyncSession, prof_scope: Scope
-) -> None:
+async def test_a_repository_can_serve_several_projects(db: AsyncSession, prof_scope: Scope) -> None:
     # REPO-01: multiple repositories per project, and a repository may serve several projects.
     connector = FakeRepositoryConnector()
     first_project, repository = await _connected(db, prof_scope, connector)
@@ -379,6 +390,4 @@ async def test_an_unknown_repository_is_not_found(db: AsyncSession, prof_scope: 
     from uuid import uuid4
 
     with pytest.raises(NotFoundError):
-        await service.sync_repository(
-            db, prof_scope, uuid4(), connector=FakeRepositoryConnector()
-        )
+        await service.sync_repository(db, prof_scope, uuid4(), connector=FakeRepositoryConnector())

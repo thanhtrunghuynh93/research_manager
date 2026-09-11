@@ -25,9 +25,7 @@ async def get_repository(
 ) -> Repository | None:
     return (
         await session.execute(
-            select(Repository).where(
-                Repository.id == repository_id, visible_to(scope, Repository)
-            )
+            select(Repository).where(Repository.id == repository_id, visible_to(scope, Repository))
         )
     ).scalar_one_or_none()
 
@@ -51,12 +49,16 @@ async def get_by_external_id_any_workspace(
 ) -> Repository | None:
     """A webhook arrives before we know who it is for: it is authenticated by its signature."""
     return (
-        await session.execute(
-            select(Repository).where(
-                Repository.provider == provider, Repository.external_id == external_id
+        (
+            await session.execute(
+                select(Repository).where(
+                    Repository.provider == provider, Repository.external_id == external_id
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
 
 async def list_repositories(
@@ -115,9 +117,7 @@ async def links_for_repository(
     return list(
         (
             await session.execute(
-                select(ProjectRepository).where(
-                    ProjectRepository.repository_id == repository_id
-                )
+                select(ProjectRepository).where(ProjectRepository.repository_id == repository_id)
             )
         )
         .scalars()
@@ -240,6 +240,48 @@ async def identities_for_workspace(
     )
 
 
+async def identities_for_repository_workspace(
+    session: AsyncSession, repository_id: UUID
+) -> list[DeveloperIdentity]:
+    """Job-level read: attribution runs in the worker and needs the whole mapping table."""
+    repository = await session.get(Repository, repository_id)
+    if repository is None:
+        return []
+    return await identities_for_workspace(session, repository.workspace_id, repository.provider)
+
+
+async def find_identity(
+    session: AsyncSession,
+    workspace_id: UUID,
+    provider: str,
+    login: str | None,
+    email: str | None,
+) -> DeveloperIdentity | None:
+    statement = select(DeveloperIdentity).where(
+        DeveloperIdentity.workspace_id == workspace_id, DeveloperIdentity.provider == provider
+    )
+    if login is not None:
+        statement = statement.where(DeveloperIdentity.login == login)
+    elif email is not None:
+        statement = statement.where(DeveloperIdentity.email == email)
+    else:
+        return None
+    return (await session.execute(statement)).scalars().first()
+
+
+async def distinct_contributed_events(
+    session: AsyncSession, scope: Scope, *, project_id: UUID
+) -> int:
+    """AC-06: count the artifact once, however many students share it."""
+    return (
+        await session.execute(
+            select(func.count(func.distinct(Contribution.event_id))).where(
+                Contribution.project_id == project_id, visible_to(scope, Contribution)
+            )
+        )
+    ).scalar_one()
+
+
 async def get_identity(
     session: AsyncSession, scope: Scope, identity_id: UUID
 ) -> DeveloperIdentity | None:
@@ -286,11 +328,7 @@ async def list_contributions(
 
 async def contributions_for_event(session: AsyncSession, event_id: UUID) -> list[Contribution]:
     return list(
-        (
-            await session.execute(
-                select(Contribution).where(Contribution.event_id == event_id)
-            )
-        )
+        (await session.execute(select(Contribution).where(Contribution.event_id == event_id)))
         .scalars()
         .all()
     )

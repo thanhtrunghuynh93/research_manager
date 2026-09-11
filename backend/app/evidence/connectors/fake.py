@@ -23,7 +23,7 @@ from app.evidence.connectors.base import (
     Page,
     Provider,
     PullRequest,
-    RateLimited,
+    RateLimitedError,
     RepoRef,
     Review,
     Visibility,
@@ -59,9 +59,9 @@ class FakeRepositoryConnector:
     def verify_webhook(self, headers: dict[str, str], body: bytes) -> WebhookEvent | None:
         """Same shape as the real thing: a bad signature yields nothing at all."""
         signature = headers.get("X-Hub-Signature-256") or headers.get("x-hub-signature-256")
-        expected = "sha256=" + hmac.new(
-            self.webhook_secret.encode(), body, hashlib.sha256
-        ).hexdigest()
+        expected = (
+            "sha256=" + hmac.new(self.webhook_secret.encode(), body, hashlib.sha256).hexdigest()
+        )
         if signature is None or not hmac.compare_digest(signature, expected):
             return None
 
@@ -98,7 +98,9 @@ class FakeRepositoryConnector:
         self._guard("get_commit_diff")
         text = self.diffs.get(sha, "")
         if len(text.encode()) > max_bytes:
-            return DiffResult(sha=sha, text=text.encode()[:max_bytes].decode(errors="ignore"), truncated=True)
+            return DiffResult(
+                sha=sha, text=text.encode()[:max_bytes].decode(errors="ignore"), truncated=True
+            )
         return DiffResult(sha=sha, text=text)
 
     async def list_pull_requests(
@@ -106,7 +108,9 @@ class FakeRepositoryConnector:
     ) -> Page[PullRequest]:
         self._guard("list_pull_requests")
         selected = [
-            pr for pr in self.pull_requests if updated_since is None or pr.updated_at > updated_since
+            pr
+            for pr in self.pull_requests
+            if updated_since is None or pr.updated_at > updated_since
         ]
         return self._paginate(selected, cursor)
 
@@ -119,7 +123,9 @@ class FakeRepositoryConnector:
     ) -> Page[Issue]:
         self._guard("list_issues")
         selected = [
-            issue for issue in self.issues if updated_since is None or issue.updated_at > updated_since
+            issue
+            for issue in self.issues
+            if updated_since is None or issue.updated_at > updated_since
         ]
         return self._paginate(selected, cursor)
 
@@ -141,7 +147,7 @@ class FakeRepositoryConnector:
             self.rate_limit_after_pages is not None
             and self._pages_served >= self.rate_limit_after_pages
         ):
-            raise RateLimited("fake rate limit", retry_after_seconds=60)
+            raise RateLimitedError("fake rate limit", retry_after_seconds=60)
 
         start = int(cursor) if cursor else 0
         window = items[start : start + self.page_size]

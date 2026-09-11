@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from fnmatch import fnmatch
 from typing import Any
 from uuid import UUID
 
@@ -19,9 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.ids import uuid7
-from app.evidence import policies, repository as repo  # noqa: F401  (policies register on import)
+from app.evidence import policies  # noqa: F401  (policies register on import)
+from app.evidence import repository as repo
 from app.evidence.connectors.base import (
     AuthorizationError,
     CheckSummary,
@@ -34,8 +36,14 @@ from app.evidence.connectors.base import (
     Review,
 )
 from app.evidence.models import (
+    AttributionState,
     ConnectionState,
+    Contribution,
+    ContributionRole,
+    ContributionShare,
+    DeveloperIdentity,
     EventKind,
+    IdentityVerification,
     ProjectRepository,
     Repository,
     RepositoryEvent,
@@ -45,12 +53,15 @@ from app.evidence.models import (
     WebhookDelivery,
 )
 from app.evidence.schemas import (
+    ContributionOut,
     EventOut,
+    IdentityOut,
     ProjectLinkOut,
     RepositoryOut,
     SyncRunOut,
     WebhookResult,
 )
+from app.identity import service as identity_service
 from app.projects import service as projects_service
 
 log = logging.getLogger(__name__)
@@ -342,9 +353,7 @@ async def _insert_event(session: AsyncSession, **values: Any) -> bool:
     return inserted
 
 
-async def _ingest_commit(
-    session: AsyncSession, repository: Repository, commit: CommitMeta
-) -> None:
+async def _ingest_commit(session: AsyncSession, repository: Repository, commit: CommitMeta) -> None:
     await _insert_event(
         session,
         workspace_id=repository.workspace_id,
@@ -526,6 +535,294 @@ async def record_force_push(
         after={"removed_versions": removed_versions},
     )
     await session.flush()
+
+
+# ------------------------------------------------------------------ identity mapping (REPO-03)
+
+
+async def map_identity(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID,
+    provider: str = "github",
+    login: str | None = None,
+    email: str | None = None,
+    verification: IdentityVerification | None = None,
+) -> IdentityOut:
+    """Record that a provider account belongs to a student.
+
+    A student may claim their own account; only the professor may map someone else's. A login the
+    professor sets is confirmed by them, while an email alias starts pending, because an address in
+    a commit trailer proves nothing on its own (REPO-03).
+    """
+    if not scope.is_prof and student_id != scope.user_id:
+        raise ForbiddenError("only the professor maps another person's account")
+    if login is None and email is None:
+        raise ValidationError("an identity needs a login or an email address")
+
+    await identity_service.get_user(session, scope, student_id)
+    existing = await repo.find_identity(session, scope.workspace_id, provider, login, email)
+    if existing is not None and existing.student_id != student_id:
+        raise ConflictError("that provider account is already mapped to another student")
+
+    state = verification or (
+        IdentityVerification.CONFIRMED_BY_PROF
+        if scope.is_prof and login
+        else IdentityVerification.PENDING
+    )
+    if existing is not None:
+        existing.verification = state
+        await session.flush()
+        return IdentityOut.model_validate(existing)
+
+    identity = DeveloperIdentity(
+        workspace_id=scope.workspace_id,
+        student_id=student_id,
+        provider=provider,
+        login=login,
+        email=email,
+        verification=state,
+        is_bot=_looks_like_a_bot(login),
+        confirmed_by=scope.user_id if state is not IdentityVerification.PENDING else None,
+    )
+    session.add(identity)
+    await session.flush()
+    write_audit(
+        session,
+        workspace_id=scope.workspace_id,
+        actor_id=scope.user_id,
+        action="developer_identity.mapped",
+        target_table="developer_identities",
+        target_id=identity.id,
+        after={"student_id": str(student_id), "login": login, "email": email},
+    )
+    return IdentityOut.model_validate(identity)
+
+
+async def confirm_identity(session: AsyncSession, scope: Scope, identity_id: UUID) -> IdentityOut:
+    """REPO-03: the explicit confirmation that turns a claim into an attribution."""
+    identity = await repo.get_identity(session, scope, identity_id)
+    if identity is None:
+        raise NotFoundError("developer identity not found")
+    if not scope.is_prof and identity.student_id != scope.user_id:
+        raise ForbiddenError("only the professor confirms another person's account")
+
+    identity.verification = (
+        IdentityVerification.CONFIRMED_BY_PROF
+        if scope.is_prof
+        else IdentityVerification.CONFIRMED_BY_STUDENT
+    )
+    identity.confirmed_by = scope.user_id
+    write_audit(
+        session,
+        workspace_id=scope.workspace_id,
+        actor_id=scope.user_id,
+        action="developer_identity.confirmed",
+        target_table="developer_identities",
+        target_id=identity.id,
+        after={"verification": identity.verification.value},
+    )
+    await session.flush()
+    return IdentityOut.model_validate(identity)
+
+
+async def list_identities(
+    session: AsyncSession, scope: Scope, *, student_id: UUID | None = None
+) -> list[IdentityOut]:
+    rows = await repo.list_identities(session, scope, student_id=student_id)
+    return [IdentityOut.model_validate(row) for row in rows]
+
+
+def _looks_like_a_bot(login: str | None) -> bool:
+    return bool(login and (login.endswith("[bot]") or login.endswith("-bot")))
+
+
+# ------------------------------------------------------------------ attribution (REPO-04, AC-06)
+
+ATTRIBUTING_ROLES = {
+    ContributionRole.AUTHOR,
+    ContributionRole.COMMITTER,
+    ContributionRole.REVIEWER,
+    ContributionRole.MERGER,
+}
+RESOLVING_VERIFICATIONS = {
+    IdentityVerification.VERIFIED_OAUTH,
+    IdentityVerification.CONFIRMED_BY_STUDENT,
+    IdentityVerification.CONFIRMED_BY_PROF,
+}
+
+
+async def resolve_contributions(
+    session: AsyncSession, repository_id: UUID, *, since: datetime | None = None
+) -> int:
+    """REPO-04: turn each event's actors into contributions, saying how sure each one is.
+
+    Runs in the worker, so it takes no Scope. Every row is keyed on (event, student, role), which
+    is what stops a reprocessed event from increasing anyone's contributions (AC-09).
+    """
+    events = await repo.events_for_attribution(session, repository_id, since=since)
+    links = await repo.links_for_repository(session, repository_id)
+    identities = await repo.identities_for_repository_workspace(session, repository_id)
+    written = 0
+
+    for event in events:
+        if event.kind is EventKind.PUSH_FORCE:
+            continue
+        actors = [actor for actor in event.actors if not actor.get("is_bot")]
+        authors = [a for a in actors if a.get("role") in ("author", "committer")]
+        share = (
+            ContributionShare.JOINT
+            if len({_actor_key(a) for a in authors}) > 1
+            else ContributionShare.INDIVIDUAL
+        )
+
+        for actor in actors:
+            role = _role_of(actor)
+            if role is None:
+                continue
+            identity = _match_identity(identities, actor)
+            if identity is None:
+                continue  # an unrecognised account is left unresolved rather than guessed at
+
+            project_id, state = _project_for(event, links)
+            written += await _record_contribution(
+                session,
+                event=event,
+                student_id=identity.student_id,
+                role=role,
+                # Only authorship can be shared; a review or a merge is its own act.
+                share=share
+                if role in (ContributionRole.AUTHOR, ContributionRole.COMMITTER)
+                else ContributionShare.INDIVIDUAL,
+                project_id=project_id,
+                attribution_state=state,
+                provenance={
+                    "matched_on": "login" if actor.get("login") else "email",
+                    "value": actor.get("login") or actor.get("email"),
+                    "verification": identity.verification.value,
+                    "source_version": event.source_version,
+                },
+            )
+    await session.flush()
+    return written
+
+
+def _actor_key(actor: dict[str, Any]) -> str:
+    return str(actor.get("login") or actor.get("email") or actor.get("name") or "")
+
+
+def _role_of(actor: dict[str, Any]) -> ContributionRole | None:
+    try:
+        role = ContributionRole(actor.get("role", ""))
+    except ValueError:
+        return None
+    return role if role in ATTRIBUTING_ROLES else None
+
+
+def _match_identity(
+    identities: list[DeveloperIdentity], actor: dict[str, Any]
+) -> DeveloperIdentity | None:
+    """REPO-03: only a verified login or a confirmed alias attributes anything."""
+    login = (actor.get("login") or "").lower()
+    email = (actor.get("email") or "").lower()
+    for identity in identities:
+        if identity.verification not in RESOLVING_VERIFICATIONS or identity.is_bot:
+            continue
+        if login and (identity.login or "").lower() == login:
+            return identity
+        if email and (identity.email or "").lower() == email:
+            return identity
+    return None
+
+
+def _project_for(
+    event: RepositoryEvent, links: list[ProjectRepository]
+) -> tuple[UUID | None, AttributionState]:
+    """REPO-04: one project needs no rules.
+
+    Several need a rule that matches exactly one project, or nothing is claimed for the event.
+    """
+    if not links:
+        return None, AttributionState.UNRESOLVED_PROJECT
+    if len(links) == 1:
+        return links[0].project_id, AttributionState.RESOLVED
+
+    matched = {
+        link.project_id
+        for link in links
+        for rule in link.path_rules
+        if any(fnmatch(path, rule) for path in event.paths)
+    }
+    if len(matched) == 1:
+        return matched.pop(), AttributionState.RESOLVED
+    return None, AttributionState.UNRESOLVED_PROJECT
+
+
+async def _record_contribution(
+    session: AsyncSession,
+    *,
+    event: RepositoryEvent,
+    student_id: UUID,
+    role: ContributionRole,
+    share: ContributionShare,
+    project_id: UUID | None,
+    attribution_state: AttributionState,
+    provenance: dict[str, Any],
+) -> int:
+    result = await session.execute(
+        insert(Contribution)
+        .values(
+            id=uuid7(),
+            workspace_id=event.workspace_id,
+            event_id=event.id,
+            student_id=student_id,
+            project_id=project_id,
+            role=role,
+            share=share,
+            attribution_state=attribution_state,
+            provenance=provenance,
+        )
+        .on_conflict_do_nothing(index_elements=["event_id", "student_id", "role"])
+        .returning(Contribution.id)
+    )
+    return 1 if result.scalar_one_or_none() is not None else 0
+
+
+async def list_contributions(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+) -> list[ContributionOut]:
+    rows = await repo.list_contributions(
+        session, scope, student_id=student_id, project_id=project_id
+    )
+    return [ContributionOut.model_validate(row) for row in rows]
+
+
+async def distinct_event_count(session: AsyncSession, scope: Scope, *, project_id: UUID) -> int:
+    """AC-06: a project counts a shared artifact once, however many students share it."""
+    return await repo.distinct_contributed_events(session, scope, project_id=project_id)
+
+
+async def unresolved_actors(session: AsyncSession, scope: Scope, repository_id: UUID) -> list[str]:
+    """REPO-03: the accounts nobody has claimed, so the professor can map or dismiss them."""
+    await _require_repository(session, scope, repository_id)
+    identities = await repo.identities_for_repository_workspace(session, repository_id)
+    known = {(i.login or "").lower() for i in identities} | {
+        (i.email or "").lower() for i in identities
+    }
+    unknown: set[str] = set()
+    for event in await repo.events_for_attribution(session, repository_id):
+        for actor in event.actors:
+            if actor.get("is_bot"):
+                continue
+            key = _actor_key(actor)
+            if key and key.lower() not in known:
+                unknown.add(key)
+    return sorted(unknown)
 
 
 # ------------------------------------------------------------------ reads
