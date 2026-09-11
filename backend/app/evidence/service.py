@@ -22,6 +22,7 @@ from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.ids import uuid7
+from app.core.types import Visibility
 from app.evidence import policies  # noqa: F401  (policies register on import)
 from app.evidence import repository as repo
 from app.evidence.connectors.base import (
@@ -35,6 +36,9 @@ from app.evidence.connectors.base import (
     RepositoryConnector,
     Review,
 )
+from app.evidence.index import retrieval
+from app.evidence.index.chunking import chunk_text
+from app.evidence.index.embeddings import embed_texts
 from app.evidence.models import (
     AttributionState,
     ConnectionState,
@@ -43,6 +47,8 @@ from app.evidence.models import (
     ContributionShare,
     DeveloperIdentity,
     EventKind,
+    EvidenceChunk,
+    EvidenceSourceKind,
     IdentityVerification,
     ProjectRepository,
     Repository,
@@ -55,6 +61,8 @@ from app.evidence.models import (
 from app.evidence.schemas import (
     ContributionOut,
     EventOut,
+    EvidenceHit,
+    EvidenceReferenceOut,
     IdentityOut,
     ProjectLinkOut,
     RepositoryOut,
@@ -823,6 +831,121 @@ async def unresolved_actors(session: AsyncSession, scope: Scope, repository_id: 
             if key and key.lower() not in known:
                 unknown.add(key)
     return sorted(unknown)
+
+
+# ------------------------------------------------------------------ the evidence index
+
+
+async def index_evidence(
+    session: AsyncSession,
+    *,
+    workspace_id: UUID,
+    source_kind: EvidenceSourceKind,
+    source_id: UUID,
+    source_version: str,
+    text: str,
+    visibility: Visibility,
+    locator: str = "",
+    project_id: UUID | None = None,
+    owner_student_id: UUID | None = None,
+    supported_claim: str | None = None,
+    source_time: datetime | None = None,
+) -> EvidenceReferenceOut:
+    """Record one citable piece of evidence and index its text.
+
+    The access label travels with the reference and onto every chunk, so retrieval filters on it
+    without a join (requirements §9). Re-indexing the same source and version replaces its chunks
+    rather than adding a second copy.
+    """
+    at = source_time or now()
+    reference = await repo.upsert_evidence_reference(
+        session,
+        workspace_id=workspace_id,
+        project_id=project_id,
+        owner_student_id=owner_student_id,
+        visibility=visibility,
+        source_kind=source_kind,
+        source_id=source_id,
+        source_version=source_version,
+        locator=locator,
+        supported_claim=supported_claim,
+        source_time=at,
+    )
+
+    chunks = chunk_text(text)
+    await repo.delete_chunks(session, reference.id)
+    if chunks:
+        vectors = await embed_texts([chunk.text for chunk in chunks])
+        for chunk, vector in zip(chunks, vectors, strict=True):
+            session.add(
+                EvidenceChunk(
+                    workspace_id=workspace_id,
+                    evidence_ref_id=reference.id,
+                    project_id=project_id,
+                    owner_student_id=owner_student_id,
+                    visibility=visibility,
+                    source_version=source_version,
+                    chunk_no=chunk.chunk_no,
+                    text=chunk.text,
+                    embedding=vector,
+                    source_time=at,
+                )
+            )
+    await session.flush()
+    return EvidenceReferenceOut.model_validate(reference)
+
+
+async def search_evidence(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    query: str,
+    mode: retrieval.Mode = "hybrid",
+    project_id: UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 10,
+) -> list[EvidenceHit]:
+    """QA-02: permission-filtered retrieval over report text, artifacts, and repository evidence."""
+    text = query.strip()
+    if not text:
+        return []
+
+    embedding = None
+    if mode in ("hybrid", "semantic"):
+        [embedding] = await embed_texts([text])
+
+    hits = await retrieval.search(
+        session,
+        scope,
+        query=text,
+        embedding=embedding,
+        mode=mode,
+        project_id=project_id,
+        since=since,
+        until=until,
+        limit=limit,
+    )
+    return [
+        EvidenceHit(
+            chunk_id=hit.chunk_id,
+            evidence_ref_id=hit.evidence_ref_id,
+            text=hit.text,
+            score=hit.score,
+            source_kind=hit.source_kind,
+            source_id=hit.source_id,
+            source_version=hit.source_version,
+            locator=hit.locator,
+            project_id=hit.project_id,
+            source_time=hit.source_time,
+        )
+        for hit in hits
+    ]
+
+
+async def chunks_for_reference(session: AsyncSession, evidence_ref_id: UUID) -> list[EvidenceChunk]:
+    """Job-level read, used by the snapshot builder and by tests of the access label."""
+    return await repo.chunks_for_reference(session, evidence_ref_id)
 
 
 # ------------------------------------------------------------------ reads

@@ -39,15 +39,11 @@ def chunk_text(
 
     chunks: list[Chunk] = []
     for piece, start in _accumulate(normalised, target=target, maximum=maximum, overlap=overlap):
-        chunks.append(
-            Chunk(chunk_no=len(chunks), text=piece, start=start, end=start + len(piece))
-        )
+        chunks.append(Chunk(chunk_no=len(chunks), text=piece, start=start, end=start + len(piece)))
     return chunks
 
 
-def _accumulate(
-    text: str, *, target: int, maximum: int, overlap: int
-) -> list[tuple[str, int]]:
+def _accumulate(text: str, *, target: int, maximum: int, overlap: int) -> list[tuple[str, int]]:
     pieces: list[tuple[str, int]] = []
     buffer = ""
     buffer_start = 0

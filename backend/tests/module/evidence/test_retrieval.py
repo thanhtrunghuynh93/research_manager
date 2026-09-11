@@ -24,9 +24,7 @@ WEEK = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
 
 
 async def _project(db: AsyncSession, scope: Scope, title: str = "Baseline") -> object:
-    project = await projects_service.create_project(
-        db, scope, title=title, stage="implementation"
-    )
+    project = await projects_service.create_project(db, scope, title=title, stage="implementation")
     await projects_service.update_project(db, scope, project.id, status="active")
     return project
 
@@ -59,9 +57,7 @@ async def _index(
     )
 
 
-async def test_a_professor_retrieves_what_matches(
-    db: AsyncSession, prof_scope: Scope
-) -> None:
+async def test_a_professor_retrieves_what_matches(db: AsyncSession, prof_scope: Scope) -> None:
     project = await _project(db, prof_scope)
     await _index(db, prof_scope, project, "We reproduced the published baseline within one point.")
     await _index(db, prof_scope, project, "The dataset loader drops the final validation split.")
@@ -154,9 +150,7 @@ async def test_a_student_sees_nothing_from_a_project_they_left(
     assert await service.search_evidence(db, after, query="baseline") == []
 
 
-async def test_retrieval_can_be_scoped_to_one_project(
-    db: AsyncSession, prof_scope: Scope
-) -> None:
+async def test_retrieval_can_be_scoped_to_one_project(db: AsyncSession, prof_scope: Scope) -> None:
     first = await _project(db, prof_scope, title="Baseline")
     second = await _project(db, prof_scope, title="Theory")
     await _index(db, prof_scope, first, "The baseline evaluation harness is complete.")
@@ -217,8 +211,12 @@ async def test_reindexing_the_same_source_replaces_rather_than_duplicates(
 
     project = await _project(db, prof_scope)
     source_id = uuid4()
-    await _index(db, prof_scope, project, "First version of the baseline note.", source_id=source_id)
-    await _index(db, prof_scope, project, "Second version of the baseline note.", source_id=source_id)
+    await _index(
+        db, prof_scope, project, "First version of the baseline note.", source_id=source_id
+    )
+    await _index(
+        db, prof_scope, project, "Second version of the baseline note.", source_id=source_id
+    )
 
     hits = await service.search_evidence(db, prof_scope, query="baseline")
 

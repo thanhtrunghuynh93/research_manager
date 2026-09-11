@@ -5,13 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
+from app.core.ids import uuid7
 from app.evidence.models import (
     Contribution,
     DeveloperIdentity,
+    EvidenceChunk,
+    EvidenceReference,
     ProjectRepository,
     Repository,
     RepositoryEvent,
@@ -305,6 +309,49 @@ async def list_identities(
     if student_id is not None:
         statement = statement.where(DeveloperIdentity.student_id == student_id)
     return list((await session.execute(statement)).scalars().all())
+
+
+async def upsert_evidence_reference(session: AsyncSession, **values: object) -> EvidenceReference:
+    """One reference per (source kind, id, version): re-indexing updates rather than duplicates."""
+    statement = (
+        insert(EvidenceReference)
+        .values(id=uuid7(), **values)
+        .on_conflict_do_update(
+            index_elements=["source_kind", "source_id", "source_version"],
+            set_={
+                "project_id": values.get("project_id"),
+                "owner_student_id": values.get("owner_student_id"),
+                "visibility": values.get("visibility"),
+                "locator": values.get("locator"),
+                "supported_claim": values.get("supported_claim"),
+                "source_time": values.get("source_time"),
+            },
+        )
+        .returning(EvidenceReference)
+    )
+    reference = (await session.execute(statement)).scalar_one()
+    await session.flush()
+    return reference
+
+
+async def delete_chunks(session: AsyncSession, evidence_ref_id: UUID) -> None:
+    await session.execute(
+        delete(EvidenceChunk).where(EvidenceChunk.evidence_ref_id == evidence_ref_id)
+    )
+
+
+async def chunks_for_reference(session: AsyncSession, evidence_ref_id: UUID) -> list[EvidenceChunk]:
+    return list(
+        (
+            await session.execute(
+                select(EvidenceChunk)
+                .where(EvidenceChunk.evidence_ref_id == evidence_ref_id)
+                .order_by(EvidenceChunk.chunk_no)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 async def list_contributions(

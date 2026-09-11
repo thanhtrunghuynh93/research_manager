@@ -8,12 +8,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.types import Visibility
+
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.evidence.models import AttributionState as AttributionState
 from app.evidence.models import ConnectionState as ConnectionState
 from app.evidence.models import ContributionRole as ContributionRole
 from app.evidence.models import ContributionShare as ContributionShare
 from app.evidence.models import EventKind as EventKind
+from app.evidence.models import EvidenceSourceKind as EvidenceSourceKind
 from app.evidence.models import IdentityVerification as IdentityVerification
 from app.evidence.models import SyncKind as SyncKind
 from app.evidence.models import SyncState as SyncState
@@ -130,3 +133,34 @@ class ContributionOut(BaseModel):
     attribution_state: AttributionState
     provenance: dict[str, Any]
     created_at: datetime
+
+
+class EvidenceReferenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    project_id: UUID | None = None
+    owner_student_id: UUID | None = None
+    visibility: Visibility
+    source_kind: EvidenceSourceKind
+    source_id: UUID
+    source_version: str
+    locator: str
+    supported_claim: str | None = None
+    source_time: datetime
+    ingested_at: datetime
+
+
+class EvidenceHit(BaseModel):
+    """One retrieved chunk with everything a citation needs (QA-03)."""
+
+    chunk_id: UUID
+    evidence_ref_id: UUID
+    text: str
+    score: float
+    source_kind: EvidenceSourceKind
+    source_id: UUID
+    source_version: str
+    locator: str
+    project_id: UUID | None = None
+    source_time: datetime

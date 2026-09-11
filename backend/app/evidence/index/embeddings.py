@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 log = logging.getLogger(__name__)
@@ -43,9 +42,7 @@ class DeterministicEmbedder:
 
     def _vector(self, text: str) -> list[float]:
         digest = hashlib.blake2b(text.strip().lower().encode(), digest_size=64).digest()
-        raw = [
-            (digest[index % len(digest)] - 128) / 128 for index in range(self.dimensions)
-        ]
+        raw = [(digest[index % len(digest)] - 128) / 128 for index in range(self.dimensions)]
         norm = math.sqrt(sum(value * value for value in raw)) or 1.0
         return [value / norm for value in raw]
 
@@ -73,9 +70,7 @@ CACHE_LIMIT = 10_000
 async def embed_texts(texts: list[str], *, embedder: Embedder | None = None) -> list[list[float]]:
     active = embedder or _embedder
     model = type(active).__name__
-    missing = [
-        text for text in texts if (model, _key(text)) not in _cache
-    ]
+    missing = [text for text in texts if (model, _key(text)) not in _cache]
     if missing:
         fresh = await active.embed(missing)
         for text, vector in zip(missing, fresh, strict=True):

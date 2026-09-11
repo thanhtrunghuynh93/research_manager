@@ -82,7 +82,8 @@ backend/
 │   │   │   └── fake.py        in-memory connector for tests and demo seed
 │   │   └── index/
 │   │       ├── chunking.py
-│   │       ├── embeddings.py  calls ai.gateway.embed; content-hash cache
+│   │       ├── embeddings.py  Embedder protocol + registry; content-hash cache (ai registers the
+│   │       │                gateway-backed one at start-up, so evidence never imports app.ai)
 │   │       └── retrieval.py   hybrid SQL (permission predicate first, then rank fusion)
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
