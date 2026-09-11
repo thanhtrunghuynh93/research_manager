@@ -16,5 +16,47 @@
     "email": "Email",
     "password": "Mật khẩu",
     "signOut": "Đăng xuất"
+  },
+  "me": {
+    "title": "Tuần này",
+    "dueBy": "Hạn nộp",
+    "obligations": "Báo cáo cần nộp",
+    "nothingOwed": "Tuần này không có báo cáo nào cần nộp.",
+    "noPeriod": "Chưa cấu hình kỳ báo cáo.",
+    "startWeek": "Bắt đầu tuần này",
+    "openWeek": "Mở tuần này"
+  },
+  "report": {
+    "title": "Gói báo cáo tuần",
+    "tabs": "Mục theo dự án",
+    "submit": "Nộp báo cáo",
+    "submitted": "Đã nộp, phiên bản {{version}}.",
+    "state": {
+      "not_started": "Chưa bắt đầu",
+      "draft": "Bản nháp",
+      "submitted": "Đã nộp",
+      "revision_requested": "Cần chỉnh sửa",
+      "resubmitted": "Đã nộp lại",
+      "reviewed": "Đã xem xét"
+    },
+    "obligation": {
+      "required": "Bắt buộc",
+      "excused": "Được miễn"
+    },
+    "autosave": {
+      "idle": "Chưa lưu",
+      "saving": "Đang lưu…",
+      "saved": "Đã lưu",
+      "failed": "Chưa lưu — đang thử lại"
+    },
+    "fields": {
+      "workPerformed": "Công việc đã thực hiện",
+      "results": "Kết quả và bài học nghiên cứu",
+      "deviations": "Sai khác và vướng mắc",
+      "nextPlan": "Kế hoạch tuần tới",
+      "questions": "Câu hỏi cho giáo sư",
+      "hours": "Số giờ (tùy chọn)",
+      "hoursNote": "Tự khai báo; không dùng làm thước đo năng suất."
+    }
   }
 }

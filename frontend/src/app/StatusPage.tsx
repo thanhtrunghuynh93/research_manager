@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 
 import { api } from "@/api/client";
 
-type Readiness = { status: "ready" | "degraded"; checks: Record<string, "ok" | "fail" | "skipped"> };
+type Readiness = {
+  status: "ready" | "degraded";
+  checks: Record<string, "ok" | "fail" | "skipped">;
+};
 
 export function StatusPage() {
   const { t } = useTranslation();

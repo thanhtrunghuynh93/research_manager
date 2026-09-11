@@ -51,7 +51,12 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
     try {
       problem = (await response.json()) as Problem;
     } catch {
-      problem = { type: "about:blank", title: response.statusText, status: response.status, detail: "" };
+      problem = {
+        type: "about:blank",
+        title: response.statusText,
+        status: response.status,
+        detail: "",
+      };
     }
     throw new ApiError(problem, response);
   }

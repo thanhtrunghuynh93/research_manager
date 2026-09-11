@@ -87,10 +87,7 @@ test("autosaves the draft after typing stops", async () => {
   ]);
   const user = userEvent.setup();
 
-  await user.type(
-    await screen.findByLabelText(/work performed/i),
-    "Implemented the data loader",
-  );
+  await user.type(await screen.findByLabelText(/work performed/i), "Implemented the data loader");
 
   await waitFor(() => expect(saved.length).toBeGreaterThan(0), { timeout: 4000 });
   expect(await screen.findByTestId("autosave-indicator")).toHaveTextContent(/saved/i);

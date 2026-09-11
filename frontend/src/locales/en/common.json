@@ -16,5 +16,47 @@
     "email": "Email",
     "password": "Password",
     "signOut": "Sign out"
+  },
+  "me": {
+    "title": "This week",
+    "dueBy": "Due by",
+    "obligations": "Reports owed",
+    "nothingOwed": "Nothing is owed for this week.",
+    "noPeriod": "No reporting period has been configured yet.",
+    "startWeek": "Start this week",
+    "openWeek": "Open this week"
+  },
+  "report": {
+    "title": "Weekly package",
+    "tabs": "Project entries",
+    "submit": "Submit package",
+    "submitted": "Submitted as version {{version}}.",
+    "state": {
+      "not_started": "Not started",
+      "draft": "Draft",
+      "submitted": "Submitted",
+      "revision_requested": "Revision requested",
+      "resubmitted": "Resubmitted",
+      "reviewed": "Reviewed"
+    },
+    "obligation": {
+      "required": "Required",
+      "excused": "Excused"
+    },
+    "autosave": {
+      "idle": "Not saved yet",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "failed": "Not saved — retrying"
+    },
+    "fields": {
+      "workPerformed": "Work performed",
+      "results": "Results and research learning",
+      "deviations": "Deviations and blockers",
+      "nextPlan": "Next-week plan",
+      "questions": "Questions for the professor",
+      "hours": "Hours (optional)",
+      "hoursNote": "Self-reported; not treated as verified productivity."
+    }
   }
 }

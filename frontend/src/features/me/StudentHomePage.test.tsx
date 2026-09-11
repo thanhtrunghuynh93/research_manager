@@ -30,10 +30,19 @@ function renderPage() {
   );
 }
 
+type ObligationFixture = {
+  id: string;
+  period_id: string;
+  project_id: string;
+  student_id: string;
+  state: string;
+  excuse_reason?: string;
+};
+
 function handlers({
   obligations = [
     { id: "o1", period_id: "p1", project_id: "pr1", student_id: "s1", state: "required" },
-  ],
+  ] as ObligationFixture[],
   report = null as unknown,
   reportStatus = 404,
 } = {}) {
@@ -45,7 +54,10 @@ function handlers({
     ),
     http.get("/api/v1/periods/p1/report", () =>
       report === null
-        ? HttpResponse.json({ title: "Not found", status: 404, detail: "report not found" }, { status: reportStatus })
+        ? HttpResponse.json(
+            { title: "Not found", status: 404, detail: "report not found" },
+            { status: reportStatus },
+          )
         : HttpResponse.json(report),
     ),
   ];

@@ -34,9 +34,7 @@ test("signs in with an email and password", async () => {
   await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
   await waitFor(() =>
-    expect(submitted).toEqual([
-      { email: "prof@example.edu", password: "a long enough password" },
-    ]),
+    expect(submitted).toEqual([{ email: "prof@example.edu", password: "a long enough password" }]),
   );
 });
 
