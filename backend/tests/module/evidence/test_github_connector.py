@@ -98,8 +98,16 @@ async def test_commits_keep_author_time_and_commit_time_apart(private_key: str) 
             "html_url": "https://github.com/lab/baseline/commit/aaa",
             "commit": {
                 "message": "Add the loader\n\nDetails follow.",
-                "author": {"name": "Student A", "email": "a@example.edu", "date": "2026-09-10T08:00:00Z"},
-                "committer": {"name": "Student A", "email": "a@example.edu", "date": "2026-09-14T09:00:00Z"},
+                "author": {
+                    "name": "Student A",
+                    "email": "a@example.edu",
+                    "date": "2026-09-10T08:00:00Z",
+                },
+                "committer": {
+                    "name": "Student A",
+                    "email": "a@example.edu",
+                    "date": "2026-09-14T09:00:00Z",
+                },
             },
             "author": {"login": "student-a", "type": "User"},
             "committer": {"login": "student-a", "type": "User"},
@@ -134,8 +142,16 @@ async def test_a_co_authored_trailer_becomes_a_second_author(private_key: str) -
         "sha": "aaa",
         "commit": {
             "message": "Add the loader\n\nCo-authored-by: Student B <b@example.edu>",
-            "author": {"name": "Student A", "email": "a@example.edu", "date": "2026-09-14T09:00:00Z"},
-            "committer": {"name": "Student A", "email": "a@example.edu", "date": "2026-09-14T09:00:00Z"},
+            "author": {
+                "name": "Student A",
+                "email": "a@example.edu",
+                "date": "2026-09-14T09:00:00Z",
+            },
+            "committer": {
+                "name": "Student A",
+                "email": "a@example.edu",
+                "date": "2026-09-14T09:00:00Z",
+            },
         },
         "author": {"login": "student-a", "type": "User"},
         "files": [],
@@ -160,8 +176,16 @@ async def test_a_bot_account_is_labelled(private_key: str) -> None:
         "sha": "aaa",
         "commit": {
             "message": "Bump a dependency",
-            "author": {"name": "dependabot", "email": "bot@github.com", "date": "2026-09-14T09:00:00Z"},
-            "committer": {"name": "dependabot", "email": "bot@github.com", "date": "2026-09-14T09:00:00Z"},
+            "author": {
+                "name": "dependabot",
+                "email": "bot@github.com",
+                "date": "2026-09-14T09:00:00Z",
+            },
+            "committer": {
+                "name": "dependabot",
+                "email": "bot@github.com",
+                "date": "2026-09-14T09:00:00Z",
+            },
         },
         "author": {"login": "dependabot[bot]", "type": "Bot"},
         "files": [],
@@ -189,9 +213,7 @@ async def test_pagination_follows_the_link_header(private_key: str) -> None:
         return httpx.Response(
             200,
             json=[],
-            headers={
-                "Link": '<https://api.github.com/repositories/42/commits?page=2>; rel="next"'
-            },
+            headers={"Link": '<https://api.github.com/repositories/42/commits?page=2>; rel="next"'},
         )
 
     connector = _connector(private_key, handler)
