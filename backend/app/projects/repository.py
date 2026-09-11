@@ -89,6 +89,35 @@ async def active_membership(
     ).scalar_one_or_none()
 
 
+async def memberships_active_in_range(
+    session: AsyncSession, scope: Scope, *, local_start: date, local_end: date
+) -> list[ProjectMembership]:
+    """REP-01: memberships that overlap the week on a project that is currently active.
+
+    `left_on` is exclusive, so a student who left on the Monday a period starts owes nothing for it.
+    """
+    return list(
+        (
+            await session.execute(
+                select(ProjectMembership)
+                .join(Project, Project.id == ProjectMembership.project_id)
+                .where(
+                    visible_to(scope, ProjectMembership),
+                    Project.status == ProjectStatus.ACTIVE,
+                    ProjectMembership.joined_on <= local_end,
+                    or_(
+                        ProjectMembership.left_on.is_(None),
+                        ProjectMembership.left_on > local_start,
+                    ),
+                )
+                .order_by(ProjectMembership.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def get_milestone(
     session: AsyncSession, scope: Scope, milestone_id: UUID
 ) -> Milestone | None:

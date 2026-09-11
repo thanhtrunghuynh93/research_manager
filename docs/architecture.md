@@ -135,8 +135,8 @@ A module reads another module's data only through that module's `service.py`; it
 | Group | Tables |
 | --- | --- |
 | Identity | `workspaces`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
-| Projects | `projects`, `project_memberships`, `milestones`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
-| Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `artifacts`, `artifact_versions` |
+| Projects | `projects`, `project_memberships`, `milestones`, `milestone_revisions`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
+| Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
 | Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
 | Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `feedback`, `supervision_notes` |
 | Assistant | `conversations`, `messages`, `answer_cache` |
@@ -151,7 +151,7 @@ Types abbreviated. `id` columns are UUIDv7 unless noted. All timestamps are `tim
 **users** — `id, workspace_id, role ENUM(prof, student), email UNIQUE, display_name, password_hash, state ENUM(invited, active, deactivated), deactivated_at, created_at`
 
 **project_memberships** — `id, workspace_id, project_id, student_id, responsibility, joined_on DATE, left_on DATE NULL, first_required_period_id NULL, last_required_period_id NULL, planned_allocation NUMERIC NULL, created_at`
-Constraint `uq_membership_active`: unique `(project_id, student_id)` where `left_on IS NULL`.
+Constraint `uq_membership_active`: unique `(project_id, student_id)` where `left_on IS NULL`. `left_on` is exclusive — the first day the student is no longer a member — so ending a membership today revokes access today (AUTH-03), and a departure dated in the future keeps access until it arrives.
 
 **calendar_configs** — `id, workspace_id, version INT, timezone TEXT, meeting_weekday SMALLINT, week_start_weekday SMALLINT, grace_minutes INT, effective_from DATE, created_by, created_at`
 The deadline is not stored here; it is derived per period (section 7).
@@ -163,7 +163,7 @@ Constraint `uq_period_start`: unique `(workspace_id, local_start)`. `deadline_ut
 Constraint `uq_obligation`: unique `(membership_id, period_id)`.
 
 **weekly_reports** — `id, workspace_id, student_id, period_id, workflow_state ENUM(draft, submitted, revision_requested, resubmitted, reviewed), first_submitted_at NULL, current_version_id NULL, draft_content JSONB, draft_saved_at`
-Constraint `uq_report`: unique `(student_id, period_id)`. `first_submitted_at` is written once and never updated (REP-07, AC-13); a trigger raises on any change after it is set.
+Constraint `uq_report`: unique `(student_id, period_id)`. `first_submitted_at` is written once and never updated (REP-07, AC-13); the `freeze_first_submitted_at` trigger raises on any change after it is set.
 
 **report_versions** — `id, workspace_id, report_id, version_no INT, author_id, submitted_at, idempotency_key TEXT, timing_status ENUM(on_time, late, excused)`
 Constraints `uq_report_version (report_id, version_no)`, `uq_report_idem (report_id, idempotency_key)`. Immutable (section 5.3).
@@ -289,10 +289,15 @@ A periodic task `ensure_periods()` runs daily and materialises `reporting_period
 ```
 local_start   = first week_start_weekday on or after previous local_end + 1
 local_end     = local_start + 6 days
-meeting_date  = first meeting_weekday strictly after local_start - 1 day
+meeting_date  = first meeting_weekday on or after local_end + 1 day
 deadline_utc  = to_utc(meeting_date - 1 day, 23:59:00, timezone)
 reminder_due_utc = deadline_utc + 60 s
 ```
+
+The meeting follows the week it discusses, so the deadline falls inside the period: with the
+proposed default the week of Mon 14 to Sun 20 September is discussed on Mon 21 and is due Sun 20 at
+23:59 local. Deriving `meeting_date` from `local_start` instead would put the deadline on the day
+before the period opens.
 
 Changing the meeting day inserts a new `calendar_configs` version with an `effective_from`; periods already materialised keep their `deadline_utc` (requirements REP-01). Obligations are derived per period from memberships whose `joined_on ≤ local_end`, `left_on` is null or `≥ local_start`, the project is `active`, and `first/last_required_period_id` bounds are satisfied; exemptions and extensions edit the obligation row, never the period.
 

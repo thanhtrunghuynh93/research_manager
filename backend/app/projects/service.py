@@ -413,6 +413,20 @@ async def list_decisions(
 # ------------------------------------------------------------------ cross-module reads
 
 
+async def reporting_memberships(
+    session: AsyncSession, scope: Scope, *, local_start: date, local_end: date
+) -> list[MembershipOut]:
+    """The memberships that owe a report for the week between these dates (REP-01).
+
+    Reporting calls this rather than reading membership rows itself, so the rules about active
+    projects and exclusive leave dates live in one place.
+    """
+    rows = await repository.memberships_active_in_range(
+        session, scope, local_start=local_start, local_end=local_end
+    )
+    return [MembershipOut.model_validate(row) for row in rows]
+
+
 async def student_project_ids(
     session: AsyncSession, workspace_id: UUID, student_id: UUID
 ) -> frozenset[UUID]:

@@ -25,15 +25,14 @@ MONDAY, SUNDAY = 0, 6
 
 
 async def _calendar(db: AsyncSession, scope: Scope, **overrides: object) -> object:
-    return await service.configure_calendar(
-        db,
-        scope,
-        timezone=TZ,
-        meeting_weekday=MONDAY,
-        week_start_weekday=MONDAY,
-        effective_from=date(2026, 9, 14),
-        **overrides,
-    )
+    params: dict[str, object] = {
+        "timezone": TZ,
+        "meeting_weekday": MONDAY,
+        "week_start_weekday": MONDAY,
+        "effective_from": date(2026, 9, 14),
+    }
+    params.update(overrides)
+    return await service.configure_calendar(db, scope, **params)  # type: ignore[arg-type]
 
 
 async def test_periods_run_from_the_configured_week_start(
@@ -150,9 +149,7 @@ async def test_a_departed_student_owes_nothing_for_later_weeks(
         db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
     )
     periods = await service.ensure_periods(db, prof_scope, through=date(2026, 10, 4))
-    await projects_service.end_membership(
-        db, prof_scope, membership.id, left_on=date(2026, 9, 21)
-    )
+    await projects_service.end_membership(db, prof_scope, membership.id, left_on=date(2026, 9, 21))
 
     first = await service.ensure_obligations(db, prof_scope, periods[0].id)
     second = await service.ensure_obligations(db, prof_scope, periods[1].id)

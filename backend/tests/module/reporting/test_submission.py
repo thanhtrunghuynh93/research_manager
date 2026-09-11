@@ -7,7 +7,7 @@ is created for work nobody touched.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import update
@@ -255,14 +255,16 @@ async def test_a_late_submission_keeps_its_real_timestamp_and_is_marked_late(
 ) -> None:
     # REP-06: late reports retain their actual timestamps.
     week = await _week(db, prof_scope, student_a, project_count=1)
-    await _move_deadline_into_the_past(db, week)
+    moved_deadline = await _move_deadline_into_the_past(db, week)
+    started = now()
 
     version = await service.submit_report(
         db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
     )
 
     assert version.timing_status is models.TimingStatus.LATE
-    assert version.submitted_at > week.period.deadline_utc
+    assert version.submitted_at >= started, "the real submission time is kept, not the deadline"
+    assert version.submitted_at > moved_deadline
 
 
 async def test_an_extension_makes_a_later_submission_on_time(
@@ -282,13 +284,15 @@ async def test_an_extension_makes_a_later_submission_on_time(
     assert version.timing_status is models.TimingStatus.ON_TIME
 
 
-async def _move_deadline_into_the_past(db: AsyncSession, week: Week) -> None:
+async def _move_deadline_into_the_past(db: AsyncSession, week: Week) -> datetime:
     """The period was generated for a future week; pull its deadline behind us."""
+    deadline = now() - timedelta(hours=1)
     await db.execute(
         update(models.ReportingPeriod)
         .where(models.ReportingPeriod.id == week.period.id)
-        .values(deadline_utc=now() - timedelta(hours=1))
+        .values(deadline_utc=deadline)
     )
+    return deadline
 
 
 async def test_a_student_cannot_submit_for_someone_else(

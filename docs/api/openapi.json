@@ -30,6 +30,323 @@
         "title": "AcceptInvitationIn",
         "type": "object"
       },
+      "CalendarConfigIn": {
+        "properties": {
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "grace_minutes": {
+            "default": 0,
+            "maximum": 1440.0,
+            "minimum": 0.0,
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "meeting_weekday": {
+            "default": 0,
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Meeting Weekday",
+            "type": "integer"
+          },
+          "timezone": {
+            "default": "Asia/Ho_Chi_Minh",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "week_start_weekday": {
+            "default": 0,
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Week Start Weekday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "effective_from"
+        ],
+        "title": "CalendarConfigIn",
+        "type": "object"
+      },
+      "CalendarConfigOut": {
+        "properties": {
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "grace_minutes": {
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "meeting_weekday": {
+            "title": "Meeting Weekday",
+            "type": "integer"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "week_start_weekday": {
+            "title": "Week Start Weekday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "timezone",
+          "meeting_weekday",
+          "week_start_weekday",
+          "grace_minutes",
+          "effective_from"
+        ],
+        "title": "CalendarConfigOut",
+        "type": "object"
+      },
+      "DraftIn": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          }
+        },
+        "title": "DraftIn",
+        "type": "object"
+      },
+      "EntryIn": {
+        "description": "REP-03: one project's section of the weekly package.",
+        "properties": {
+          "deviations": {
+            "default": "",
+            "title": "Deviations",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {},
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "experiments": {
+            "items": {},
+            "title": "Experiments",
+            "type": "array"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "maximum": 168.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours"
+          },
+          "milestone_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Milestone Ids",
+            "type": "array"
+          },
+          "next_plan": {
+            "additionalProperties": true,
+            "title": "Next Plan",
+            "type": "object"
+          },
+          "planned_work_ref": {
+            "additionalProperties": true,
+            "title": "Planned Work Ref",
+            "type": "object"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "questions": {
+            "default": "",
+            "title": "Questions",
+            "type": "string"
+          },
+          "results": {
+            "default": "",
+            "title": "Results",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "work_performed": {
+            "default": "",
+            "title": "Work Performed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "stage"
+        ],
+        "title": "EntryIn",
+        "type": "object"
+      },
+      "EntryOut": {
+        "properties": {
+          "content_changed_in_version_id": {
+            "format": "uuid",
+            "title": "Content Changed In Version Id",
+            "type": "string"
+          },
+          "deviations": {
+            "title": "Deviations",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {},
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "experiments": {
+            "items": {},
+            "title": "Experiments",
+            "type": "array"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "milestone_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Milestone Ids",
+            "type": "array"
+          },
+          "next_plan": {
+            "additionalProperties": true,
+            "title": "Next Plan",
+            "type": "object"
+          },
+          "planned_work_ref": {
+            "additionalProperties": true,
+            "title": "Planned Work Ref",
+            "type": "object"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "questions": {
+            "title": "Questions",
+            "type": "string"
+          },
+          "report_version_id": {
+            "format": "uuid",
+            "title": "Report Version Id",
+            "type": "string"
+          },
+          "results": {
+            "title": "Results",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "work_performed": {
+            "title": "Work Performed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "report_version_id",
+          "project_id",
+          "stage",
+          "milestone_ids",
+          "planned_work_ref",
+          "work_performed",
+          "results",
+          "experiments",
+          "deviations",
+          "next_plan",
+          "questions",
+          "evidence_refs",
+          "content_changed_in_version_id"
+        ],
+        "title": "EntryOut",
+        "type": "object"
+      },
+      "ExcuseIn": {
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ExcuseIn",
+        "type": "object"
+      },
+      "ExtensionIn": {
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "until",
+          "reason"
+        ],
+        "title": "ExtensionIn",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -662,6 +979,79 @@
         "title": "MilestoneStatus",
         "type": "string"
       },
+      "ObligationOut": {
+        "properties": {
+          "excuse_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excuse Reason"
+          },
+          "extension_until_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Until Utc"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ObligationState"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "period_id",
+          "membership_id",
+          "student_id",
+          "project_id",
+          "state"
+        ],
+        "title": "ObligationOut",
+        "type": "object"
+      },
+      "ObligationState": {
+        "enum": [
+          "required",
+          "excused"
+        ],
+        "title": "ObligationState",
+        "type": "string"
+      },
       "Page_ProjectOut_": {
         "properties": {
           "items": {
@@ -759,6 +1149,62 @@
           "email"
         ],
         "title": "PasswordResetRequestIn",
+        "type": "object"
+      },
+      "PeriodOut": {
+        "properties": {
+          "deadline_utc": {
+            "format": "date-time",
+            "title": "Deadline Utc",
+            "type": "string"
+          },
+          "end_utc": {
+            "format": "date-time",
+            "title": "End Utc",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_end": {
+            "format": "date",
+            "title": "Local End",
+            "type": "string"
+          },
+          "local_start": {
+            "format": "date",
+            "title": "Local Start",
+            "type": "string"
+          },
+          "meeting_date": {
+            "format": "date",
+            "title": "Meeting Date",
+            "type": "string"
+          },
+          "reminder_due_utc": {
+            "format": "date-time",
+            "title": "Reminder Due Utc",
+            "type": "string"
+          },
+          "start_utc": {
+            "format": "date-time",
+            "title": "Start Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "local_start",
+          "local_end",
+          "start_utc",
+          "end_utc",
+          "meeting_date",
+          "deadline_utc",
+          "reminder_due_utc"
+        ],
+        "title": "PeriodOut",
         "type": "object"
       },
       "ProfilePatch": {
@@ -1204,6 +1650,90 @@
         "title": "Readiness",
         "type": "object"
       },
+      "ReportOut": {
+        "properties": {
+          "current_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "draft_content": {
+            "additionalProperties": true,
+            "title": "Draft Content",
+            "type": "object"
+          },
+          "draft_saved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Saved At"
+          },
+          "first_submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Submitted At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "workflow_state": {
+            "$ref": "#/components/schemas/ReportState"
+          }
+        },
+        "required": [
+          "id",
+          "student_id",
+          "period_id",
+          "workflow_state",
+          "draft_content"
+        ],
+        "title": "ReportOut",
+        "type": "object"
+      },
+      "ReportState": {
+        "description": "REP-05: draft, submitted, revision requested, resubmitted, reviewed.",
+        "enum": [
+          "draft",
+          "submitted",
+          "revision_requested",
+          "resubmitted",
+          "reviewed"
+        ],
+        "title": "ReportState",
+        "type": "string"
+      },
       "ResearchDecisionIn": {
         "properties": {
           "decided_on": {
@@ -1319,6 +1849,99 @@
         "title": "ResearchStage",
         "type": "string"
       },
+      "RevisionRequestIn": {
+        "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RevisionRequestIn",
+        "type": "object"
+      },
+      "RevisionRequestOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "report_version_id": {
+            "format": "uuid",
+            "title": "Report Version Id",
+            "type": "string"
+          },
+          "requested_by": {
+            "format": "uuid",
+            "title": "Requested By",
+            "type": "string"
+          },
+          "resolved_in_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved In Version Id"
+          }
+        },
+        "required": [
+          "id",
+          "report_id",
+          "report_version_id",
+          "reason",
+          "requested_by",
+          "created_at"
+        ],
+        "title": "RevisionRequestOut",
+        "type": "object"
+      },
       "Role": {
         "enum": [
           "prof",
@@ -1337,6 +1960,22 @@
           "role"
         ],
         "title": "RolePatch",
+        "type": "object"
+      },
+      "SubmitIn": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryIn"
+            },
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "SubmitIn",
         "type": "object"
       },
       "TaskIn": {
@@ -1652,6 +2291,16 @@
         "title": "TaskStatus",
         "type": "string"
       },
+      "TimingStatus": {
+        "description": "REP-05: timing is recorded separately from the workflow state.",
+        "enum": [
+          "on_time",
+          "late",
+          "excused"
+        ],
+        "title": "TimingStatus",
+        "type": "string"
+      },
       "UserOut": {
         "properties": {
           "created_at": {
@@ -1760,6 +2409,54 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VersionOut": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "timing_status": {
+            "$ref": "#/components/schemas/TimingStatus"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "report_id",
+          "version_no",
+          "author_id",
+          "submitted_at",
+          "timing_status"
+        ],
+        "title": "VersionOut",
         "type": "object"
       }
     }
@@ -2012,6 +2709,47 @@
         ]
       }
     },
+    "/api/v1/calendar": {
+      "put": {
+        "operationId": "configure_calendar_api_v1_calendar_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarConfigIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Configure the reporting calendar",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
     "/api/v1/milestones/{milestone_id}": {
       "patch": {
         "operationId": "update_milestone_api_v1_milestones__milestone_id__patch",
@@ -2109,6 +2847,515 @@
         "summary": "The retained baselines of a milestone",
         "tags": [
           "milestones"
+        ]
+      }
+    },
+    "/api/v1/obligations/{obligation_id}/excuse": {
+      "post": {
+        "operationId": "excuse_obligation_api_v1_obligations__obligation_id__excuse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "obligation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Obligation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExcuseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Excuse an obligation",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/obligations/{obligation_id}/extend": {
+      "post": {
+        "operationId": "extend_obligation_api_v1_obligations__obligation_id__extend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "obligation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Obligation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extend one obligation's deadline",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/periods": {
+      "get": {
+        "operationId": "list_periods_api_v1_periods_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "through",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Through"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PeriodOut"
+                  },
+                  "title": "Response List Periods Api V1 Periods Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List reporting periods",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/periods/ensure": {
+      "post": {
+        "operationId": "ensure_periods_api_v1_periods_ensure_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "through",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Through"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PeriodOut"
+                  },
+                  "title": "Response Ensure Periods Api V1 Periods Ensure Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Materialise periods up to a date",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/periods/{period_id}/obligations": {
+      "get": {
+        "operationId": "list_obligations_api_v1_periods__period_id__obligations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ObligationOut"
+                  },
+                  "title": "Response List Obligations Api V1 Periods  Period Id  Obligations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Who owes a report this period",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/periods/{period_id}/obligations/ensure": {
+      "post": {
+        "operationId": "ensure_obligations_api_v1_periods__period_id__obligations_ensure_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ObligationOut"
+                  },
+                  "title": "Response Ensure Obligations Api V1 Periods  Period Id  Obligations Ensure Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Derive obligations",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/periods/{period_id}/report": {
+      "get": {
+        "operationId": "get_report_api_v1_periods__period_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read a weekly report",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/periods/{period_id}/report/draft": {
+      "patch": {
+        "operationId": "save_draft_api_v1_periods__period_id__report_draft_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Autosave the weekly draft",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/periods/{period_id}/report/submit": {
+      "post": {
+        "description": "A repeated submission with the same Idempotency-Key returns the version already written.",
+        "operationId": "submit_report_api_v1_periods__period_id__report_submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit the weekly package",
+        "tags": [
+          "reporting"
         ]
       }
     },
@@ -2850,6 +4097,190 @@
         "summary": "Create a task",
         "tags": [
           "milestones"
+        ]
+      }
+    },
+    "/api/v1/report-versions/{version_id}": {
+      "get": {
+        "operationId": "get_version_api_v1_report_versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one submitted version",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/reviewed": {
+      "post": {
+        "operationId": "mark_reviewed_api_v1_reports__report_id__reviewed_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark a report reviewed",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/revisions": {
+      "get": {
+        "operationId": "list_revision_requests_api_v1_reports__report_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RevisionRequestOut"
+                  },
+                  "title": "Response List Revision Requests Api V1 Reports  Report Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Outstanding revision requests",
+        "tags": [
+          "reporting"
+        ]
+      },
+      "post": {
+        "operationId": "request_revision_api_v1_reports__report_id__revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionRequestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request a revision of one project entry",
+        "tags": [
+          "reporting"
         ]
       }
     },
