@@ -1,0 +1,100 @@
+# Production stack for one VPS (architecture §3). Start:  docker compose --env-file .env up -d
+# Development overrides live in docker-compose.dev.yml (see Makefile `dev`).
+name: research-management
+
+x-backend: &backend
+  image: ${RM_BACKEND_IMAGE:-rm-backend:local}
+  build:
+    context: ../backend
+  env_file: .env
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  caddy:
+    image: ${RM_CADDY_IMAGE:-rm-caddy:local}
+    build:
+      context: ..
+      dockerfile: infra/caddy/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RM_DOMAIN: ${RM_DOMAIN:-localhost}
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api]
+    restart: unless-stopped
+
+  api:
+    <<: *backend
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    expose: ["8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    env_file: .env
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    env_file: .env
+    command: ["server", "/data", "--console-address", ":9001"]
+    volumes:
+      - objects:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backup:
+    build:
+      context: ./backup
+    env_file: .env
+    environment:
+      BACKUP_CRON: ${BACKUP_CRON:-0 2 * * *}
+    volumes:
+      - backups:/backups
+      - ${RM_AGE_RECIPIENTS_FILE:-./backup/age-recipients.txt}:/run/age-recipients.txt:ro
+      - ${RM_RCLONE_CONF:-./backup/rclone.conf}:/root/.config/rclone/rclone.conf:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  objects:
+  backups:
+  caddy-data:
+  caddy-config:

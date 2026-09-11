@@ -1,0 +1,46 @@
+# Development overrides: hot reload, exposed ports, mailpit instead of a real mail provider,
+# no caddy/backup (the Vite dev server proxies /api to the api container).
+services:
+  caddy:
+    profiles: ["prod-only"]
+
+  backup:
+    profiles: ["prod-only"]
+
+  api:
+    build:
+      context: ../backend
+      target: builder
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ../backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      RM_ENV: dev
+
+  worker:
+    build:
+      context: ../backend
+      target: builder
+    command: ["uv", "run", "python", "-m", "app.worker"]
+    volumes:
+      - ../backend:/app
+    environment:
+      RM_ENV: dev
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "8025:8025"   # web UI
+      - "1025:1025"   # SMTP
+    restart: unless-stopped
