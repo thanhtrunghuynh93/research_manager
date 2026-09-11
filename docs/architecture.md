@@ -511,7 +511,7 @@ flowchart TB
 
 ## 12 Background jobs
 
-- **Library:** procrastinate with the async connector. Enqueue is a row insert, so `submit_report()` writes `report_versions`, `project_report_entries`, and the job rows in one transaction; either all persist or none (section 10 of the requirements, AC-13).
+- **Library:** procrastinate with the async connector. Enqueue is a row insert, so `submit_report()` writes `report_versions`, `project_report_entries`, and the job rows in one transaction; either all persist or none (section 10 of the requirements, AC-13). The queue's own schema is applied by a migration from the installed library version, so `alembic upgrade head` is the only step a deploy needs; alembic's autogenerate ignores the `procrastinate_*` tables because the library owns them.
 - **Job key convention:** `{domain}:{ids}:{step}` as `queueing_lock`; procrastinate refuses a second queued job with the same lock. Completed jobs are retained for 30 days for observability.
 - **Retries:** transient errors retry with exponential backoff (max 5); permanent errors fail immediately. A domain record (`analysis_runs`, `sync_runs`, `email_deliveries`) carries the application state including `partial`.
 - **Manual retry:** `POST /api/admin/jobs/{run_id}/retry` re-enqueues with the same lock; because every step is idempotent on its key, no duplicate assessments or notifications result.
