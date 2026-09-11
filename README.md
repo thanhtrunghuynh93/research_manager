@@ -7,6 +7,7 @@ A supervision workspace for one professor and their students: weekly report pack
 - [Requirements](docs/research_management_requirements.md) — what the system must do (v0.3)
 - [Architecture](docs/architecture.md) — how it is built
 - [Repository layout](docs/repo_layout.md) — where things live and the conventions
+- [Implementation status](docs/implementation_status.md) — what is built, what is left, and why
 - [ADRs](docs/adr/) — decisions and their reasons
 - [Runbooks](docs/runbooks/) — operate it
 

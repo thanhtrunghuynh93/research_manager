@@ -31,6 +31,7 @@ research_management/
 │   ├── research_management_requirements.md
 │   ├── architecture.md
 │   ├── repo_layout.md         this file
+│   ├── implementation_status.md  what is built, what is left, decisions taken (section 9)
 │   ├── adr/                   architecture decision records, one file each (section 7)
 │   ├── runbooks/              deploy.md, backup-restore.md, rotate-secrets.md, break-glass.md, incident.md
 │   ├── api/                   openapi.json exported by CI for review; changelog of breaking changes
@@ -361,6 +362,9 @@ scripts/
 - `release.yml` on tag `v*`: build, push to the registry, generate SBOM, create release notes from commits.
 
 ## 9 Bootstrap order
+
+Progress against this order, and the decisions taken while working through it, are recorded in
+[implementation_status.md](implementation_status.md).
 
 The first pull requests, in dependency order, so that the tree above fills in without dead directories:
 
