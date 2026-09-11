@@ -1,0 +1,8 @@
+{
+  "app": { "title": "Research Management" },
+  "common": { "loading": "Loading…", "save": "Save", "cancel": "Cancel" },
+  "status": {
+    "title": "System status",
+    "unreachable": "The API is unreachable."
+  }
+}

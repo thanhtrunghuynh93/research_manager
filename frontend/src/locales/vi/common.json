@@ -1,0 +1,8 @@
+{
+  "app": { "title": "Quản lý nghiên cứu" },
+  "common": { "loading": "Đang tải…", "save": "Lưu", "cancel": "Hủy" },
+  "status": {
+    "title": "Trạng thái hệ thống",
+    "unreachable": "Không kết nối được API."
+  }
+}
