@@ -6,6 +6,10 @@ notifications module subscribes to the two token events to send the invitation a
 
 The plaintext token travels in the event and never in an API response: only the addressee of the
 email may learn it.
+
+Handlers run inside the emitting transaction, which has flushed but not committed. A handler must
+therefore only write rows and enqueue jobs — never talk to a mail provider directly — so a later
+rollback cannot leave an email announcing an invitation that does not exist (architecture §12).
 """
 
 from __future__ import annotations

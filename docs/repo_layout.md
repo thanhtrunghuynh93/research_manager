@@ -199,6 +199,7 @@ forbidden_modules = ["app.evidence", "app.assessment", "app.assistant"]
 [[tool.importlinter.contracts]]
 name = "API never touches ORM models directly"
 type = "forbidden"
+allow_indirect_imports = "true"   # the API reaches models through service.py by design
 source_modules = ["app.api"]
 forbidden_modules = ["app.identity.models", "app.projects.models", "app.reporting.models", "app.evidence.models", "app.assessment.models", "app.assistant.models", "app.notifications.models"]
 ```

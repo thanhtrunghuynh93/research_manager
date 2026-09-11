@@ -134,7 +134,7 @@ A module reads another module's data only through that module's `service.py`; it
 
 | Group | Tables |
 | --- | --- |
-| Identity | `workspaces`, `users`, `invitations`, `sessions`, `audit_events` |
+| Identity | `workspaces`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
 | Projects | `projects`, `project_memberships`, `milestones`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
 | Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `artifacts`, `artifact_versions` |
 | Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
@@ -270,7 +270,7 @@ Downloads and exports reuse the same predicates: a presigned GET is issued only 
 - Invitation: the professor creates a user in state `invited`; a signed, single-use token with 7-day expiry is emailed. Accepting sets the password and activates.
 - Sessions: server-side rows in `sessions` with an opaque cookie (`HttpOnly`, `Secure`, `SameSite=Lax`), 12-hour idle expiry, 30-day absolute. Deactivating a user deletes their sessions in the same transaction (AUTH-03).
 - Recovery: password reset by emailed single-use token for every user.
-- Break-glass: `python -m app.identity.breakglass recover-professor --email …` runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It is not reachable through the API.
+- Break-glass: `python -m app.cli breakglass recover-professor --email …` (also reachable as `python -m app.identity.breakglass`) runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It issues a single-use recovery link valid for 15 minutes rather than a password, so the secret is handed over out of band. `transfer-professor --from … --to …` deactivates the outgoing account in the same transaction. Neither is reachable through the API.
 
 ### 6.3 Access changes and cached answers (AUTH-03, AC-11)
 

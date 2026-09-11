@@ -24,9 +24,7 @@ async def get_workspace(session: AsyncSession, workspace_id: UUID) -> Workspace 
 
 async def access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
     epoch = (
-        await session.execute(
-            select(Workspace.access_epoch).where(Workspace.id == workspace_id)
-        )
+        await session.execute(select(Workspace.access_epoch).where(Workspace.id == workspace_id))
     ).scalar_one_or_none()
     return epoch if epoch is not None else 0
 
@@ -45,9 +43,7 @@ async def bump_access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
 
 async def get_visible_user(session: AsyncSession, scope: Scope, user_id: UUID) -> User | None:
     return (
-        await session.execute(
-            select(User).where(User.id == user_id, visible_to(scope, User))
-        )
+        await session.execute(select(User).where(User.id == user_id, visible_to(scope, User)))
     ).scalar_one_or_none()
 
 
@@ -94,9 +90,7 @@ async def get_invitation_by_token(session: AsyncSession, token_hash: str) -> Inv
     ).scalar_one_or_none()
 
 
-async def revoke_pending_invitations(
-    session: AsyncSession, user_id: UUID, at: datetime
-) -> None:
+async def revoke_pending_invitations(session: AsyncSession, user_id: UUID, at: datetime) -> None:
     await session.execute(
         update(Invitation)
         .where(

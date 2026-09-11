@@ -97,9 +97,7 @@ async def test_the_professor_deactivates_and_reactivates(
     assert reactivated.json()["state"] == "active"
 
 
-async def test_a_user_edits_their_own_profile(
-    client: AsyncClient, student_a: models.User
-) -> None:
+async def test_a_user_edits_their_own_profile(client: AsyncClient, student_a: models.User) -> None:
     await _sign_in(client, student_a)
 
     response = await client.patch(

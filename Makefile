@@ -1,4 +1,4 @@
-.PHONY: help dev down web test lint typecheck migrate migrate-check migration seed e2e check-traceability
+.PHONY: help dev down web test lint typecheck migrate migrate-check migration bootstrap seed e2e check-traceability
 
 COMPOSE := docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml --env-file infra/.env
 
@@ -34,6 +34,12 @@ migrate-check: ## fail if models and migrations differ
 
 migration: ## create a migration: make migration m="add users"
 	cd backend && uv run alembic revision --autogenerate -m "$(m)"
+
+bootstrap: ## create the workspace and professor (first run only): make bootstrap name="Lab" email=... who="Prof X"
+	$(COMPOSE) exec api uv run python -m app.cli identity bootstrap \
+		--name "$(or $(name),Research Lab)" \
+		--email "$(or $(email),prof@example.edu)" \
+		--display-name "$(or $(who),Professor)"
 
 seed: ## load the demo dataset
 	cd backend && uv run python -m app.cli seed demo

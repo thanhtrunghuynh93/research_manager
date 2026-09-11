@@ -43,16 +43,12 @@ async def test_bootstrap_records_the_owner_and_a_system_audit_row(db: AsyncSessi
     )
 
     workspace = (
-        await db.execute(
-            select(models.Workspace).where(models.Workspace.id == result.workspace.id)
-        )
+        await db.execute(select(models.Workspace).where(models.Workspace.id == result.workspace.id))
     ).scalar_one()
     assert workspace.owner_id == result.user.id
 
     event = (
-        await db.execute(
-            select(AuditEvent).where(AuditEvent.action == "workspace.bootstrapped")
-        )
+        await db.execute(select(AuditEvent).where(AuditEvent.action == "workspace.bootstrapped"))
     ).scalar_one()
     assert event.actor_kind is ActorKind.SYSTEM
     assert event.actor_id is None
@@ -99,9 +95,7 @@ async def test_recovery_restores_a_locked_out_professor(
     assert (await service.reset_password(db, token=link.token, password=PASSWORD)).id == restored.id
 
 
-async def test_recovery_is_audited_as_a_system_action(
-    db: AsyncSession, prof: models.User
-) -> None:
+async def test_recovery_is_audited_as_a_system_action(db: AsyncSession, prof: models.User) -> None:
     await service.recover_professor(db, email=prof.email)
 
     event = (

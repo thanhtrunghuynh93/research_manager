@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +58,13 @@ class AuthContext:
 class ResetRequested:
     user_id: UUID
     token: str
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryLink:
+    user_id: UUID
+    token: str
+    expires_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,7 +258,10 @@ async def login(session: AsyncSession, *, email: str, password: str) -> LoggedIn
 
 
 async def start_session(session: AsyncSession, *, user_id: UUID) -> LoggedIn:
-    """Open a session for a user who has just proved control of their mailbox (invitation accept)."""
+    """Open a session for someone who has just proved control of their mailbox.
+
+    Used by invitation acceptance, where the token itself is the proof.
+    """
     user = await repository.get_user_by_id(session, user_id)
     if user is None or user.state is not UserState.ACTIVE:
         raise UnauthenticatedError(INVALID_CREDENTIALS)
@@ -315,7 +325,10 @@ async def logout(session: AsyncSession, *, token: str) -> None:
 
 
 async def logout_session(session: AsyncSession, *, session_id: UUID) -> None:
-    """Sign out the caller's own session, identified by the resolved context rather than the token."""
+    """Sign out the caller's own session.
+
+    Identified by the resolved context rather than by the cookie value.
+    """
     revoked = await repository.revoke_session_by_id(session, session_id, now())
     _audit_session_revoked(session, revoked)
     await session.flush()
@@ -599,42 +612,27 @@ async def bootstrap_workspace(
     )
 
 
-async def recover_professor(
-    session: AsyncSession, *, workspace_id: UUID, email: str, password: str
-) -> UserOut:
+async def recover_professor(session: AsyncSession, *, email: str) -> RecoveryLink:
     """AUTH-01 break-glass: restore professor access from the host shell only.
 
-    Reachable from `python -m app.identity.breakglass`, never from the API. Every use writes a
-    system-actor audit row (architecture §6.2).
+    Runs from `app.cli breakglass recover-professor`, never from the API. It issues a short-lived
+    single-use recovery link rather than a password, so the secret is handed over out of band, and
+    it writes a system-actor audit row (docs/runbooks/break-glass.md, architecture §6.2).
     """
     address = security.normalize_email(email)
-    password_hash = security.hash_password(password)
-    at = now()
-
     user = await repository.get_user_by_email(session, address)
-    if user is not None and user.workspace_id != workspace_id:
-        raise ConflictError("that email belongs to another workspace")
     if user is None:
-        user = User(
-            workspace_id=workspace_id,
-            role=Role.PROF,
-            email=address,
-            display_name=address.split("@")[0],
-            state=UserState.ACTIVE,
-        )
-        session.add(user)
-        await session.flush()
+        raise NotFoundError(f"no account with the address {address}")
 
     before = {"role": user.role.value, "state": user.state.value}
+    # The lock-out may be the demotion or deactivation itself, so recovery undoes both.
     user.role = Role.PROF
     user.state = UserState.ACTIVE
     user.deactivated_at = None
-    user.password_hash = password_hash
-    await repository.revoke_sessions_for_user(session, user.id, at)
-    await repository.bump_access_epoch(session, workspace_id)
+    await repository.bump_access_epoch(session, user.workspace_id)
     write_audit(
         session,
-        workspace_id=workspace_id,
+        workspace_id=user.workspace_id,
         actor_id=None,
         actor_kind=ActorKind.SYSTEM,
         action="identity.break_glass",
@@ -643,8 +641,100 @@ async def recover_professor(
         before=before,
         after={"role": Role.PROF.value, "state": UserState.ACTIVE.value},
     )
+    return await _issue_recovery_link(session, user, ttl=security.BREAK_GLASS_RESET_TTL)
+
+
+async def transfer_professor(
+    session: AsyncSession, *, from_email: str, to_email: str, display_name: str | None = None
+) -> RecoveryLink:
+    """AUTH-01 break-glass: hand the workspace to another person in one transaction."""
+    previous_address = security.normalize_email(from_email)
+    successor_address = security.normalize_email(to_email)
+    if previous_address == successor_address:
+        raise ValidationError("the successor must be a different account")
+
+    previous = await repository.get_user_by_email(session, previous_address)
+    if previous is None:
+        raise NotFoundError(f"no account with the address {previous_address}")
+
+    workspace_id = previous.workspace_id
+    successor = await repository.get_user_by_email(session, successor_address)
+    if successor is not None and successor.workspace_id != workspace_id:
+        raise ConflictError("that email belongs to another workspace")
+    if successor is None:
+        successor = User(
+            workspace_id=workspace_id,
+            role=Role.PROF,
+            email=successor_address,
+            display_name=display_name or successor_address.split("@")[0],
+            state=UserState.ACTIVE,
+        )
+        session.add(successor)
+        await session.flush()
+
+    at = now()
+    successor_before = {"role": successor.role.value, "state": successor.state.value}
+    successor.role = Role.PROF
+    successor.state = UserState.ACTIVE
+    successor.deactivated_at = None
+    if display_name:
+        successor.display_name = display_name
+
+    previous.state = UserState.DEACTIVATED
+    previous.deactivated_at = at
+    await repository.revoke_sessions_for_user(session, previous.id, at)
+    await repository.bump_access_epoch(session, workspace_id)
+
+    for target, before, after in (
+        (
+            successor,
+            successor_before,
+            {"role": Role.PROF.value, "state": UserState.ACTIVE.value},
+        ),
+        (previous, {"state": UserState.ACTIVE.value}, {"state": UserState.DEACTIVATED.value}),
+    ):
+        write_audit(
+            session,
+            workspace_id=workspace_id,
+            actor_id=None,
+            actor_kind=ActorKind.SYSTEM,
+            action="identity.break_glass_transfer",
+            target_table="users",
+            target_id=target.id,
+            before=before,
+            after=after,
+        )
+    return await _issue_recovery_link(session, successor, ttl=security.BREAK_GLASS_RESET_TTL)
+
+
+async def _issue_recovery_link(
+    session: AsyncSession, user: User, *, ttl: timedelta
+) -> RecoveryLink:
+    at = now()
+    await repository.revoke_pending_password_resets(session, user.id, at)
+    token, token_hash = security.mint_token()
+    reset = PasswordReset(
+        workspace_id=user.workspace_id,
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=at + ttl,
+    )
+    session.add(reset)
     await session.flush()
-    return UserOut.model_validate(user)
+
+    # The notifications module tells the address on record that recovery happened (step 4).
+    await events.emit(
+        events.PasswordResetRequested(
+            workspace_id=user.workspace_id,
+            user_id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            locale=user.locale,
+            token=token,
+            expires_at=reset.expires_at,
+        )
+    )
+    return RecoveryLink(user_id=user.id, token=token, expires_at=reset.expires_at)
 
 
 def _log_token_link(kind: str, address: str, path: str) -> None:

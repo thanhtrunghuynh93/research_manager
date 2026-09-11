@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.ids import uuid7
 
 # Deterministic constraint names so migrations and docs agree (architecture §5.4).
@@ -76,6 +77,25 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         except BaseException:
             await session.rollback()
             raise
+
+
+def run_in_session[T](operation: Callable[[AsyncSession], Awaitable[T]]) -> T:
+    """Run one async operation in its own engine, session, and transaction.
+
+    For operator commands (app/cli.py and each module's cli.py), which have no request lifespan.
+    """
+
+    async def _main() -> T:
+        init_engine(get_settings())
+        try:
+            async with session_factory()() as session:
+                result = await operation(session)
+                await session.commit()
+                return result
+        finally:
+            await dispose_engine()
+
+    return asyncio.run(_main())
 
 
 async def ping() -> bool:

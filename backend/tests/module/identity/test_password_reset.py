@@ -18,9 +18,7 @@ pytestmark = pytest.mark.module
 NEW_PASSWORD = "a brand new long password"  # noqa: S105 - test credential
 
 
-async def test_a_reset_token_sets_a_new_password(
-    db: AsyncSession, student_a: models.User
-) -> None:
+async def test_a_reset_token_sets_a_new_password(db: AsyncSession, student_a: models.User) -> None:
     requested = await service.request_password_reset(db, email=student_a.email)
     assert requested is not None
 
@@ -44,9 +42,7 @@ async def test_a_reset_revokes_every_existing_session(
     assert await service.resolve_session(db, token=logged_in.token) is None
 
 
-async def test_a_reset_token_cannot_be_used_twice(
-    db: AsyncSession, student_a: models.User
-) -> None:
+async def test_a_reset_token_cannot_be_used_twice(db: AsyncSession, student_a: models.User) -> None:
     requested = await service.request_password_reset(db, email=student_a.email)
     assert requested is not None
     await service.reset_password(db, token=requested.token, password=NEW_PASSWORD)
@@ -55,9 +51,7 @@ async def test_a_reset_token_cannot_be_used_twice(
         await service.reset_password(db, token=requested.token, password="yet another password")
 
 
-async def test_an_expired_reset_token_is_rejected(
-    db: AsyncSession, student_a: models.User
-) -> None:
+async def test_an_expired_reset_token_is_rejected(db: AsyncSession, student_a: models.User) -> None:
     requested = await service.request_password_reset(db, email=student_a.email)
     assert requested is not None
     await db.execute(

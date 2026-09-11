@@ -41,7 +41,11 @@ USER_STATE_ENUM = Enum(
 
 
 def _workspace_scoped_user_fk() -> ForeignKeyConstraint:
-    """(workspace_id, user_id) -> users(workspace_id, id): same workspace, enforced by the database."""
+    """(workspace_id, user_id) -> users(workspace_id, id).
+
+    The same-workspace invariant from architecture §5.1, enforced by the database rather than by a
+    check every caller must remember.
+    """
     return ForeignKeyConstraint(
         ["workspace_id", "user_id"],
         ["users.workspace_id", "users.id"],

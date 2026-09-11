@@ -22,6 +22,7 @@ TOKEN_BYTES = 32
 
 INVITATION_TTL = timedelta(days=7)  # architecture §6.2
 PASSWORD_RESET_TTL = timedelta(hours=2)
+BREAK_GLASS_RESET_TTL = timedelta(minutes=15)  # docs/runbooks/break-glass.md
 SESSION_IDLE_TTL = timedelta(hours=12)
 SESSION_ABSOLUTE_TTL = timedelta(days=30)
 LAST_SEEN_THROTTLE = timedelta(seconds=60)

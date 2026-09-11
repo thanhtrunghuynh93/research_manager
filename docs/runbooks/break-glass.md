@@ -12,8 +12,11 @@ through the API by design.
    docker compose --env-file infra/.env -f infra/docker-compose.yml exec api \
      python -m app.cli breakglass recover-professor --email <current-professor-email>
    ```
-   The command prints a single-use reset link valid for 15 minutes, writes an `audit_events` row
-   with `actor_kind = system`, and emails the previous professor address about the action.
+   The command prints a single-use reset link valid for 15 minutes and writes an `audit_events`
+   row with `actor_kind = system`. It also restores the account's `prof` role and `active` state,
+   since the lock-out may be a mistaken demotion or deactivation. The notification to the address
+   on record is sent once the notifications module is deployed; until then the audit row and this
+   log entry are the record of the action.
 3. For a transfer, run `breakglass transfer-professor --from <old> --to <new>` instead; the old
    account is deactivated in the same transaction.
 4. Hand the link over through a different channel from the one used to request it.

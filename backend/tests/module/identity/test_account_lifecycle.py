@@ -116,9 +116,7 @@ async def test_a_student_cannot_change_their_own_role(
         await service.set_role(db, student_a_scope, student_a.id, Role.PROF)
 
 
-async def test_a_user_updates_their_own_profile(
-    db: AsyncSession, student_a_scope: Scope
-) -> None:
+async def test_a_user_updates_their_own_profile(db: AsyncSession, student_a_scope: Scope) -> None:
     user = await service.update_profile(db, student_a_scope, display_name="Renamed", locale="vi")
 
     assert user.display_name == "Renamed"

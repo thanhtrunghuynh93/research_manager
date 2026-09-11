@@ -118,9 +118,7 @@ async def test_requesting_a_reset_always_answers_the_same(
     client: AsyncClient, student_a: models.User
 ) -> None:
     known = await client.post("/api/v1/auth/password-reset", json={"email": student_a.email})
-    unknown = await client.post(
-        "/api/v1/auth/password-reset", json={"email": "nobody@example.edu"}
-    )
+    unknown = await client.post("/api/v1/auth/password-reset", json={"email": "nobody@example.edu"})
 
     assert known.status_code == unknown.status_code == 202
     assert known.text == unknown.text, "the response must not reveal whether the account exists"

@@ -112,7 +112,9 @@ async def test_invitation_and_acceptance_are_audited(db: AsyncSession, prof_scop
     invited = await service.invite_user(db, prof_scope, email="new@example.edu")
     await service.accept_invitation(db, token=invited.token, password=PASSWORD)
 
-    actions = (await db.execute(select(AuditEvent.action).order_by(AuditEvent.occurred_at))).scalars()
+    actions = (
+        await db.execute(select(AuditEvent.action).order_by(AuditEvent.occurred_at))
+    ).scalars()
     assert {"user.invited", "invitation.accepted"} <= set(actions)
 
 

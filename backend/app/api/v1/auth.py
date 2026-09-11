@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Response, status
 
-from app.api.deps import ContextDep, SessionDep, SettingsDep, clear_session_cookie, set_session_cookie
+from app.api.deps import (
+    ContextDep,
+    SessionDep,
+    SettingsDep,
+    clear_session_cookie,
+    set_session_cookie,
+)
 from app.identity import service
 from app.identity.schemas import (
     AcceptInvitationIn,

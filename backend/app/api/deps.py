@@ -16,6 +16,7 @@ from app.core.authz import Scope
 from app.core.config import Settings, get_settings
 from app.core.db import get_session
 from app.core.errors import UnauthenticatedError
+from app.identity import security as identity_security
 from app.identity import service as identity_service
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -32,7 +33,7 @@ def set_session_cookie(response: Response, token: str, settings: Settings) -> No
         secure=settings.env == "prod",
         samesite="lax",
         path="/",
-        max_age=int(identity_service.security.SESSION_ABSOLUTE_TTL.total_seconds()),
+        max_age=int(identity_security.SESSION_ABSOLUTE_TTL.total_seconds()),
     )
 
 
@@ -42,9 +43,7 @@ def clear_session_cookie(response: Response, settings: Settings) -> None:
     )
 
 
-async def current_context(
-    request: Request, session: SessionDep
-) -> identity_service.AuthContext:
+async def current_context(request: Request, session: SessionDep) -> identity_service.AuthContext:
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         raise UnauthenticatedError("no session")
