@@ -186,3 +186,23 @@ async def test_transfer_advances_the_access_epoch(
         )
     ).scalar_one()
     assert after > before
+
+
+async def test_transfer_audits_the_state_the_predecessor_actually_had(
+    db: AsyncSession, prof: models.User, student_a: models.User
+) -> None:
+    # The outgoing professor may already be deactivated: that is often why a transfer is needed.
+    prof.state = models.UserState.DEACTIVATED
+    await db.flush()
+
+    await service.transfer_professor(db, from_email=prof.email, to_email=student_a.email)
+
+    event = (
+        await db.execute(
+            select(AuditEvent).where(
+                AuditEvent.action == "identity.break_glass_transfer",
+                AuditEvent.target_id == prof.id,
+            )
+        )
+    ).scalar_one()
+    assert event.before == {"state": "deactivated"}

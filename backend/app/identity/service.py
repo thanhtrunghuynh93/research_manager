@@ -674,6 +674,7 @@ async def transfer_professor(
 
     at = now()
     successor_before = {"role": successor.role.value, "state": successor.state.value}
+    previous_before = {"state": previous.state.value}
     successor.role = Role.PROF
     successor.state = UserState.ACTIVE
     successor.deactivated_at = None
@@ -691,7 +692,7 @@ async def transfer_professor(
             successor_before,
             {"role": Role.PROF.value, "state": UserState.ACTIVE.value},
         ),
-        (previous, {"state": UserState.ACTIVE.value}, {"state": UserState.DEACTIVATED.value}),
+        (previous, previous_before, {"state": UserState.DEACTIVATED.value}),
     ):
         write_audit(
             session,
