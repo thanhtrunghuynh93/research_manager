@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app
+      - run: uv run lint-imports
+
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run pytest --cov=app --cov-report=xml --cov-fail-under=85
+      - uses: actions/upload-artifact@v4
+        with: { name: backend-coverage, path: backend/coverage.xml }
+
+  migrate-check:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: rm, POSTGRES_PASSWORD: rm, POSTGRES_DB: rm }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      RM_DATABASE_URL: postgresql+psycopg://rm:rm@localhost:5432/rm
+      RM_SECRET_KEY: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run alembic upgrade head
+      - run: uv run alembic check
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+
+  client-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: cd backend && uv sync --frozen
+      - run: cd frontend && npm ci
+      - run: bash scripts/gen_api_client.sh
+      - run: git diff --exit-code -- frontend/src/api/generated docs/api/openapi.json
+
+  traceability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check_traceability.py
+
+  images:
+    runs-on: ubuntu-latest
+    needs: [backend-lint, backend-test, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with: { context: backend, push: false, tags: rm-backend:ci, load: true }
+      - name: Build caddy image (with frontend)
+        uses: docker/build-push-action@v6
+        with: { context: ., file: infra/caddy/Dockerfile, push: false, tags: rm-caddy:ci, load: true }
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with: { image-ref: rm-backend:ci, severity: HIGH,CRITICAL, exit-code: "1", ignore-unfixed: true }
