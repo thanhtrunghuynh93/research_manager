@@ -214,3 +214,47 @@ async def test_a_body_over_the_cap_is_truncated_and_says_so(monkeypatch) -> None
 
     assert len(fetched.data) == MAX_BYTES
     assert fetched.truncated is True
+
+
+def _endless_stream() -> object:
+    """An httpx async stream that never ends, standing in for a hostile or broken server."""
+    import httpx
+
+    class _Endless(httpx.AsyncByteStream):
+        served = 0
+
+        async def __aiter__(self):  # noqa: ANN204 - httpx.AsyncByteStream protocol
+            while True:
+                _Endless.served += 64 * 1024
+                yield b"x" * (64 * 1024)
+
+        async def aclose(self) -> None:
+            return None
+
+    return _Endless()
+
+
+async def test_an_endless_body_stops_at_the_cap_rather_than_being_buffered(monkeypatch) -> None:
+    """The cap has to bound the download, not only what is kept.
+
+    `response.content` materialises the whole body before any slice, so a link to a 4 GB or
+    chunked-forever response would exhaust the worker before the truncation ran. This response
+    never ends; the fetch has to stop reading on its own.
+    """
+    import httpx
+
+    from app.reporting.links import MAX_BYTES
+
+    stream = _endless_stream()
+    transport = _Transport(
+        httpx.Response(200, stream=stream, headers={"content-type": "text/plain"})
+    )
+
+    fetched = await _fetch_with(
+        monkeypatch, transport, "https://example.com/endless", lambda host: ["93.184.216.34"]
+    )
+
+    assert len(fetched.data) == MAX_BYTES
+    assert fetched.truncated is True
+    # Whatever crossed the cap is the chunk that crossed it; more means it kept reading.
+    assert type(stream).served < MAX_BYTES + 1024 * 1024

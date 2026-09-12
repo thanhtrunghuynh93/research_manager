@@ -110,29 +110,44 @@ def check_url(url: str, *, resolve: Resolver | None = None) -> CheckedUrl:
 
 
 async def fetch(url: str, *, resolve: Resolver | None = None) -> Fetched:
-    """Fetch a checked URL, bounded in size and time, re-checking every redirect."""
+    """Fetch a checked URL, bounded in size and time, re-checking every redirect.
+
+    The size bound is applied while reading, not after: see the comment in the loop.
+    """
     import httpx
 
     checked = check_url(url, resolve=resolve)
     async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, follow_redirects=False) as client:
         current = checked.url
         for _ in range(MAX_REDIRECTS + 1):
-            response = await client.get(current, headers={"Accept": "*/*"})
-            if response.is_redirect:
-                location = response.headers.get("location", "")
-                if not location:
-                    raise LinkRefusedError("the server redirected without saying where")
-                # A redirect is a second request to a destination someone else chose.
-                current = check_url(str(response.url.join(location)), resolve=resolve).url
-                continue
+            # Streamed, so the size bound bounds the *download* and not just what is kept. Reading
+            # `response.content` first would buffer the whole body before the slice, which makes
+            # the 5 MB cap a truncation rather than a limit: one link to an endless response is
+            # then enough to exhaust the worker.
+            async with client.stream("GET", current, headers={"Accept": "*/*"}) as response:
+                if response.is_redirect:
+                    location = response.headers.get("location", "")
+                    if not location:
+                        raise LinkRefusedError("the server redirected without saying where")
+                    # A redirect is a second request to a destination someone else chose.
+                    current = check_url(str(response.url.join(location)), resolve=resolve).url
+                    continue
 
-            response.raise_for_status()
-            body = response.content[:MAX_BYTES]
-            return Fetched(
-                url=current,
-                content_type=response.headers.get("content-type", "application/octet-stream"),
-                data=body,
-                truncated=len(response.content) > MAX_BYTES,
-            )
+                response.raise_for_status()
+                body = bytearray()
+                truncated = False
+                async for piece in response.aiter_bytes():
+                    body.extend(piece)
+                    if len(body) > MAX_BYTES:
+                        del body[MAX_BYTES:]
+                        truncated = True
+                        break
+
+                return Fetched(
+                    url=current,
+                    content_type=response.headers.get("content-type", "application/octet-stream"),
+                    data=bytes(body),
+                    truncated=truncated,
+                )
 
     raise LinkRefusedError(f"the link redirected more than {MAX_REDIRECTS} times")
