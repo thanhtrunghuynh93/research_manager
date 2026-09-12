@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -23,6 +23,7 @@ from app.api.v1 import include_routers
 from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.db import dispose_engine, init_engine
+from app.core.jobs import connector_for, procrastinate_app
 
 
 def configure_logging(settings: Settings) -> None:
@@ -48,10 +49,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # never starts the app never registers one (architecture §10).
         ai_bootstrap.install(settings)
         storage.register_store(storage.build_store(settings))
-        try:
-            yield
-        finally:
-            await dispose_engine()
+        # Without this every `defer_async` in the API process raises `AppNotOpen`, so a submitted
+        # report would enqueue no assessment and a webhook would enqueue no sync (app.core.jobs).
+        with ExitStack() as queue:
+            queue.enter_context(procrastinate_app.replace_connector(connector_for(settings)))
+            await procrastinate_app.open_async()
+            try:
+                yield
+            finally:
+                await procrastinate_app.close_async()
+                await dispose_engine()
 
     application = FastAPI(
         title="Research Management System",

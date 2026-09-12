@@ -26,7 +26,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.jobs import key
+from app.core.jobs import defer_after_commit, key
 from app.reporting import service as reporting_service
 
 log = logging.getLogger(__name__)
@@ -51,17 +51,22 @@ async def defer_pipeline(
     period_id: UUID,
     report_version_id: UUID,
 ) -> None:
-    """Enqueue inside the caller's transaction, so the report and its job commit together."""
+    """Record the enqueue; it is sent once the caller's transaction commits.
+
+    Deferring inline would let the worker dequeue this job and look for a report version that has
+    not committed yet, and would leave the job behind if the submission rolled back (app.core.jobs).
+    """
     from app.assessment import tasks
 
-    await tasks.run_assessment.configure(
+    defer_after_commit(
+        session,
+        tasks.run_assessment,
         queueing_lock=pipeline_key(
             student_id=student_id,
             project_id=project_id,
             period_id=period_id,
             report_version_id=report_version_id,
         ),
-    ).defer_async(
         student_id=str(student_id),
         project_id=str(project_id),
         period_id=str(period_id),

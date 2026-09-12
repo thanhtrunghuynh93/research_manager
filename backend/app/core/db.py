@@ -69,14 +69,22 @@ def session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: one session per request, committed on success, rolled back on error."""
+    """FastAPI dependency: one session per request, committed on success, rolled back on error.
+
+    Jobs recorded with `jobs.defer_after_commit` are sent here, after the commit, so a worker
+    never dequeues a job for rows the request has not yet made visible (app.core.jobs).
+    """
+    from app.core import jobs
+
     async with session_factory()() as session:
         try:
             yield session
             await session.commit()
         except BaseException:
+            jobs.discard_deferred(session)
             await session.rollback()
             raise
+        await jobs.flush_deferred(session)
 
 
 def run_in_session[T](operation: Callable[[AsyncSession], Awaitable[T]]) -> T:
@@ -86,11 +94,14 @@ def run_in_session[T](operation: Callable[[AsyncSession], Awaitable[T]]) -> T:
     """
 
     async def _main() -> T:
+        from app.core import jobs
+
         init_engine(get_settings())
         try:
             async with session_factory()() as session:
                 result = await operation(session)
                 await session.commit()
+                await jobs.flush_deferred(session)
                 return result
         finally:
             await dispose_engine()
