@@ -9,6 +9,10 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
+    // All interfaces, not just loopback. Vite binds 127.0.0.1 by default, which makes the dev
+    // server the one thing in the stack unreachable from another machine — every container port
+    // is published on 0.0.0.0 — so it refuses connections over a LAN or Tailscale address.
+    host: true,
     port: 8020,
     proxy: {
       // Same-origin in production (Caddy); in dev the api container publishes 8000 on 8021.
