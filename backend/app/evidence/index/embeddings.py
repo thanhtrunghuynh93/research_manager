@@ -83,6 +83,18 @@ def current_embedder() -> Embedder:
     return _embedder
 
 
+LOCAL_EMBEDDER: Embedder = DeterministicEmbedder()
+
+
+def local_embedder() -> Embedder:
+    """The embedder that reaches nobody, for material that must not leave the host.
+
+    Kept separate from `_embedder` so a caller can ask for it explicitly, and so its vectors are
+    cached under their own key rather than mixed into the registered embedder's space.
+    """
+    return LOCAL_EMBEDDER
+
+
 # sha256(text) + model keyed, as the architecture's cost control requires: an unchanged chunk is
 # never re-embedded (architecture §10).
 _cache: dict[tuple[str, str], list[float]] = {}

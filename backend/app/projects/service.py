@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
@@ -108,6 +109,25 @@ async def update_project(
         )
         await session.flush()
     return ProjectOut.model_validate(project)
+
+
+async def ai_restricted_for_job(
+    session: AsyncSession, workspace_id: UUID, project_id: UUID
+) -> bool:
+    """Job-level read: may this project's text be sent to a model provider? (architecture §10)
+
+    Unscoped like the other `_for_job` reads, because indexing runs in a worker with no Scope. It
+    answers with the workspace pinned, and a project that is not there reads as restricted — the
+    fail-closed direction for a question about sending research text off the host.
+    """
+    row = (
+        await session.execute(
+            select(Project.ai_restricted).where(
+                Project.id == project_id, Project.workspace_id == workspace_id
+            )
+        )
+    ).scalar_one_or_none()
+    return True if row is None else bool(row)
 
 
 async def get_project(session: AsyncSession, scope: Scope, project_id: UUID) -> ProjectOut:

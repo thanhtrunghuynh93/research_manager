@@ -38,7 +38,7 @@ from app.evidence.connectors.base import (
 )
 from app.evidence.index import retrieval
 from app.evidence.index.chunking import chunk_text
-from app.evidence.index.embeddings import EmbedContext, embed_texts
+from app.evidence.index.embeddings import EmbedContext, Embedder, embed_texts, local_embedder
 from app.evidence.models import (
     AttributionState,
     ConnectionState,
@@ -886,6 +886,7 @@ async def index_evidence(
     if chunks:
         vectors = await embed_texts(
             [chunk.text for chunk in chunks],
+            embedder=await _embedder_for(session, workspace_id, project_id),
             context=EmbedContext(workspace_id=workspace_id, project_id=project_id, session=session),
         )
         for chunk, vector in zip(chunks, vectors, strict=True):
@@ -905,6 +906,23 @@ async def index_evidence(
             )
     await session.flush()
     return EvidenceReferenceOut.model_validate(reference)
+
+
+async def _embedder_for(
+    session: AsyncSession, workspace_id: UUID, project_id: UUID | None
+) -> Embedder | None:
+    """The local embedder for a restricted project, the registered one otherwise.
+
+    `ai_restricted` was enforced only on the completion step, so a restricted project's report and
+    diff text still went to the provider at index time — the one place the whole corpus passes
+    through (architecture §10). Deciding it here rather than inside the gateway-backed embedder
+    keeps the two vector spaces on separate cache keys, and keeps `app.evidence` from needing to
+    know that a provider exists at all.
+    """
+    if project_id is None:
+        return None
+    restricted = await projects_service.ai_restricted_for_job(session, workspace_id, project_id)
+    return local_embedder() if restricted else None
 
 
 async def search_evidence(
@@ -927,6 +945,7 @@ async def search_evidence(
     if mode in ("hybrid", "semantic"):
         [embedding] = await embed_texts(
             [text],
+            embedder=await _embedder_for(session, scope.workspace_id, project_id),
             context=EmbedContext(
                 workspace_id=scope.workspace_id, project_id=project_id, session=session
             ),
