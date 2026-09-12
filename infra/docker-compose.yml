@@ -7,6 +7,10 @@ x-backend: &backend
   build:
     context: ../backend
   env_file: .env
+  volumes:
+    # The GitHub App private key, read-only. Without it the connector falls back to the in-memory
+    # one and a connected repository would silently report no activity (REPO-01, AC-04).
+    - ${RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}:/run/secrets/github-app.pem:ro
   depends_on:
     postgres:
       condition: service_healthy

@@ -733,6 +733,15 @@
         "title": "AssessmentOut",
         "type": "object"
       },
+      "AttributionState": {
+        "enum": [
+          "resolved",
+          "unresolved_identity",
+          "unresolved_project"
+        ],
+        "title": "AttributionState",
+        "type": "string"
+      },
       "BudgetState": {
         "properties": {
           "analysis_delayed": {
@@ -918,6 +927,145 @@
         ],
         "title": "CitationOut",
         "type": "object"
+      },
+      "ConnectIn": {
+        "properties": {
+          "credential_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Ref"
+          },
+          "default_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Branch"
+          },
+          "external_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "External Id",
+            "type": "string"
+          },
+          "full_name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Full Name",
+            "type": "string"
+          },
+          "provider": {
+            "default": "github",
+            "pattern": "^(github|gitlab)$",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "external_id",
+          "full_name"
+        ],
+        "title": "ConnectIn",
+        "type": "object"
+      },
+      "ConnectionState": {
+        "enum": [
+          "connected",
+          "unauthorized",
+          "disconnected"
+        ],
+        "title": "ConnectionState",
+        "type": "string"
+      },
+      "ContributionOut": {
+        "properties": {
+          "attribution_state": {
+            "$ref": "#/components/schemas/AttributionState"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ContributionRole"
+          },
+          "share": {
+            "$ref": "#/components/schemas/ContributionShare"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "student_id",
+          "role",
+          "share",
+          "attribution_state",
+          "provenance",
+          "created_at"
+        ],
+        "title": "ContributionOut",
+        "type": "object"
+      },
+      "ContributionRole": {
+        "enum": [
+          "author",
+          "committer",
+          "reviewer",
+          "merger"
+        ],
+        "title": "ContributionRole",
+        "type": "string"
+      },
+      "ContributionShare": {
+        "enum": [
+          "individual",
+          "joint"
+        ],
+        "title": "ContributionShare",
+        "type": "string"
       },
       "ConversationOut": {
         "properties": {
@@ -1235,6 +1383,166 @@
         "title": "EntryOut",
         "type": "object"
       },
+      "EvidenceHitOut": {
+        "properties": {
+          "evidence_ref_id": {
+            "format": "uuid",
+            "title": "Evidence Ref Id",
+            "type": "string"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "source_time": {
+            "format": "date-time",
+            "title": "Source Time",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_ref_id",
+          "text",
+          "score",
+          "source_kind",
+          "source_id",
+          "source_version",
+          "locator",
+          "source_time"
+        ],
+        "title": "EvidenceHitOut",
+        "type": "object"
+      },
+      "EvidenceReferenceOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ingested_at": {
+            "format": "date-time",
+            "title": "Ingested At",
+            "type": "string"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "owner_student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Student Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/EvidenceSourceKind"
+          },
+          "source_time": {
+            "format": "date-time",
+            "title": "Source Time",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "supported_claim": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supported Claim"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "required": [
+          "id",
+          "visibility",
+          "source_kind",
+          "source_id",
+          "source_version",
+          "locator",
+          "source_time",
+          "ingested_at"
+        ],
+        "title": "EvidenceReferenceOut",
+        "type": "object"
+      },
+      "EvidenceSourceKind": {
+        "description": "Where a piece of evidence came from (architecture \u00a75.7).",
+        "enum": [
+          "report_entry",
+          "artifact_version",
+          "repository_event",
+          "decision",
+          "feedback"
+        ],
+        "title": "EvidenceSourceKind",
+        "type": "string"
+      },
       "ExcuseIn": {
         "properties": {
           "reason": {
@@ -1400,6 +1708,125 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IdentityIn": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          },
+          "provider": {
+            "default": "github",
+            "title": "Provider",
+            "type": "string"
+          },
+          "student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          }
+        },
+        "title": "IdentityIn",
+        "type": "object"
+      },
+      "IdentityOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_bot": {
+            "title": "Is Bot",
+            "type": "boolean"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/IdentityVerification"
+          }
+        },
+        "required": [
+          "id",
+          "student_id",
+          "provider",
+          "verification",
+          "is_bot",
+          "created_at"
+        ],
+        "title": "IdentityOut",
+        "type": "object"
+      },
+      "IdentityVerification": {
+        "description": "REPO-03: how far we trust that this provider account is this student.",
+        "enum": [
+          "pending",
+          "verified_oauth",
+          "confirmed_by_student",
+          "confirmed_by_prof",
+          "rejected"
+        ],
+        "title": "IdentityVerification",
+        "type": "string"
+      },
       "InvitationIn": {
         "properties": {
           "display_name": {
@@ -1474,6 +1901,27 @@
           "created_at"
         ],
         "title": "InvitationOut",
+        "type": "object"
+      },
+      "LinkProjectIn": {
+        "properties": {
+          "path_rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path Rules",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "LinkProjectIn",
         "type": "object"
       },
       "LinkRequest": {
@@ -2677,6 +3125,40 @@
         "title": "ProjectIn",
         "type": "object"
       },
+      "ProjectLinkOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "path_rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path Rules",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "repository_id": {
+            "format": "uuid",
+            "title": "Repository Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "repository_id",
+          "project_id",
+          "path_rules"
+        ],
+        "title": "ProjectLinkOut",
+        "type": "object"
+      },
       "ProjectOut": {
         "properties": {
           "ai_restricted": {
@@ -3133,6 +3615,61 @@
           "full_name"
         ],
         "title": "RepositoryHealth",
+        "type": "object"
+      },
+      "RepositoryOut": {
+        "properties": {
+          "connection_state": {
+            "$ref": "#/components/schemas/ConnectionState"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "default_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Branch"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "external_id",
+          "full_name",
+          "visibility",
+          "connection_state",
+          "created_at"
+        ],
+        "title": "RepositoryOut",
         "type": "object"
       },
       "ResearchDecisionIn": {
@@ -3654,6 +4191,40 @@
         ],
         "title": "SyncState",
         "type": "string"
+      },
+      "SyncStatusOut": {
+        "properties": {
+          "connection_state": {
+            "title": "Connection State",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repository_id": {
+            "format": "uuid",
+            "title": "Repository Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id",
+          "full_name",
+          "connection_state"
+        ],
+        "title": "SyncStatusOut",
+        "type": "object"
       },
       "TaskIn": {
         "properties": {
@@ -5240,6 +5811,46 @@
         ]
       }
     },
+    "/api/v1/assistant/ask/stream": {
+      "post": {
+        "description": "Requirements \u00a711: a first meaningful response inside ten seconds, and visible progress.\n\nMost of the wait is routing, facts and retrieval rather than generation, so the progress of\nthose steps is what makes it legible. The answer contract is the same one `/ask` returns; it\nsimply arrives in the order it becomes useful (architecture \u00a711).",
+        "operationId": "ask_streaming_api_v1_assistant_ask_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask, and watch the steps while it works",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
     "/api/v1/assistant/conversations": {
       "get": {
         "operationId": "list_conversations_api_v1_assistant_conversations_get",
@@ -5546,6 +6157,333 @@
         "summary": "Configure the reporting calendar",
         "tags": [
           "reporting"
+        ]
+      }
+    },
+    "/api/v1/contributions": {
+      "get": {
+        "description": "REPO-04: each student can see what was attributed to them, so misattribution can be\nchallenged under ASSESS-08.",
+        "operationId": "list_contributions_api_v1_contributions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContributionOut"
+                  },
+                  "title": "Response List Contributions Api V1 Contributions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Contributions attributed to the caller or a student",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/developer-identities": {
+      "get": {
+        "operationId": "list_identities_api_v1_developer_identities_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IdentityOut"
+                  },
+                  "title": "Response List Identities Api V1 Developer Identities Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Identities the caller may see",
+        "tags": [
+          "evidence"
+        ]
+      },
+      "post": {
+        "description": "A student may claim their own account; only the professor may map someone else's.",
+        "operationId": "map_identity_api_v1_developer_identities_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Link a provider account to a student",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/developer-identities/{identity_id}/confirm": {
+      "post": {
+        "operationId": "confirm_identity_api_v1_developer_identities__identity_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm a claimed identity",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/references/{reference_id}": {
+      "get": {
+        "operationId": "get_reference_api_v1_evidence_references__reference_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reference_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reference Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReferenceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One citable evidence reference",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/search": {
+      "get": {
+        "description": "AUTH-02: the predicate sits inside each ranking arm, so a chunk outside the caller's scope\nis never scored and cannot surface through a snippet or a citation.",
+        "operationId": "search_evidence_api_v1_evidence_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvidenceHitOut"
+                  },
+                  "title": "Response Search Evidence Api V1 Evidence Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permission-filtered search over the evidence index",
+        "tags": [
+          "evidence"
         ]
       }
     },
@@ -7641,6 +8579,295 @@
         "summary": "Request a revision of one project entry",
         "tags": [
           "reporting"
+        ]
+      }
+    },
+    "/api/v1/repositories": {
+      "get": {
+        "operationId": "list_repositories_api_v1_repositories_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RepositoryOut"
+                  },
+                  "title": "Response List Repositories Api V1 Repositories Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Connected repositories",
+        "tags": [
+          "evidence"
+        ]
+      },
+      "post": {
+        "description": "REPO-01: read-only, and the product stays fully usable without ever calling this.",
+        "operationId": "connect_repository_api_v1_repositories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Connect a repository the professor has granted read-only access to",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository_id}/projects": {
+      "get": {
+        "operationId": "list_project_links_api_v1_repositories__repository_id__projects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Repository Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectLinkOut"
+                  },
+                  "title": "Response List Project Links Api V1 Repositories  Repository Id  Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Projects this repository serves",
+        "tags": [
+          "evidence"
+        ]
+      },
+      "post": {
+        "description": "REPO-04: a repository serving several projects leaves unmatched paths unresolved rather\nthan guessing, so the path rules are how attribution gets decided.",
+        "operationId": "link_project_api_v1_repositories__repository_id__projects_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Repository Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkProjectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Say which project this repository's work belongs to",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository_id}/sync": {
+      "get": {
+        "description": "REPO-05: never-synced is a state the screen shows, not an absence it hides.",
+        "operationId": "sync_status_api_v1_repositories__repository_id__sync_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Repository Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Last sync, its range, and any error",
+        "tags": [
+          "evidence"
+        ]
+      },
+      "post": {
+        "description": "REPO-05: a manual resync is idempotent.\n\nReprocessing the same range adds no event, no contribution and no score (AC-09).",
+        "operationId": "sync_now_api_v1_repositories__repository_id__sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Repository Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "full",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Full",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resync now",
+        "tags": [
+          "evidence"
         ]
       }
     },

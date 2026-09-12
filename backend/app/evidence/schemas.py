@@ -96,8 +96,17 @@ class EventOut(BaseModel):
 
 
 class WebhookResult(BaseModel):
+    """`accepted` means this delivery was new; a repeat of the same id is False (AC-09).
+
+    `repository_id` is None when the delivery is for a repository this workspace never connected.
+    That is not a failure — it is recorded and dropped — but it is the difference between a webhook
+    that is doing something and one that is quietly landing nowhere, which is worth being able to
+    see from the outside.
+    """
+
     accepted: bool
     delivery_id: str
+    repository_id: UUID | None = None
     detail: str = ""
 
 

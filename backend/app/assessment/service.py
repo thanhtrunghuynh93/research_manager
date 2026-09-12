@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.gateway import AIGateway, Budget, CallContext, RestrictedGateway
 from app.ai.prompts.registry import load as load_prompt
 from app.ai.schemas import ClaimList, ClaimVerdicts, RubricOutput
-from app.assessment import metrics, policies, snapshot  # noqa: F401
+from app.assessment import events, metrics, policies, snapshot  # noqa: F401
 from app.assessment import repository as repo
 from app.assessment.metrics import (
     NOT_APPLICABLE,
@@ -52,6 +52,7 @@ from app.assessment.schemas import (
     SnapshotOut,
     TrendPoint,
 )
+from app.core import metrics as core_metrics
 from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now
@@ -427,6 +428,8 @@ def validate_output(output: RubricOutput, *, allowed_evidence_ids: set[UUID]) ->
         value: Any = UNKNOWN if rating.rating == UNKNOWN else int(rating.rating)
 
         if dropped:
+            # §15 observability: a rise here means the model is citing things that are not there.
+            core_metrics.CITATION_FAILURES.labels(surface="assessment").inc(len(dropped))
             notes.append(
                 f"{len(dropped)} cited evidence id(s) were not in the snapshot and were dropped"
             )

@@ -398,7 +398,15 @@ class OpenAIGateway:
         )
 
     async def _record(self, context: CallContext, **values: Any) -> None:
-        from app.ai import cost as cost
+        from app.ai import cost
+        from app.core import metrics
+
+        # Counted here rather than at each call site: this is the one place every outcome —
+        # completed, refused, failed, delayed by budget — passes through (§15 observability).
+        metrics.MODEL_CALLS.labels(
+            prompt_id=str(values.get("prompt_id", "unknown")),
+            status=str(values.get("status", "unknown")),
+        ).inc()
 
         session = context.session or self.session
         workspace_id = context.workspace_id or self.workspace_id

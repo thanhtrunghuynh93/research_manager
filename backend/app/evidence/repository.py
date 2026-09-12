@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import Scope, visible_to
 from app.core.ids import uuid7
 from app.evidence.models import (
+    ConnectionState,
     Contribution,
     DeveloperIdentity,
     EvidenceChunk,
@@ -404,3 +405,35 @@ async def contributions_for_event(session: AsyncSession, event_id: UUID) -> list
         .scalars()
         .all()
     )
+
+
+async def connected_repositories(session: AsyncSession) -> list[Repository]:
+    """Every repository the worker should sync, across every workspace.
+
+    Job-level read with no Scope: the incremental sync runs on a schedule, not on behalf of anyone.
+    `unauthorized` rows are skipped — a revoked credential needs a person, and retrying it every
+    thirty minutes only fills the log (REPO-05, architecture §8.3).
+    """
+    return list(
+        (
+            await session.execute(
+                select(Repository)
+                .where(Repository.connection_state == ConnectionState.CONNECTED)
+                .order_by(Repository.workspace_id, Repository.full_name)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def get_evidence_reference(
+    session: AsyncSession, scope: Scope, reference_id: UUID
+) -> EvidenceReference | None:
+    return (
+        await session.execute(
+            select(EvidenceReference).where(
+                EvidenceReference.id == reference_id, visible_to(scope, EvidenceReference)
+            )
+        )
+    ).scalar_one_or_none()

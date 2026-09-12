@@ -14,6 +14,7 @@ services:
     command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ../backend:/app
+      - ${RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}:/run/secrets/github-app.pem:ro
     ports:
       - "8000:8000"
     environment:
@@ -26,6 +27,7 @@ services:
     command: ["uv", "run", "python", "-m", "app.worker"]
     volumes:
       - ../backend:/app
+      - ${RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}:/run/secrets/github-app.pem:ro
     environment:
       RM_ENV: dev
 

@@ -22,7 +22,7 @@ from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.ids import uuid7
-from app.core.types import Visibility
+from app.core.types import Role, Visibility
 from app.evidence import policies  # noqa: F401  (policies register on import)
 from app.evidence import repository as repo
 from app.evidence.connectors.base import (
@@ -505,11 +505,19 @@ async def ingest_webhook(
     )
     if inserted.scalar_one_or_none() is None:
         return WebhookResult(
-            accepted=False, delivery_id=event.delivery_id, detail="already delivered"
+            accepted=False,
+            delivery_id=event.delivery_id,
+            repository_id=repository.id if repository else None,
+            detail="already delivered",
         )
 
     await session.flush()
-    return WebhookResult(accepted=True, delivery_id=event.delivery_id)
+    return WebhookResult(
+        accepted=True,
+        delivery_id=event.delivery_id,
+        repository_id=repository.id if repository else None,
+        detail="" if repository else "no connected repository matches this delivery",
+    )
 
 
 async def record_force_push(
@@ -1093,3 +1101,101 @@ def register_subscriptions() -> None:
 
 
 register_subscriptions()
+
+
+# ------------------------------------------------------------------ scheduled sync (REPO-05)
+
+
+@dataclass(frozen=True, slots=True)
+class SyncOutcome:
+    """One repository's result, so the periodic task can log a summary a human can read."""
+
+    repository_id: UUID
+    full_name: str
+    state: str
+    events_ingested: int
+    error: str | None = None
+
+
+async def sync_all_connected(
+    session: AsyncSession, *, build_connector: Any = None
+) -> list[SyncOutcome]:
+    """Incremental sync of every connected repository (architecture §12, every 30 minutes).
+
+    Runs in the worker, so it takes no Scope and builds a system one per repository. One
+    repository failing must not stop the rest: a rate limit on a busy project should not leave a
+    quiet one looking stale, which would be a false signal on the professor's dashboard (AC-04).
+    """
+    from app.evidence.connectors import factory
+
+    build = build_connector or (
+        lambda repository: factory.build(
+            repository.provider, credential_ref=repository.credential_ref
+        )
+    )
+    outcomes: list[SyncOutcome] = []
+
+    for repository in await repo.connected_repositories(session):
+        system = Scope(
+            workspace_id=repository.workspace_id,
+            user_id=repository.connected_by or repository.workspace_id,
+            role=Role.PROF,
+            project_ids=frozenset(),
+            access_epoch=0,
+        )
+        try:
+            run = await sync_repository(
+                session,
+                system,
+                repository.id,
+                connector=build(repository),
+                kind=SyncKind.INCREMENTAL,
+            )
+            await resolve_contributions(session, repository.id)
+            outcomes.append(
+                SyncOutcome(
+                    repository_id=repository.id,
+                    full_name=repository.full_name,
+                    state=str(run.state),
+                    events_ingested=run.events_ingested,
+                    error=run.error_summary,
+                )
+            )
+        except Exception as error:  # noqa: BLE001 - one repository must not stop the others
+            log.exception("scheduled sync failed for %s", repository.full_name)
+            outcomes.append(
+                SyncOutcome(
+                    repository_id=repository.id,
+                    full_name=repository.full_name,
+                    state="failed",
+                    events_ingested=0,
+                    error=f"{type(error).__name__}: {error}",
+                )
+            )
+
+    return outcomes
+
+
+async def connector_for(
+    session: AsyncSession, scope: Scope, repository_id: UUID
+) -> RepositoryConnector:
+    """The connector configured for one stored repository.
+
+    Built here rather than by the caller because it needs `credential_ref`, which is the name of a
+    secret and is deliberately absent from `RepositoryOut` — the API should never hold it, even to
+    hand it straight back (requirements §9).
+    """
+    from app.evidence.connectors import factory
+
+    repository = await _require_repository(session, scope, repository_id)
+    return factory.build(repository.provider, credential_ref=repository.credential_ref)
+
+
+async def get_reference(
+    session: AsyncSession, scope: Scope, reference_id: UUID
+) -> EvidenceReferenceOut:
+    """QA-03: a citation has to open something. This is the other end of the link."""
+    reference = await repo.get_evidence_reference(session, scope, reference_id)
+    if reference is None:
+        raise NotFoundError("evidence reference not found")
+    return EvidenceReferenceOut.model_validate(reference)

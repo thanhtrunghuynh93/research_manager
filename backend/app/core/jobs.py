@@ -12,7 +12,12 @@ import procrastinate
 from app.core.config import get_settings
 
 # Modules list their tasks module here; app.worker imports them at startup so the tasks register.
-TASK_MODULES: list[str] = ["app.notifications.scheduler_tasks"]
+TASK_MODULES: list[str] = [
+    "app.tasks",
+    "app.notifications.scheduler_tasks",
+    "app.assessment.tasks",
+    "app.evidence.tasks",
+]
 
 RETRY_TRANSIENT = procrastinate.RetryStrategy(max_attempts=5, wait=10, exponential_wait=2)
 RETRY_NONE = None

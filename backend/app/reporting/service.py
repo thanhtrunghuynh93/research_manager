@@ -21,6 +21,7 @@ from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import NotFoundError, ValidationError
 from app.core.types import Role
+from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.projects.schemas import PlanBaselineOut
 from app.reporting import calendar, events, policies, repository  # noqa: F401  (policies register)
@@ -47,6 +48,8 @@ from app.reporting.schemas import (
 )
 
 # Eight weeks ahead, as the architecture's periodic task does (architecture §7.1).
+# How far back the daily baseline task will still catch up, if the worker was down.
+BASELINE_CATCHUP = timedelta(days=14)
 DEFAULT_HORIZON = timedelta(weeks=8)
 
 # Fields whose change means the research content changed. `hours` is excluded on purpose: it is
@@ -656,6 +659,42 @@ class EntryRecord:
     questions: str
     next_plan: dict[str, Any]
     submitted_at: datetime
+
+
+async def ensure_periods_everywhere(session: AsyncSession) -> int:
+    """REP-01: materialise the next weeks for every workspace, daily (architecture §12).
+
+    A workspace with no calendar configured yet is skipped rather than treated as an error: the
+    professor has not made that decision, and a daily log line saying so helps nobody.
+    """
+    created = 0
+    for workspace_id in await identity_service.workspace_ids(session):
+        scope = await identity_service.system_scope(session, workspace_id)
+        try:
+            periods = await ensure_periods(session, scope)
+        except NotFoundError:
+            continue
+        for period in periods:
+            await ensure_obligations(session, scope, period.id)
+        created += len(periods)
+    return created
+
+
+async def freeze_due_baselines(session: AsyncSession, *, at: datetime | None = None) -> int:
+    """PROJ-04: fix each membership's plan once its period has opened (architecture §12).
+
+    Idempotent by construction — a membership that already has a baseline for the period keeps it —
+    so this can run every day and re-cover a period the worker was down for.
+    """
+    instant = at or now()
+    frozen = 0
+    for workspace_id in await identity_service.workspace_ids(session):
+        scope = await identity_service.system_scope(session, workspace_id)
+        for period in await list_periods(session, scope):
+            if period.start_utc > instant or period.end_utc < instant - BASELINE_CATCHUP:
+                continue
+            frozen += len(await freeze_baselines(session, scope, period.id))
+    return frozen
 
 
 async def submissions(

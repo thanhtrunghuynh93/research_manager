@@ -23,6 +23,9 @@ frontend/test-results/
 infra/.env
 *.pem
 *.key
+# Host secrets mounted into the containers. The README explaining them is kept.
+infra/secrets/*
+!infra/secrets/README.md
 
 # Editors and OS
 .vscode/

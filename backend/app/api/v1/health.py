@@ -61,5 +61,20 @@ async def readyz(request: Request, response: Response) -> Readiness:
 
 
 @router.get("/metrics", summary="Prometheus metrics", include_in_schema=False)
-async def metrics() -> Response:
+async def metrics(fresh: bool = False) -> Response:
+    """Architecture §12: queue depth, sync staleness, model errors, citation and access failures.
+
+    The gauges are refreshed by the worker's `queue_health` task every five minutes, so a scrape
+    is a read of memory and cannot become load on the database. `?fresh=1` reads them now, for the
+    case where an operator is looking at a system whose worker is the thing that has stopped.
+    """
+    if fresh:
+        from app import observability
+
+        try:
+            async with db.session_factory()() as session:
+                await observability.refresh(session)
+        except Exception:  # noqa: BLE001 - a scrape must never fail on the thing it is measuring
+            log.warning("could not refresh metrics on demand", exc_info=True)
+
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

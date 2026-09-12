@@ -161,6 +161,27 @@ async def set_ai_budgets(
     return after
 
 
+async def workspace_ids(session: AsyncSession) -> list[UUID]:
+    """Job-level read: the periodic tasks act on every workspace and have no Scope."""
+    return await repository.workspace_ids(session)
+
+
+async def system_scope(session: AsyncSession, workspace_id: UUID) -> Scope:
+    """The Scope a scheduled task acts under: the workspace's professor, or nobody.
+
+    Built rather than faked: the same predicates then apply to a job as to a request, and a task
+    cannot reach further than the professor could.
+    """
+    professors = await repository.professor_ids(session, workspace_id)
+    return Scope(
+        workspace_id=workspace_id,
+        user_id=professors[0] if professors else workspace_id,
+        role=Role.PROF,
+        project_ids=frozenset(),
+        access_epoch=await repository.access_epoch(session, workspace_id),
+    )
+
+
 async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:
     """Job-level read: who to address a professor-facing notification to (UI-07)."""
     return await repository.professor_ids(session, workspace_id)

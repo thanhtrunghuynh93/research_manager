@@ -211,3 +211,9 @@ async def revoke_pending_password_resets(
         )
         .values(revoked_at=at)
     )
+
+
+async def workspace_ids(session: AsyncSession) -> list[UUID]:
+    """Every workspace, for the periodic tasks that run on behalf of nobody."""
+    rows = await session.execute(select(Workspace.id).order_by(Workspace.id))
+    return list(rows.scalars().all())

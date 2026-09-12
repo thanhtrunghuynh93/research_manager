@@ -30,6 +30,7 @@ from app.evidence.connectors.base import (
     DiffResult,
     Issue,
     Page,
+    Provider,
     PullRequest,
     RateLimitedError,
     RepoRef,
@@ -54,7 +55,7 @@ _NEXT_PAGE = re.compile(r'[?&]page=(\d+)[^>]*>;\s*rel="next"')
 class GitHubConnector:
     """Read-only access to one installation. One instance per sync run."""
 
-    provider = "github"
+    provider: Provider = "github"
 
     def __init__(
         self,

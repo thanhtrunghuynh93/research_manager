@@ -26,6 +26,7 @@ from app.ai.schemas import AnswerDraft
 from app.assistant.facts import Fact
 from app.assistant.retrieval import Passage
 from app.assistant.schemas import AnswerScope, CitationOut, FactOut
+from app.core import metrics
 from app.core.authz import Scope
 
 log = logging.getLogger(__name__)
@@ -124,6 +125,7 @@ def validate_citations(
         )
 
     if invented:
+        metrics.CITATION_FAILURES.labels(surface="assistant").inc(invented)
         gaps.append(
             f"{invented} citation(s) in the generated answer did not match any retrieved record "
             "and were removed; treat the statements resting on them as unsupported"
