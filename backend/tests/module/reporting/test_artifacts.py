@@ -283,3 +283,127 @@ async def test_a_student_cannot_attach_to_a_project_they_are_not_on(
             sha256=sha256_of(NOTE),
             store=store,
         )
+
+
+# ------------------------------------------------------------------ links (REP-04)
+
+
+async def test_a_fetched_link_becomes_evidence_like_any_other_attachment(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    async def _fetch(url: str) -> object:
+        from app.reporting.links import Fetched
+
+        return Fetched(url=url, content_type="text/markdown", data=NOTE)
+
+    version = await artifacts.attach_link(
+        db,
+        scope,
+        project_id=project.id,
+        url="https://arxiv.org/abs/2401.00001",
+        supported_claim="the preprint the method comes from",
+        store=store,
+        fetch=_fetch,
+    )
+
+    assert version.extraction_state is ExtractionState.OK
+    assert version.uploaded is True
+    from app.evidence import service as evidence_service
+
+    assert await evidence_service.search_evidence(
+        db, scope, query="difficulty proxy length", project_id=project.id
+    )
+
+
+async def test_a_refused_link_is_recorded_with_the_reason_it_was_not_followed(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    """REP-04: the student pointed at something. The record says what, and why we stopped."""
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    async def _refuse(url: str) -> object:
+        from app.reporting.links import LinkRefusedError
+
+        raise LinkRefusedError("localhost resolves to a private or reserved address")
+
+    version = await artifacts.attach_link(
+        db,
+        scope,
+        project_id=project.id,
+        url="http://localhost:8000/admin",
+        store=store,
+        fetch=_refuse,
+    )
+
+    assert version.extraction_state is ExtractionState.FAILED
+    assert "private or reserved" in version.extraction_note
+    assert version.uploaded is False
+
+
+async def test_a_link_that_is_simply_unreachable_is_recorded_too(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    """An unreachable link is a state of the world, not a crash in the submission flow (AC-13)."""
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    async def _explode(url: str) -> object:
+        raise TimeoutError("took too long")
+
+    version = await artifacts.attach_link(
+        db, scope, project_id=project.id, url="https://slow.example/x", store=store, fetch=_explode
+    )
+
+    assert version.extraction_state is ExtractionState.FAILED
+    assert "TimeoutError" in version.extraction_note
+
+
+async def test_an_attachment_can_be_bound_to_the_entry_it_supports(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    version = await _upload(db, scope, store, project)
+    submitted = await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Wrote the note attached here.",
+                "results": "See the attachment.",
+            }
+        ],
+    )
+    entry_id = submitted.entries[0].id
+
+    await artifacts.attach_to_entry(
+        db, scope, version.artifact_id, entry_id=entry_id, period_id=period.id
+    )
+
+    attached = await artifacts.list_for_entry(db, scope, entry_id=entry_id)
+    assert [row.artifact_id for row in attached] == [version.artifact_id]
+
+
+async def test_only_the_owner_may_move_their_attachment(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    period, project = await _project(db, prof_scope, student_a)
+    owner = await identity_service.scope_for(db, student_a)
+    version = await _upload(db, owner, store, project)
+    outsider = await identity_service.scope_for(db, student_b)
+
+    with pytest.raises((ForbiddenError, Exception)):
+        await artifacts.attach_to_entry(
+            db, outsider, version.artifact_id, entry_id=project.id, period_id=period.id
+        )

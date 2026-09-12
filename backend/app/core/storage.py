@@ -116,6 +116,22 @@ def content_type_for(filename: str, fallback: str = "application/octet-stream") 
     return CONTENT_TYPES.get(extension_of(filename), fallback)
 
 
+def extension_for_content_type(content_type: str) -> str:
+    """The extension a server's own Content-Type implies.
+
+    A fetched URL usually ends in something that is not a file extension — `/abs/2401.00001`, a
+    query string, a trailing slash — so the server's declaration is the better evidence of what the
+    bytes are, and extraction reads better with it.
+    """
+    declared = content_type.split(";", 1)[0].strip().lower()
+    for extension, known in CONTENT_TYPES.items():
+        if known == declared:
+            return extension
+    if declared.startswith("text/"):
+        return "txt"
+    return ""
+
+
 def storage_key(
     *, workspace_id: UUID, artifact_id: UUID, version_no: int, sha256: str, filename: str
 ) -> str:

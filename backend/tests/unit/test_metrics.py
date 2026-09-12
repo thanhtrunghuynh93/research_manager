@@ -260,3 +260,32 @@ def test_every_reason_is_a_stated_rule_rather_than_a_probability() -> None:
 
     assert len(reasons) >= 4
     assert all(isinstance(reason, str) and reason for reason in reasons)
+
+
+def test_an_unresolved_attribution_lowers_confidence_and_names_itself() -> None:
+    """REPO-04/ASSESS-06: work we could not attribute is a limit on the assessment, not on the
+    student. The reason says how many, so the professor can go and look."""
+    level, reasons = confidence(
+        Decimal("100.00"),
+        SourceStatus(
+            report_submitted=True,
+            baseline_available=True,
+            repository_fresh=True,
+            unresolved_attributions=3,
+        ),
+    )
+
+    assert level is Confidence.MEDIUM
+    assert any("3 contribution(s) could not be attributed" in reason for reason in reasons)
+
+
+def test_coverage_between_the_two_thresholds_is_medium_and_says_which_threshold() -> None:
+    """ASSESS-06: the band between "low" and "high" is the common case, and the reason has to be
+    specific enough to act on — 80 % coverage with a named threshold, not a bare "medium"."""
+    level, reasons = confidence(
+        Decimal("80.00"),
+        SourceStatus(report_submitted=True, baseline_available=True, repository_fresh=True),
+    )
+
+    assert level is Confidence.MEDIUM
+    assert any("80.00%" in reason and "90" in reason for reason in reasons)

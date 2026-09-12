@@ -33,6 +33,7 @@ from app.core.storage import (
     ObjectStore,
     content_type_for,
     current_store,
+    extension_for_content_type,
     extracted_text_key,
     sha256_of,
     storage_key,
@@ -292,7 +293,12 @@ async def attach_link(
     version.content_type = fetched.content_type
     version.uploaded = True
 
-    result = extraction.extract(artifact.filename, fetched.data)
+    # The server's Content-Type, not the URL's last path segment: `/abs/2401.00001` has no
+    # extension worth reading, and the response says what it actually sent.
+    extension = extension_for_content_type(fetched.content_type)
+    result = extraction.extract(
+        f"{artifact.filename}.{extension}" if extension else artifact.filename, fetched.data
+    )
     version.extraction_state = ExtractionState(result.state.value)
     version.extraction_note = result.note
     version.truncated = result.truncated or fetched.truncated
