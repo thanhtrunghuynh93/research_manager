@@ -9,6 +9,9 @@ export function AppShell() {
   const session = useSession();
   const logout = useLogout();
 
+  const user = session.data;
+  const isProf = user?.role === "prof";
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border">
@@ -16,8 +19,14 @@ export function AppShell() {
           <Link to="/" className="font-semibold">
             {t("app.title")}
           </Link>
-          <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-            {session.data && <Link to="/me">{t("me.title")}</Link>}
+          <nav className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+            {/* Navigation mirrors the role guard: a professor-only page is never offered to a
+                student, because a link that always fails is worse than no link. */}
+            {isProf && <Link to="/overview">{t("overview.title")}</Link>}
+            {isProf && <Link to="/assistant">{t("assistant.title")}</Link>}
+            {user && !isProf && <Link to="/me">{t("me.title")}</Link>}
+            {user && <Link to="/notifications">{t("notifications.title")}</Link>}
+            {user && <Link to="/exports">{t("exports.title")}</Link>}
             <button
               type="button"
               onClick={() => setLanguage(i18n.language === "vi" ? "en" : "vi")}
@@ -25,7 +34,7 @@ export function AppShell() {
             >
               {i18n.language === "vi" ? "en" : "vi"}
             </button>
-            {session.data && (
+            {user && (
               <button type="button" onClick={() => logout.mutate()}>
                 {t("auth.signOut")}
               </button>
