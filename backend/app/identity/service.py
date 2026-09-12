@@ -283,12 +283,26 @@ async def accept_invitation(
     )
     if user is None:
         raise ValidationError("invitation token is invalid, used, or expired")
+    if user.state is UserState.DEACTIVATED:
+        # AUTH-03: deactivation has to be durable. An invitation issued before it — or still open
+        # when it happened — must not be a way for the account holder to reinstate and sign in.
+        # `deactivate_user` revokes open invitations, so reaching here means one was issued after.
+        raise ValidationError("invitation token is invalid, used, or expired")
 
     # Hash before stamping the invitation: a rejected password must leave the link usable.
     password_hash = security.hash_password(password)
     user.password_hash = password_hash
     user.state = UserState.ACTIVE
-    user.role = invitation.role
+    if user.role is not invitation.role:
+        # AUTH-01: the professor's most recent decision wins. `set_role` applies to an invited
+        # user too, and there is no route to reissue the invitation, so taking the role off the
+        # invitation here would silently revert a change they already made and audited.
+        log.info(
+            "invitation for %s carried role %s; keeping the role %s set since",
+            user.id,
+            invitation.role.value,
+            user.role.value,
+        )
     if display_name:
         user.display_name = display_name
     invitation.accepted_at = at
@@ -443,6 +457,8 @@ async def deactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) ->
     user.state = UserState.DEACTIVATED
     user.deactivated_at = at
     await repository.revoke_sessions_for_user(session, user.id, at)
+    # An open invitation is a credential too: accepting one sets a password and starts a session.
+    await repository.revoke_pending_invitations(session, user.id, at)
     await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,

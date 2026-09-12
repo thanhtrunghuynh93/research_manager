@@ -143,3 +143,84 @@ async def test_only_the_digest_of_an_invitation_token_is_stored(
     ).scalar_one()
     assert row.token_hash == security.hash_token(invited.token)
     assert invited.token not in row.token_hash
+
+
+# ---------------------------------------------------------------- invitations and access changes
+#
+# An open invitation is a credential: accepting one sets a password and starts a session. So it
+# has to lose to any later decision the professor made about the account.
+
+
+async def test_deactivation_revokes_an_open_invitation(db: AsyncSession, prof_scope: Scope) -> None:
+    invited = await service.invite_user(db, prof_scope, email="new@example.edu")
+    user = (
+        await db.execute(select(models.User).where(models.User.email == "new@example.edu"))
+    ).scalar_one()
+
+    await service.deactivate_user(db, prof_scope, user.id)
+
+    with pytest.raises(ValidationError):
+        await service.accept_invitation(db, token=invited.token, password=PASSWORD)
+
+
+async def test_a_deactivated_account_cannot_be_re_invited(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """AUTH-03: reinstatement is `reactivate_user`, an explicit decision, not a fresh invitation."""
+    first = await service.invite_user(db, prof_scope, email="new@example.edu")
+    user = await service.accept_invitation(db, token=first.token, password=PASSWORD)
+    await service.deactivate_user(db, prof_scope, user.id)
+
+    with pytest.raises(ConflictError):
+        await service.invite_user(db, prof_scope, email="new@example.edu")
+
+
+async def test_accepting_never_activates_a_deactivated_account(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """The guard in `accept_invitation` itself, independent of which invitations were revoked."""
+    invited = await service.invite_user(db, prof_scope, email="new@example.edu")
+    user = (
+        await db.execute(select(models.User).where(models.User.email == "new@example.edu"))
+    ).scalar_one()
+    await service.deactivate_user(db, prof_scope, user.id)
+    # Un-revoke, to isolate the state check from the revocation that normally precedes it.
+    await db.execute(update(models.Invitation).values(revoked_at=None))
+
+    with pytest.raises(ValidationError):
+        await service.accept_invitation(db, token=invited.token, password=PASSWORD)
+
+    row = (await db.execute(select(models.User).where(models.User.id == user.id))).scalar_one()
+    assert row.state is models.UserState.DEACTIVATED
+
+
+async def test_accepting_an_invitation_keeps_a_role_changed_since_it_was_sent(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """AUTH-01: the professor's most recent audited decision wins over the invitation's copy."""
+    invited = await service.invite_user(
+        db, prof_scope, email="colleague@example.edu", role=Role.PROF
+    )
+    user = (
+        await db.execute(select(models.User).where(models.User.email == "colleague@example.edu"))
+    ).scalar_one()
+
+    await service.set_role(db, prof_scope, user.id, Role.STUDENT)
+    accepted = await service.accept_invitation(db, token=invited.token, password=PASSWORD)
+
+    assert accepted.role is Role.STUDENT
+    assert accepted.state is models.UserState.ACTIVE
+
+
+async def test_re_inviting_with_a_different_role_still_applies_that_role(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """The role travels on the user row, which re-invitation updates; acceptance reads it there."""
+    await service.invite_user(db, prof_scope, email="colleague@example.edu", role=Role.STUDENT)
+    reissued = await service.invite_user(
+        db, prof_scope, email="colleague@example.edu", role=Role.PROF
+    )
+
+    accepted = await service.accept_invitation(db, token=reissued.token, password=PASSWORD)
+
+    assert accepted.role is Role.PROF
