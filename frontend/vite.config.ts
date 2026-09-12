@@ -9,10 +9,10 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
-    port: 5173,
+    port: 8020,
     proxy: {
-      // Same-origin in production (Caddy); in dev the API container listens on 8000.
-      "/api": { target: "http://localhost:8000", changeOrigin: false },
+      // Same-origin in production (Caddy); in dev the api container publishes 8000 on 8021.
+      "/api": { target: "http://localhost:8021", changeOrigin: false },
     },
   },
   build: { outDir: "dist", sourcemap: true },

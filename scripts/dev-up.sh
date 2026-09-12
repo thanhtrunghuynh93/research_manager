@@ -14,15 +14,15 @@ fi
 
 echo "waiting for api ..."
 for _ in $(seq 1 60); do
-  if curl -fsS http://localhost:8000/api/healthz >/dev/null 2>&1; then
+  if curl -fsS http://localhost:8021/api/healthz >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
-curl -fsS http://localhost:8000/api/healthz >/dev/null || { echo "api did not become healthy"; "${COMPOSE[@]}" logs api | tail -50; exit 1; }
+curl -fsS http://localhost:8021/api/healthz >/dev/null || { echo "api did not become healthy"; "${COMPOSE[@]}" logs api | tail -50; exit 1; }
 
 if [[ "${1:-}" != "--wait-only" ]]; then
   "${COMPOSE[@]}" exec -T api uv run alembic upgrade head
 fi
 
-echo "ready: api http://localhost:8000/api/docs  mailpit http://localhost:8025  minio http://localhost:9001"
+echo "ready: app http://localhost:8020  api http://localhost:8021/api/docs  mailpit http://localhost:8025  minio http://localhost:8026"

@@ -281,7 +281,7 @@ All read once by `core/config.py`. Prefix `RM_`.
 frontend/
 ├── package.json               scripts: dev, build, preview, lint, typecheck, test, e2e, gen:api
 ├── package-lock.json          npm; CI installs with `npm ci`
-├── vite.config.ts             /api proxy to localhost:8000 in dev; build to dist/
+├── vite.config.ts             /api proxy to localhost:8021 in dev; build to dist/
 ├── tsconfig.json              project references → tsconfig.app.json (strict, alias @/ → src/) and tsconfig.node.json
 ├── tailwind.config.ts, postcss.config.js, components.json (shadcn)
 ├── eslint.config.js           ESLint 9 flat config (typescript-eslint, react-hooks, react-refresh)

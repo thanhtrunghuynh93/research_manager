@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
     log_json: bool = False
-    public_url: str = "http://localhost:5173"
+    public_url: str = "http://localhost:8020"
 
     database_url: str = "postgresql+psycopg://rm:rm@localhost:5432/rm"
     secret_key: SecretStr = SecretStr("dev-only-change-me")

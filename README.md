@@ -19,7 +19,7 @@ Prerequisites: Docker with Compose, [uv](https://docs.astral.sh/uv/), Node 20+ w
 cp .env.example infra/.env
 make dev          # starts postgres, minio, mailpit; runs migrations; starts api + worker with reload
 make bootstrap    # creates the workspace and professor; prints the invitation link
-make web          # frontend dev server on http://localhost:5173 (proxies /api to :8000)
+make web          # frontend dev server on http://localhost:8020 (proxies /api to :8021)
 make test         # backend tests (needs Docker for testcontainers)
 ```
 
@@ -27,7 +27,7 @@ make test         # backend tests (needs Docker for testcontainers)
 In development the api logs the invitation and recovery links for every account until the
 notifications module sends them by email.
 
-API health: `http://localhost:8000/api/healthz`. Interactive API docs: `http://localhost:8000/api/docs`.
+API health: `http://localhost:8021/api/healthz`. Interactive API docs: `http://localhost:8021/api/docs`.
 
 ## Layout
 
