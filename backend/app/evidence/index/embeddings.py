@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -96,9 +97,18 @@ def local_embedder() -> Embedder:
 
 
 # sha256(text) + model keyed, as the architecture's cost control requires: an unchanged chunk is
-# never re-embedded (architecture §10).
-_cache: dict[tuple[str, str], list[float]] = {}
+# never re-embedded (architecture §10). Bounded by discarding the least recently used entry, not
+# by emptying the whole cache: clearing it mid-fill wiped vectors this very call had just written
+# and then read back, which raised KeyError once a long-running worker crossed the limit.
+_cache: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
 CACHE_LIMIT = 10_000
+
+
+def _remember(key: tuple[str, str], vector: list[float]) -> None:
+    _cache[key] = vector
+    _cache.move_to_end(key)
+    while len(_cache) > CACHE_LIMIT:
+        _cache.popitem(last=False)
 
 
 async def embed_texts(
@@ -109,14 +119,28 @@ async def embed_texts(
 ) -> list[list[float]]:
     active = embedder or _embedder
     model = type(active).__name__
-    missing = [text for text in texts if (model, _key(text)) not in _cache]
+    keys = {text: (model, _key(text)) for text in dict.fromkeys(texts)}
+
+    # The answer is assembled from hits and fresh vectors, never read back out of the cache. The
+    # cache is a bound on cost, not a store the result depends on: a batch larger than the limit
+    # would otherwise evict its own early entries before the read.
+    resolved: dict[str, list[float]] = {}
+    missing: list[str] = []
+    for text, key in keys.items():
+        hit = _cache.get(key)
+        if hit is None:
+            missing.append(text)
+        else:
+            _cache.move_to_end(key)
+            resolved[text] = hit
+
     if missing:
         fresh = await active.embed(missing, context=context)
         for text, vector in zip(missing, fresh, strict=True):
-            if len(_cache) >= CACHE_LIMIT:
-                _cache.clear()
-            _cache[(model, _key(text))] = vector
-    return [_cache[(model, _key(text))] for text in texts]
+            resolved[text] = vector
+            _remember(keys[text], vector)
+
+    return [resolved[text] for text in texts]
 
 
 def _key(text: str) -> str:

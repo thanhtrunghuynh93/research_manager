@@ -71,3 +71,65 @@ async def test_a_registered_embedder_replaces_the_default() -> None:
         assert vector[0] == 1.0
     finally:
         embeddings.register_embedder(previous)
+
+
+# ---------------------------------------------------------------- the cache under pressure
+#
+# The eviction used to empty the whole cache, and it ran inside the fill loop — so it discarded
+# vectors the current call had just written and was about to read back. A long-running worker
+# crossed the limit after roughly ten thousand chunks and then raised KeyError on every call,
+# killing indexing and search alike. Nothing exercised it because the tests clear the cache first.
+
+
+async def test_a_full_cache_does_not_break_the_call_that_fills_it() -> None:
+    from app.evidence.index import embeddings
+
+    embeddings.clear_cache()
+    embedder = embeddings.DeterministicEmbedder()
+    model = type(embedder).__name__
+    for index in range(embeddings.CACHE_LIMIT):
+        embeddings._cache[(model, embeddings._key(f"filler-{index}"))] = [0.0]
+
+    vectors = await embeddings.embed_texts(["new-a", "new-b", "new-c"], embedder=embedder)
+
+    assert len(vectors) == 3
+    assert all(len(vector) == embedder.dimensions for vector in vectors)
+
+
+async def test_the_cache_stays_within_its_limit() -> None:
+    from app.evidence.index import embeddings
+
+    embeddings.clear_cache()
+    embedder = embeddings.DeterministicEmbedder()
+    await embeddings.embed_texts(
+        [f"chunk-{index}" for index in range(embeddings.CACHE_LIMIT + 50)], embedder=embedder
+    )
+
+    assert len(embeddings._cache) == embeddings.CACHE_LIMIT
+
+
+async def test_a_batch_larger_than_the_cache_still_returns_every_vector() -> None:
+    from app.evidence.index import embeddings
+
+    embeddings.clear_cache()
+    embedder = embeddings.DeterministicEmbedder()
+
+    texts = [f"chunk-{index}" for index in range(embeddings.CACHE_LIMIT + 10)]
+    vectors = await embeddings.embed_texts(texts, embedder=embedder)
+
+    assert len(vectors) == len(texts)
+
+
+async def test_the_gateways_vector_cache_evicts_one_entry_rather_than_all() -> None:
+    """The same shape in `app.ai.gateway`, reached by the provider-backed embedder."""
+    from app.ai import gateway
+
+    gateway.clear_embedding_cache()
+    for index in range(gateway._VECTOR_CACHE_LIMIT + 5):
+        gateway._remember(f"m:{index}", [float(index)])
+
+    assert len(gateway._VECTORS) == gateway._VECTOR_CACHE_LIMIT
+    assert "m:0" not in gateway._VECTORS, "the oldest went"
+    assert gateway._VECTORS[f"m:{gateway._VECTOR_CACHE_LIMIT + 4}"] == [
+        float(gateway._VECTOR_CACHE_LIMIT + 4)
+    ], "the newest stayed"
