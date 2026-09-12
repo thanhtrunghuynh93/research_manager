@@ -17,7 +17,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
-from app.core.errors import ForbiddenError, ValidationError
+from app.core.errors import ConflictError, ForbiddenError, ValidationError
 from app.identity import models as identity_models
 from app.projects import models, service
 from app.reporting import service as reporting_service
@@ -274,3 +274,76 @@ async def _student_scope(db: AsyncSession, student: identity_models.User) -> Sco
     from app.identity import service as identity_service
 
     return await identity_service.scope_for(db, student)
+
+
+async def test_a_students_proposed_change_leaves_the_old_plan_in_effect(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """PROJ-04/ASSESS-05: there is never *no* commitment in effect for an open week.
+
+    The old plan was retired before the replacement was accepted, so a student who had done none
+    of it could supersede it on Sunday night and the assessment would report commitment completion
+    as unavailable rather than missed — measuring nothing instead of the shortfall.
+    """
+    period, membership = await _membership(db, prof_scope, student_a)
+    frozen = await service.freeze_baseline(
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
+    )
+    scope = await _student_scope(db, student_a)
+
+    proposed = await service.supersede_baseline(
+        db, scope, frozen.id, items=PLAN[:1], reason="Cluster outage"
+    )
+
+    assert proposed.state is models.BaselineState.PROPOSED
+    in_effect = await service.effective_baseline_for_student(
+        db,
+        workspace_id=prof_scope.workspace_id,
+        student_id=student_a.id,
+        project_id=membership.project_id,
+        period_id=period.id,
+    )
+    assert in_effect is not None, "the frozen plan still stands"
+    assert in_effect.id == frozen.id
+    assert len(in_effect.items) == len(PLAN)
+
+
+async def test_accepting_the_change_retires_the_plan_it_replaces(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    period, membership = await _membership(db, prof_scope, student_a)
+    frozen = await service.freeze_baseline(
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
+    )
+    scope = await _student_scope(db, student_a)
+    proposed = await service.supersede_baseline(
+        db, scope, frozen.id, items=PLAN[:1], reason="Cluster outage"
+    )
+
+    accepted = await service.accept_baseline(db, prof_scope, proposed.id)
+
+    assert accepted.state is models.BaselineState.ACCEPTED
+    in_effect = await service.effective_baseline_for_student(
+        db,
+        workspace_id=prof_scope.workspace_id,
+        student_id=student_a.id,
+        project_id=membership.project_id,
+        period_id=period.id,
+    )
+    assert in_effect is not None and in_effect.id == accepted.id, "exactly one, and it is the new"
+
+
+async def test_a_second_change_cannot_be_proposed_while_one_is_waiting(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    period, membership = await _membership(db, prof_scope, student_a)
+    frozen = await service.freeze_baseline(
+        db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
+    )
+    scope = await _student_scope(db, student_a)
+    await service.supersede_baseline(db, scope, frozen.id, items=PLAN[:1], reason="Cluster outage")
+
+    with pytest.raises(ConflictError, match="already waiting"):
+        await service.supersede_baseline(
+            db, scope, frozen.id, items=PLAN[:1], reason="Another outage"
+        )

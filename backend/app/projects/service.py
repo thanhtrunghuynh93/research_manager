@@ -52,6 +52,14 @@ from app.projects.schemas import (
 # as a revision (PROJ-06).
 BASELINE_FIELDS = frozenset({"title", "success_criteria", "target_on", "weight", "status"})
 
+# The columns a PATCH may set back to null. Everything else refuses one rather than handing a
+# NOT NULL violation to the database.
+PROJECT_CLEARABLE = frozenset({"target_on", "venue_target"})
+MILESTONE_CLEARABLE = frozenset({"target_on", "owner_id", "change_reason"})
+TASK_CLEARABLE = frozenset(
+    {"blocker", "milestone_id", "assignee_id", "target_on", "completion_reason"}
+)
+
 
 # ------------------------------------------------------------------ projects (PROJ-01)
 
@@ -96,7 +104,7 @@ async def update_project(
 ) -> ProjectOut:
     scope.require_prof()
     project = await _require_project(session, scope, project_id)
-    applied = _apply(project, changes)
+    applied = _apply(project, changes, clearable=PROJECT_CLEARABLE)
     if applied:
         _audit(
             session,
@@ -249,7 +257,10 @@ async def list_members(
 ) -> list[MembershipOut]:
     await _require_project(session, scope, project_id)
     rows = await repository.list_memberships(session, scope, project_id, include_past=include_past)
-    return [MembershipOut.model_validate(row) for row in rows]
+    return [
+        MembershipOut.model_validate(row).model_copy(update={"student_name": name})
+        for row, name in rows
+    ]
 
 
 # ------------------------------------------------------------------ milestones and tasks (PROJ-03)
@@ -291,13 +302,13 @@ async def update_milestone(
         raise NotFoundError("milestone not found")
 
     baseline_changed = any(
-        field in BASELINE_FIELDS and value is not None and getattr(milestone, field) != value
+        field in BASELINE_FIELDS and getattr(milestone, field) != value
         for field, value in changes.items()
     )
     if baseline_changed and not change_reason:
         raise ValidationError("changing a milestone baseline requires a reason")
 
-    applied = _apply(milestone, changes)
+    applied = _apply(milestone, changes, clearable=MILESTONE_CLEARABLE)
     if not applied:
         return MilestoneOut.model_validate(milestone)
 
@@ -366,7 +377,7 @@ async def update_task(
         # PROJ-03: partial completion must carry a reason.
         raise ValidationError("a completion fraction requires a reason")
 
-    applied = _apply(task, changes)
+    applied = _apply(task, changes, clearable=TASK_CLEARABLE)
     if applied:
         _audit(
             session,
@@ -527,6 +538,15 @@ async def accept_baseline(
     if baseline.state is not BaselineState.PROPOSED:
         raise ValidationError("only a proposed plan can be accepted")
 
+    # Retired first, then accepted: `uq_baseline_in_effect` allows exactly one in-effect row per
+    # membership and period, and acceptance is the moment the commitment changes hands. Until now
+    # the superseded plan was the one in effect, which is what keeps a student from retiring the
+    # plan they have not done and leaving the week measuring nothing (PROJ-04, ASSESS-05).
+    if baseline.supersedes_id is not None:
+        await _supersede(
+            session, await repository.get_baseline(session, scope, baseline.supersedes_id)
+        )
+
     baseline.state = BaselineState.ACCEPTED
     baseline.approved_by = scope.user_id
     baseline.approved_at = now()
@@ -560,7 +580,20 @@ async def supersede_baseline(
     if not scope.is_prof and membership.student_id != scope.user_id:
         raise ForbiddenError("only the student on this membership may propose a change")
 
-    await _supersede(session, previous)
+    latest = await repository.latest_baseline(
+        session, scope, membership_id=previous.membership_id, period_id=previous.period_id
+    )
+    if latest is not None and latest.state is BaselineState.PROPOSED:
+        raise ConflictError("a proposed change to this plan is already waiting to be accepted")
+
+    if scope.is_prof:
+        # The replacement is frozen, so it takes effect the moment it exists.
+        await _supersede(session, previous)
+    # Otherwise the old plan stays in effect until the professor accepts the new one. Retiring it
+    # first left *no* baseline in effect, so the assessment reported commitment completion as
+    # unavailable rather than missed — a student could retire the plan they had not done on
+    # Sunday night and the week would measure nothing (PROJ-04, ASSESS-05).
+
     # A professor-approved change is a commitment; a student's is a proposal until accepted.
     return await _insert_baseline(
         session,
@@ -755,13 +788,26 @@ class _Applied:
         return bool(self.after)
 
 
-def _apply(row: object, changes: dict[str, object]) -> _Applied:
-    """Assign the non-None changes and report what actually moved, for the audit row."""
+def _apply(
+    row: object, changes: dict[str, object], *, clearable: frozenset[str] = frozenset()
+) -> _Applied:
+    """Assign the changes and report what actually moved, for the audit row.
+
+    `None` used to mean "not supplied" for every field, which is not something a PATCH can say:
+    the routers send `model_dump(exclude_unset=True)`, so an absent field is already absent and a
+    null is a deliberate one. Conflating them meant a nullable field could never be cleared — a
+    resolved `blocker` kept its old text and left `open_blockers` inflated for good.
+
+    `clearable` names the columns a null may reach. A null for anything else is refused rather
+    than passed to the database, so a mistyped request reads as a mistyped request.
+    """
     before: dict[str, object] = {}
     after: dict[str, object] = {}
     for field, value in changes.items():
-        if value is None or not hasattr(row, field):
+        if not hasattr(row, field):
             continue
+        if value is None and field not in clearable:
+            raise ValidationError(f"{field} cannot be cleared")
         current = getattr(row, field)
         if current == value:
             continue
