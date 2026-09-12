@@ -57,6 +57,25 @@
       "questions": "Questions for the professor",
       "hours": "Hours (optional)",
       "hoursNote": "Self-reported; not treated as verified productivity."
+    },
+    "attachments": {
+      "title": "Evidence",
+      "claim": "What does this show?",
+      "claimPlaceholder": "The run log behind the nDCG number",
+      "claimNote": "Your description of what this supports. Recorded as your claim, not as a finding.",
+      "file": "Attach a file",
+      "link": "Or a link",
+      "addLink": "Add link",
+      "download": "Download",
+      "none": "Nothing attached yet.",
+      "limit": "Up to 25 MB per file. PDF, DOCX, Markdown, figures, notebooks and data files.",
+      "truncated": "truncated",
+      "state": {
+        "pending": "Reading…",
+        "ok": "Text extracted",
+        "failed": "Could not be read",
+        "unsupported": "Stored, no text"
+      }
     }
   },
   "overview": {

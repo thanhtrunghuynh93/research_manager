@@ -1061,11 +1061,35 @@ async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
         )
 
 
+async def _on_artifact_extracted(event: Any, session: AsyncSession) -> None:
+    """REP-04: an attachment's text becomes citable evidence the moment it is readable.
+
+    `student_private`, matching the artifact record itself: an attachment supports one student's
+    report, and indexing it more widely would let a project-mate retrieve through search what they
+    cannot open directly (AUTH-02, AC-02).
+    """
+    await index_evidence(
+        session,
+        workspace_id=event.workspace_id,
+        project_id=event.project_id,
+        owner_student_id=event.owner_student_id,
+        visibility=Visibility.STUDENT_PRIVATE,
+        source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+        source_id=event.version_id,
+        source_version=str(event.version_no),
+        locator=f"/artifacts/{event.artifact_id}",
+        text=event.text,
+        supported_claim=event.supported_claim or None,
+        source_time=event.source_time,
+    )
+
+
 def register_subscriptions() -> None:
     """Called on import, like the visibility policies, so any process that ingests has it wired."""
     from app.reporting import events as reporting_events
 
     reporting_events.subscribe(reporting_events.ReportSubmitted, _on_report_submitted)
+    reporting_events.subscribe(reporting_events.ArtifactExtracted, _on_artifact_extracted)
 
 
 register_subscriptions()

@@ -14,6 +14,7 @@ from sqlalchemy.sql import ColumnElement
 
 from app.core.authz import Scope, register_policy
 from app.reporting.models import (
+    Artifact,
     CalendarConfig,
     ProjectReportEntry,
     ReportingObligation,
@@ -86,3 +87,17 @@ def revision_request_visible_to(scope: Scope) -> ColumnElement[bool]:
         RevisionRequest.workspace_id == scope.workspace_id,
         _through_report(RevisionRequest.report_id, scope),
     )
+
+
+@register_policy(Artifact)
+def artifact_visible_to(scope: Scope) -> ColumnElement[bool]:
+    """REP-04/AC-02: an attachment belongs to the student who attached it.
+
+    Project membership is deliberately not enough. An attachment supports one student's report, and
+    a report is private to its author and the professor (requirements §2); sharing the file more
+    widely than the entry it belongs to would be a leak through the back door.
+    """
+    same_workspace = Artifact.workspace_id == scope.workspace_id
+    if scope.is_prof:
+        return same_workspace
+    return and_(same_workspace, Artifact.owner_student_id == scope.user_id)

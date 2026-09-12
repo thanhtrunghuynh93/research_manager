@@ -113,6 +113,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a link
+         * @description A refused link is still recorded, with the reason it was not followed (REP-04).
+         */
+        post: operations["attach_link_api_v1_artifacts_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask permission to upload one file
+         * @description The size limit is enforced here, before a byte crosses the network (REP-04).
+         */
+        post: operations["request_upload_api_v1_artifacts_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the bytes arrived, and extract them
+         * @description Nothing is attached until the object exists and its checksum matches what was declared.
+         */
+        post: operations["confirm_upload_api_v1_artifacts__artifact_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A time-limited link to the file
+         * @description AC-02: issued only after the same predicate that governs reading the record.
+         */
+        get: operations["download_api_v1_artifacts__artifact_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every stored version of one artifact */
+        get: operations["list_versions_api_v1_artifacts__artifact_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assessments": {
         parameters: {
             query?: never;
@@ -1335,6 +1432,41 @@ export interface components {
             /** Rationale */
             rationale?: string | null;
         };
+        /** ArtifactVersionOut */
+        ArtifactVersionOut: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Byte Size */
+            byte_size: number;
+            /** Content Type */
+            content_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Extraction Note */
+            extraction_note: string;
+            extraction_state: components["schemas"]["ExtractionState"];
+            /** Filename */
+            filename: string;
+            /** Sha256 */
+            sha256?: string | null;
+            /** Truncated */
+            truncated: boolean;
+            /** Uploaded */
+            uploaded: boolean;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version No */
+            version_no: number;
+        };
         /** AskIn */
         AskIn: {
             /** As Of */
@@ -1591,6 +1723,13 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
+        /** DownloadOut */
+        DownloadOut: {
+            /** Expires In */
+            expires_in: number;
+            /** Url */
+            url: string;
+        };
         /** DraftIn */
         DraftIn: {
             /** Content */
@@ -1712,6 +1851,12 @@ export interface components {
             until: string;
         };
         /**
+         * ExtractionState
+         * @description REP-04: an extraction failure is recorded rather than left as empty text.
+         * @enum {string}
+         */
+        ExtractionState: "pending" | "ok" | "failed" | "unsupported";
+        /**
          * FactOut
          * @description A computed value with the function behind it, kept separate from prose (QA-02).
          */
@@ -1812,6 +1957,25 @@ export interface components {
              */
             id: string;
             role: components["schemas"]["Role"];
+        };
+        /** LinkRequest */
+        LinkRequest: {
+            /** Entry Id */
+            entry_id?: string | null;
+            /** Period Id */
+            period_id?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Supported Claim
+             * @default
+             */
+            supported_claim: string;
+            /** Url */
+            url: string;
         };
         /** LoginIn */
         LoginIn: {
@@ -2788,6 +2952,49 @@ export interface components {
             /** Rubric Version Id */
             rubric_version_id?: string | null;
         };
+        /** UploadGrantOut */
+        UploadGrantOut: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Expires In */
+            expires_in: number;
+            /** Headers */
+            headers: {
+                [key: string]: string;
+            };
+            /** Url */
+            url: string;
+            /** Version No */
+            version_no: number;
+        };
+        /** UploadRequest */
+        UploadRequest: {
+            /** Artifact Id */
+            artifact_id?: string | null;
+            /** Byte Size */
+            byte_size: number;
+            /** Entry Id */
+            entry_id?: string | null;
+            /** Filename */
+            filename: string;
+            /** Period Id */
+            period_id?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Supported Claim
+             * @default
+             */
+            supported_claim: string;
+        };
         /** UserOut */
         UserOut: {
             /**
@@ -3051,6 +3258,167 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RepositoryHealth"][];
+                };
+            };
+        };
+    };
+    attach_link_api_v1_artifacts_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_upload_api_v1_artifacts_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadGrantOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_upload_api_v1_artifacts__artifact_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_api_v1_artifacts__artifact_id__download_get: {
+        parameters: {
+            query?: {
+                version_no?: number | null;
+            };
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_api_v1_artifacts__artifact_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactVersionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

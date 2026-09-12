@@ -11,6 +11,7 @@ import importlib
 import logging
 
 from app.ai import bootstrap as ai_bootstrap
+from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.db import init_engine
 from app.core.jobs import TASK_MODULES, procrastinate_app
@@ -29,6 +30,8 @@ def bootstrap(settings: Settings) -> None:
     init_engine(settings)
     # The worker makes every model call the pipeline needs, so it installs the provider too.
     ai_bootstrap.install(settings)
+    # The worker extracts and re-indexes attachments, so it needs the same store.
+    storage.register_store(storage.build_store(settings))
 
 
 def main() -> None:

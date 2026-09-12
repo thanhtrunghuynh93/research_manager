@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
+import { Attachments, type Attachment } from "@/features/report/components/Attachments";
 import { AutosaveIndicator } from "@/features/report/components/AutosaveIndicator";
 import { EntryForm } from "@/features/report/components/EntryForm";
 import { emptyEntry, type EntryDraft } from "@/features/report/entry";
@@ -35,6 +36,7 @@ export function ReportEditorPage() {
 
   const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [active, setActive] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Record<string, Attachment[]>>({});
 
   const period = periods.data?.find((candidate) => candidate.id === periodId);
   const required = (obligations.data ?? []).filter((item) => item.state === "required");
@@ -113,10 +115,24 @@ export function ReportEditorPage() {
       </div>
 
       {active && drafts[active] && (
-        <EntryForm
-          entry={drafts[active]}
-          onChange={(entry) => setDrafts({ ...drafts, [entry.project_id]: entry })}
-        />
+        <>
+          <EntryForm
+            entry={drafts[active]}
+            onChange={(entry) => setDrafts({ ...drafts, [entry.project_id]: entry })}
+          />
+          {/* REP-04: evidence is attached per project entry, not per package. */}
+          <Attachments
+            projectId={active}
+            periodId={periodId}
+            attachments={attachments[active] ?? []}
+            onAttached={(attachment) =>
+              setAttachments((previous) => ({
+                ...previous,
+                [active]: [...(previous[active] ?? []), attachment],
+              }))
+            }
+          />
+        </>
       )}
 
       {problem && (

@@ -277,3 +277,84 @@ class RevisionRequest(UUIDPrimaryKeyMixin, Base):
     requested_by: Mapped[UUID]
     resolved_in_version_id: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ArtifactKind(StrEnum):
+    """Where the bytes came from. A link is fetched; an upload is handed to us (REP-04)."""
+
+    UPLOAD = "upload"
+    LINK = "link"
+
+
+class ExtractionState(StrEnum):
+    """REP-04: an extraction failure is recorded rather than left as empty text."""
+
+    PENDING = "pending"
+    OK = "ok"
+    FAILED = "failed"
+    UNSUPPORTED = "unsupported"
+
+
+ARTIFACT_KIND_ENUM = _enum(ArtifactKind, "artifact_kind")
+EXTRACTION_STATE_ENUM = _enum(ExtractionState, "extraction_state")
+
+
+class Artifact(UUIDPrimaryKeyMixin, Base):
+    """One piece of attached evidence, owned by the student who attached it.
+
+    The artifact is the identity; the bytes live in its versions, so replacing a figure keeps the
+    citation stable and keeps the version that an assessment already read (REP-04, ASSESS-09).
+    """
+
+    __tablename__ = "artifacts"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id"),
+        Index("ix_artifacts_owner", "owner_student_id", "created_at"),
+        Index("ix_artifacts_project", "project_id"),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    owner_student_id: Mapped[UUID]
+    project_id: Mapped[UUID | None]
+    # The entry it supports, when it was attached to one. Null while it is still a draft's file.
+    entry_id: Mapped[UUID | None]
+    period_id: Mapped[UUID | None]
+    kind: Mapped[ArtifactKind] = mapped_column(ARTIFACT_KIND_ENUM, default=ArtifactKind.UPLOAD)
+    filename: Mapped[str] = mapped_column(Text)
+    # What the student says this file shows. Their claim, recorded as theirs (REPO-08).
+    supported_claim: Mapped[str] = mapped_column(Text, default="")
+    source_url: Mapped[str | None] = mapped_column(Text)
+    current_version_no: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ArtifactVersion(UUIDPrimaryKeyMixin, Base):
+    """The bytes, their checksum, and what reading them produced (architecture §5.6)."""
+
+    __tablename__ = "artifact_versions"
+    __table_args__ = (
+        UniqueConstraint("artifact_id", "version_no"),
+        ForeignKeyConstraint(
+            ["workspace_id", "artifact_id"],
+            ["artifacts.workspace_id", "artifacts.id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    artifact_id: Mapped[UUID]
+    version_no: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    byte_size: Mapped[int] = mapped_column(Integer, default=0)
+    content_type: Mapped[str] = mapped_column(Text, default="application/octet-stream")
+    storage_key: Mapped[str] = mapped_column(Text)
+    extraction_state: Mapped[ExtractionState] = mapped_column(
+        EXTRACTION_STATE_ENUM, default=ExtractionState.PENDING
+    )
+    extracted_text_key: Mapped[str | None] = mapped_column(Text)
+    # What was omitted and why, so the coverage note can say it (ASSESS-06).
+    extraction_note: Mapped[str] = mapped_column(Text, default="")
+    truncated: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # False until the upload is confirmed: a presigned URL is a grant, not a fact.
+    uploaded: Mapped[bool] = mapped_column(default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())

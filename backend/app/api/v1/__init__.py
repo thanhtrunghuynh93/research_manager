@@ -6,6 +6,7 @@ from fastapi import APIRouter, FastAPI
 
 from app.api.v1 import (
     admin,
+    artifacts,
     assessments,
     assistant,
     auth,
@@ -32,6 +33,7 @@ def include_routers(app: FastAPI) -> None:
     v1.include_router(projects.router)
     v1.include_router(milestones.router)
     v1.include_router(reports.router)
+    v1.include_router(artifacts.router)
     v1.include_router(assessments.router)
     v1.include_router(overview.router)
     v1.include_router(notifications.router)

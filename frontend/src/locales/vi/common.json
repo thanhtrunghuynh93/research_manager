@@ -57,6 +57,25 @@
       "questions": "Câu hỏi cho giáo sư",
       "hours": "Số giờ (tùy chọn)",
       "hoursNote": "Tự khai báo; không dùng làm thước đo năng suất."
+    },
+    "attachments": {
+      "title": "Bằng chứng",
+      "claim": "Tệp này chứng minh điều gì?",
+      "claimPlaceholder": "Nhật ký chạy phía sau con số nDCG",
+      "claimNote": "Mô tả của bạn về điều tệp này hỗ trợ. Được ghi là khẳng định của bạn, không phải kết luận.",
+      "file": "Đính kèm tệp",
+      "link": "Hoặc một liên kết",
+      "addLink": "Thêm liên kết",
+      "download": "Tải về",
+      "none": "Chưa đính kèm gì.",
+      "limit": "Tối đa 25 MB mỗi tệp. PDF, DOCX, Markdown, hình, notebook và tệp dữ liệu.",
+      "truncated": "đã cắt bớt",
+      "state": {
+        "pending": "Đang đọc…",
+        "ok": "Đã trích xuất văn bản",
+        "failed": "Không đọc được",
+        "unsupported": "Đã lưu, không có văn bản"
+      }
     }
   },
   "overview": {

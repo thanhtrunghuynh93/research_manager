@@ -20,6 +20,7 @@ from app.api.middleware import (
 )
 from app.api.problems import register_exception_handlers
 from app.api.v1 import include_routers
+from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.db import dispose_engine, init_engine
 
@@ -46,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The provider is installed here rather than at import, so a test or a CLI command that
         # never starts the app never registers one (architecture §10).
         ai_bootstrap.install(settings)
+        storage.register_store(storage.build_store(settings))
         try:
             yield
         finally:

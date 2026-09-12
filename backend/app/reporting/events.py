@@ -31,6 +31,25 @@ class ReportSubmitted:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactExtracted:
+    """REP-04: an attachment became readable text, and is now citable evidence.
+
+    Carries the text rather than an id to fetch, because the handler runs inside the emitting
+    transaction and the extraction has already been done once.
+    """
+
+    workspace_id: UUID
+    artifact_id: UUID
+    version_id: UUID
+    version_no: int
+    project_id: UUID | None
+    owner_student_id: UUID
+    supported_claim: str
+    text: str
+    source_time: Any
+
+
+@dataclass(frozen=True, slots=True)
 class RevisionRequested:
     workspace_id: UUID
     report_id: UUID

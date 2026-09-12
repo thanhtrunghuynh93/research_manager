@@ -26,6 +26,8 @@ dependencies = [
   "prometheus-client>=0.21",
   "orjson>=3.10",
   "pyjwt[crypto]>=2.9",
+  "pypdf",
+  "python-docx",
 ]
 
 [dependency-groups]

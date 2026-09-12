@@ -10,6 +10,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
+from app.reporting.models import ArtifactKind as ArtifactKind
+from app.reporting.models import ExtractionState as ExtractionState
 from app.reporting.models import ObligationState as ObligationState
 from app.reporting.models import ReportState as ReportState
 from app.reporting.models import TimingStatus as TimingStatus
