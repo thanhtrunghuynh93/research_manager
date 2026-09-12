@@ -46,11 +46,22 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("google_api_key", re.compile(r"\bAIza[A-Za-z0-9_\-]{30,}\b")),
     ("bearer_header", re.compile(r"\b[Bb]earer\s+[A-Za-z0-9._\-]{20,}")),
     (
+        "basic_header",
+        # The lookahead keeps ordinary prose out: a real credential carries a digit, `+`, `/` or
+        # padding, where "basic characterization" does not.
+        re.compile(r"\b[Bb]asic\s+(?=[A-Za-z0-9+/]*[0-9+/=])[A-Za-z0-9+/]{16,}={0,2}"),
+    ),
+    (
         "assigned_secret",
-        # `api_key = "…"`, `PASSWORD: …`, `secret=…` — the shape, not the value.
+        # `api_key = "…"`, `PASSWORD: …`, `secret=…`, `"password": "…"` — the shape, not the
+        # value. The optional quote before the separator is what makes the JSON form match: in
+        # `{"password": "x"}` the closing quote of the key sits between the word and the colon,
+        # so a pattern that went straight from `\b` to `[:=]` saw nothing at all.
         re.compile(
             r"\b(?:api[_\-]?key|secret|password|passwd|token|private[_\-]?key)\b"
-            r"\s*[:=]\s*[\"']?([^\s\"',;]{8,})[\"']?",
+            # The lookahead leaves a value an earlier, more specific rule already replaced
+            # alone; re-matching it would append a second closing bracket.
+            r"[\"']?\s*[:=]\s*[\"']?(?!\[redacted)([^\s\"',;}\]]{8,})[\"']?",
             re.IGNORECASE,
         ),
     ),

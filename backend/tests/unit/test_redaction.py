@@ -82,3 +82,66 @@ def test_redaction_reports_what_it_removed_so_the_call_can_be_audited() -> None:
     assert cleaned["c"] == "nothing here"
     assert findings  # each finding names the rule, never the value it removed
     assert all("p@h" not in finding for finding in findings)
+
+
+# ---------------------------------------------------------------- the shapes secrets arrive in
+#
+# Credentials reach the gateway by accident, and the accidents have a shape: a pasted config file,
+# a failing test fixture, a copied curl. Those are JSON and header forms, not `KEY=value` lines.
+
+
+@pytest.mark.parametrize(
+    "carrier",
+    [
+        '{"password": "s3cretVALUE123"}',
+        '{"api_key":"s3cretVALUE123"}',
+        "{'secret': 's3cretVALUE123'}",
+        '{"token" : "s3cretVALUE123"}',
+        '"private_key": "s3cretVALUE123"',
+        "password: s3cretVALUE123",
+        "API_KEY=s3cretVALUE123",
+    ],
+)
+def test_an_assigned_secret_is_removed_whichever_syntax_carries_it(carrier: str) -> None:
+    """The rule required `[:=]` straight after the key word, so no quoted form ever matched."""
+    cleaned = redact(f"the config we used: {carrier}")
+
+    assert "s3cretVALUE123" not in cleaned
+    assert PLACEHOLDER in cleaned
+
+
+def test_a_basic_authorization_header_is_removed() -> None:
+    cleaned = redact("Authorization: Basic dXNlcjpwYXNzd29yZDEyMw==")
+
+    assert "dXNlcjpwYXNzd29yZDEyMw" not in cleaned
+    assert PLACEHOLDER in cleaned
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "we used a basic characterization of the dataset",
+        "the basic implementation is fine for now",
+        "a basic reproducibility check on the published numbers",
+    ],
+)
+def test_ordinary_prose_after_the_word_basic_survives(prose: str) -> None:
+    """A blunt rule is still not allowed to eat a sentence of somebody's report."""
+    assert redact(prose) == prose
+
+
+def test_a_value_an_earlier_rule_already_replaced_is_left_alone() -> None:
+    """`openai_key` runs before `assigned_secret`; the second must not re-wrap the placeholder."""
+    cleaned = redact('{"apiKey": "sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA"}')
+
+    assert cleaned == '{"apiKey": "[redacted]"}'
+
+
+def test_a_secret_nested_in_a_prompt_payload_is_removed() -> None:
+    cleaned, findings = redact_payload(
+        {"evidence": [{"text": 'config.json: {"password": "s3cretVALUE123"}'}]},
+        with_findings=True,
+    )
+
+    assert "s3cretVALUE123" not in str(cleaned)
+    assert findings == ["assigned_secret x1"]
