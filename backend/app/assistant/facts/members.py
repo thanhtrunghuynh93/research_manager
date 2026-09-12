@@ -32,11 +32,14 @@ async def members(session: AsyncSession, query: FactQuery) -> Fact | None:
             continue
         if membership.left_on is not None and membership.left_on <= on_date:
             continue  # left_on is exclusive: the first day they are no longer a member
-        student = await identity_service.get_user(session, query.scope, membership.student_id)
         rows.append(
             {
                 "student_id": str(membership.student_id),
-                "display_name": student.display_name,
+                # From the membership, not from `identity_service.get_user`: a student may not
+                # read a co-member's user row, so that lookup raised NotFoundError, `_compute_facts`
+                # swallowed it, and asking "who is on this project?" answered "nothing in the
+                # records answers that question" (PROJ-02, QA-04).
+                "display_name": membership.student_name,
                 "responsibility": membership.responsibility,
                 "joined_on": membership.joined_on.isoformat(),
             }

@@ -2432,6 +2432,11 @@ export interface components {
              * Format: uuid
              */
             student_id: string;
+            /**
+             * Student Name
+             * @default
+             */
+            student_name: string;
         };
         /** MessageOut */
         MessageOut: {

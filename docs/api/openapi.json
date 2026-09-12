@@ -2124,6 +2124,11 @@
             "format": "uuid",
             "title": "Student Id",
             "type": "string"
+          },
+          "student_name": {
+            "default": "",
+            "title": "Student Name",
+            "type": "string"
           }
         },
         "required": [

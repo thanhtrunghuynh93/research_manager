@@ -22,6 +22,7 @@ async def stale_repositories(session: AsyncSession, query: FactQuery) -> Fact:
         session, query.scope, project_id=query.project_id
     )
     rows = []
+    stale_repos = []
     for repository in repositories:
         run = await evidence_service.sync_status(session, query.scope, repository.id)
         finished = run.finished_at if run is not None else None
@@ -29,6 +30,7 @@ async def stale_repositories(session: AsyncSession, query: FactQuery) -> Fact:
         stale = finished is None or (query.as_of - finished) > STALE_AFTER
         if not stale and state == "completed":
             continue
+        stale_repos.append(repository)
         rows.append(
             {
                 "repository_id": str(repository.id),
@@ -52,7 +54,9 @@ async def stale_repositories(session: AsyncSession, query: FactQuery) -> Fact:
                 locator=f"/projects?repository={repository.id}",
                 label=repository.full_name,
             )
-            for repository in repositories
+            # The stale ones, not every one: citing twenty healthy repositories as the support
+            # for "one repository is stale" is worse than citing nothing (QA-03).
+            for repository in stale_repos
         ],
         note=(
             "A repository that has not synced recently means the evidence is incomplete, not that "

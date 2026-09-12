@@ -27,6 +27,7 @@ from app.assessment import service as assessment_service
 from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import ForbiddenError, ValidationError
+from app.core.pagination import collect_all
 from app.exports.schemas import SCHEMA_VERSION, Bundle
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
@@ -208,9 +209,13 @@ async def _projects(
     since: datetime | None,
     until: datetime | None,
 ) -> list[dict[str, Any]]:
-    page = await projects_service.list_projects(session, scope, limit=200)
+    # Every project the caller may see: the bundle's own metadata asserts that a professor's
+    # unfiltered export is complete, which the first page of two hundred is not (UI-06).
+    projects = await collect_all(
+        lambda cursor: projects_service.list_projects(session, scope, limit=200, cursor=cursor)
+    )
     rows = []
-    for project in page.items:
+    for project in projects:
         if project_id is not None and project.id != project_id:
             continue
         members = await projects_service.list_members(session, scope, project.id, include_past=True)

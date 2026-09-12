@@ -23,6 +23,7 @@ from app.ai.gateway import AIGateway, Budget, CallContext
 from app.ai.schemas import RoutePlan
 from app.assistant import facts
 from app.core.authz import Scope
+from app.core.pagination import collect_all
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 
@@ -209,10 +210,15 @@ async def _resolve_entities(
 async def _match_students(session: AsyncSession, scope: Scope, name: str) -> list[tuple[UUID, str]]:
     """Matched against users the caller may already see, so resolution leaks nothing (AUTH-02)."""
     needle = name.strip().lower()
-    page = await identity_service.list_users(session, scope, limit=200)
+    # Every visible user, not the first page of them. Stopping at 200 meant a student whose row
+    # sorts later simply did not exist: `_resolve_entities` noted "no student matches" and the
+    # assistant answered about the whole workspace instead of asking who was meant (QA-05).
+    users = await collect_all(
+        lambda cursor: identity_service.list_users(session, scope, limit=200, cursor=cursor)
+    )
     matches = [
         (user.id, user.display_name)
-        for user in page.items
+        for user in users
         if needle in user.display_name.lower() or needle in user.email.lower()
     ]
     exact = [row for row in matches if row[1].lower() == needle]
@@ -221,9 +227,11 @@ async def _match_students(session: AsyncSession, scope: Scope, name: str) -> lis
 
 async def _match_projects(session: AsyncSession, scope: Scope, name: str) -> list[tuple[UUID, str]]:
     needle = name.strip().lower()
-    page = await projects_service.list_projects(session, scope, limit=200)
+    projects = await collect_all(
+        lambda cursor: projects_service.list_projects(session, scope, limit=200, cursor=cursor)
+    )
     matches = [
-        (project.id, project.title) for project in page.items if needle in project.title.lower()
+        (project.id, project.title) for project in projects if needle in project.title.lower()
     ]
     exact = [row for row in matches if row[1].lower() == needle]
     return exact or matches

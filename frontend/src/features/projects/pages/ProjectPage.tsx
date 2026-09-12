@@ -90,7 +90,7 @@ export function ProjectPage() {
           {members.data?.map((member) => (
             <li key={member.id} className="flex items-center justify-between px-4 py-2 text-sm">
               <Link to={`/students/${member.student_id}`} className="underline">
-                {member.student_id.slice(0, 8)}
+                {member.student_name || member.student_id.slice(0, 8)}
               </Link>
               <span className="text-muted-foreground">
                 {member.responsibility || t("project.noResponsibility")} ·{" "}

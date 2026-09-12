@@ -68,6 +68,10 @@ class MembershipOut(BaseModel):
     id: UUID
     project_id: UUID
     student_id: UUID
+    # PROJ-02: members see who else works on the project. The name travels with the membership
+    # because that is the read the disclosure is authorised by — `user_visible_to` restricts a
+    # student to their own account, and asking it for a co-member fails closed.
+    student_name: str = ""
     responsibility: str
     joined_on: date
     left_on: date | None = None
