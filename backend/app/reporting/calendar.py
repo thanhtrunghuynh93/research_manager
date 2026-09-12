@@ -40,7 +40,9 @@ def next_period_start(previous_local_end: date, week_start_weekday: int) -> date
     return next_weekday_on_or_after(previous_local_end + timedelta(days=1), week_start_weekday)
 
 
-def period_dates(local_start: date, *, meeting_weekday: int, timezone: str) -> PeriodDates:
+def period_dates(
+    local_start: date, *, meeting_weekday: int, timezone: str, grace_minutes: int = 0
+) -> PeriodDates:
     local_end = local_start + timedelta(days=6)
     # The meeting follows the week it discusses, so the deadline lands inside the period.
     meeting_date = next_weekday_on_or_after(local_end + timedelta(days=1), meeting_weekday)
@@ -52,7 +54,9 @@ def period_dates(local_start: date, *, meeting_weekday: int, timezone: str) -> P
         end_utc=to_utc(local_end + timedelta(days=1), time(0, 0), timezone),
         meeting_date=meeting_date,
         deadline_utc=deadline_utc,
-        reminder_due_utc=reminder_due(deadline_utc),
+        # After the grace closes, not after the deadline: telling a student they missed a deadline
+        # they are still inside is worse than telling them a minute later (REP-08).
+        reminder_due_utc=reminder_due(deadline_utc + timedelta(minutes=grace_minutes)),
     )
 
 

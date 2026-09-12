@@ -37,7 +37,12 @@ class Week:
 
 
 async def _week(
-    db: AsyncSession, prof_scope: Scope, student: identity_models.User, *, project_count: int = 2
+    db: AsyncSession,
+    prof_scope: Scope,
+    student: identity_models.User,
+    *,
+    project_count: int = 2,
+    grace_minutes: int = 0,
 ) -> Week:
     await service.configure_calendar(
         db,
@@ -46,6 +51,7 @@ async def _week(
         meeting_weekday=0,
         week_start_weekday=0,
         effective_from=date(2026, 9, 14),
+        grace_minutes=grace_minutes,
     )
     projects = []
     for index in range(project_count):
@@ -418,3 +424,62 @@ async def test_two_reports_for_one_student_and_period_cannot_exist(
     with pytest.raises(IntegrityError):
         await db.flush()
     await db.rollback()
+
+
+async def test_a_submission_inside_the_configured_grace_is_on_time(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """REP-01: `grace_minutes` is configurable, stored, and returned by the API.
+
+    It was also never read: `_timing_status` passed a hardcoded zero to the one production call
+    site of `effective_deadline`, so a professor who set thirty minutes of grace granted none.
+    """
+    week = await _week(db, prof_scope, student_a, project_count=1, grace_minutes=30)
+    # Eleven minutes past the deadline, and well inside the half hour the professor allowed.
+    await db.execute(
+        update(models.ReportingPeriod)
+        .where(models.ReportingPeriod.id == week.period.id)
+        .values(deadline_utc=now() - timedelta(minutes=11))
+    )
+
+    version = await service.submit_report(
+        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+    )
+
+    assert version.timing_status is models.TimingStatus.ON_TIME
+
+
+async def test_a_submission_past_the_grace_is_still_late(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    week = await _week(db, prof_scope, student_a, project_count=1, grace_minutes=30)
+    await db.execute(
+        update(models.ReportingPeriod)
+        .where(models.ReportingPeriod.id == week.period.id)
+        .values(deadline_utc=now() - timedelta(minutes=45))
+    )
+
+    version = await service.submit_report(
+        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+    )
+
+    assert version.timing_status is models.TimingStatus.LATE
+
+
+async def test_the_missed_deadline_reminder_waits_for_the_grace_to_close(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """Otherwise the email saying they missed it arrives while they are still inside it."""
+    await service.configure_calendar(
+        db,
+        prof_scope,
+        timezone=TZ,
+        meeting_weekday=0,
+        week_start_weekday=0,
+        effective_from=date(2026, 9, 14),
+        grace_minutes=30,
+    )
+
+    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
+
+    assert period.reminder_due_utc > period.deadline_utc + timedelta(minutes=30)
