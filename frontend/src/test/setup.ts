@@ -11,7 +11,7 @@ afterAll(() => server.close());
 
 // jsdom's Blob has no `arrayBuffer`, and its `crypto` lacks `subtle`. Both exist in every browser
 // the product runs in, so they are supplied here rather than worked around in the components.
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 if (typeof Blob.prototype.arrayBuffer !== "function") {
   Blob.prototype.arrayBuffer = function arrayBuffer(this: Blob): Promise<ArrayBuffer> {
@@ -62,8 +62,23 @@ if (typeof Blob.prototype.stream !== "function") {
       return out.buffer;
     },
   };
+  // Spreading `globalThis.crypto` would copy own properties only, and `getRandomValues` lives on
+  // the prototype — so the shim silently dropped it and code reaching for it saw a browser that
+  // does not exist. Both randomness functions are supplied explicitly, and both return what a
+  // browser returns: a real v4 uuid, and bytes actually written into the caller's array.
   Object.defineProperty(globalThis, "crypto", {
-    value: { ...globalThis.crypto, subtle, randomUUID: () => createHash("sha1").digest("hex") },
+    value: {
+      subtle,
+      randomUUID,
+      getRandomValues: <T extends ArrayBufferView>(target: T): T => {
+        // Filled element-wise from node:crypto rather than handed the view directly: jsdom's
+        // typed arrays belong to another realm, which randomFillSync refuses.
+        const bytes = randomBytes(target.byteLength);
+        const out = new Uint8Array(target.buffer, target.byteOffset, target.byteLength);
+        out.set(bytes);
+        return target;
+      },
+    },
     configurable: true,
   });
 }
