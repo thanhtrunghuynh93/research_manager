@@ -34,7 +34,9 @@ services:
 
   postgres:
     ports:
-      - "5432:5432"
+      # host:container — the container keeps 5432, which is what RM_DATABASE_URL and the backup
+      # scripts address it by on the compose network.
+      - "8022:5432"
 
   minio:
     ports:

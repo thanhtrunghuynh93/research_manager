@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     log_json: bool = False
     public_url: str = "http://localhost:8020"
 
-    database_url: str = "postgresql+psycopg://rm:rm@localhost:5432/rm"
+    # The host-side default, for the make targets that run alembic and the seed outside the
+    # containers. It has to match what the dev stack actually creates: the credential from
+    # .env.example, on the port infra/docker-compose.dev.yml publishes. Inside the containers
+    # RM_DATABASE_URL names `postgres:5432` on the compose network instead.
+    database_url: str = "postgresql+psycopg://rm:rm-dev-password@localhost:8022/rm"
     secret_key: SecretStr = SecretStr("dev-only-change-me")
 
     s3_endpoint: str = "http://localhost:9000"
