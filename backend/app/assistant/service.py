@@ -92,6 +92,7 @@ async def ask(
     if plan.intent == "clarify" and plan.clarifying_question:
         # QA-05: a targeted question beats an answer about the wrong student.
         result = _clarification(question, answer_scope, plan, asked_at)
+        result.conversation_id = conversation.id
         await _record_turn(session, scope, conversation, question, result)
         return result
 
@@ -101,6 +102,9 @@ async def ask(
             session, scope, key, still_visible=_visibility_checker(session, scope)
         )
         if cached is not None:
+            # The cached answer belongs to whichever conversation first asked; this turn is in
+            # this one.
+            cached.conversation_id = conversation.id
             await _record_turn(session, scope, conversation, question, cached)
             return cached
 
@@ -129,6 +133,7 @@ async def ask(
 
     if use_cache:
         await cache.put(session, scope, key, result)
+    result.conversation_id = conversation.id
     await _record_turn(session, scope, conversation, question, result)
     return result
 

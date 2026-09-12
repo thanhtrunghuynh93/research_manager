@@ -1546,6 +1546,8 @@ export interface components {
              * @default
              */
             clarifying_question: string;
+            /** Conversation Id */
+            conversation_id?: string | null;
             /** Facts */
             facts?: components["schemas"]["FactOut"][];
             /** Gaps */

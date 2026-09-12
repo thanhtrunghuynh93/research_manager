@@ -71,6 +71,9 @@ class AnswerOut(BaseModel):
     """The whole contract. Everything a reader needs to decide how much to trust this."""
 
     id: UUID
+    # The conversation this turn belongs to. `id` identifies the answer and changes every turn;
+    # this is what a follow-up passes back as `AskIn.conversation_id` (QA-05).
+    conversation_id: UUID | None = None
     question: str
     scope: AnswerScope
     time_range: str

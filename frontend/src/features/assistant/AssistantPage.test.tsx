@@ -11,6 +11,7 @@ import { server } from "@/test/setup";
 
 const BASE = {
   id: "an1",
+  conversation_id: "c1",
   question: "Which reports are missing?",
   scope: {
     student_id: null,
@@ -57,6 +58,38 @@ async function ask(answer: Record<string, unknown> = BASE) {
   );
   await userEvent.type(screen.getByLabelText(/question/i), "Which reports are missing?");
   await userEvent.click(screen.getByRole("button", { name: /^ask$/i }));
+}
+
+/** Render, then answer each POST in turn, recording the request bodies. */
+async function conversation(answers: Record<string, unknown>[]) {
+  const sent: Record<string, unknown>[] = [];
+  let turn = 0;
+  server.use(
+    http.post("/api/v1/assistant/ask", async ({ request }) => {
+      sent.push((await request.json()) as Record<string, unknown>);
+      const answer = answers[Math.min(turn, answers.length - 1)]!;
+      turn += 1;
+      return answer.__status === 404
+        ? HttpResponse.json({ detail: "conversation not found" }, { status: 404 })
+        : HttpResponse.json(answer);
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <AssistantPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return {
+    sent,
+    async say(text: string) {
+      await userEvent.clear(screen.getByLabelText(/question/i));
+      await userEvent.type(screen.getByLabelText(/question/i), text);
+      await userEvent.click(screen.getByRole("button", { name: /^ask$/i }));
+    },
+  };
 }
 
 test("shows the active scope and the time range beside the answer", async () => {
@@ -149,4 +182,32 @@ test("says the assistant cannot act", async () => {
   expect(
     await screen.findByText(/sending, approving and changing remain your actions/i),
   ).toBeInTheDocument();
+});
+
+test("a follow-up carries the conversation id, not the id of the answer it came from", async () => {
+  // The regression: "keep this scope" stored `answer.id`, which the server mints per answer and
+  // cannot resolve as a conversation — so every follow-up 404'd (QA-05).
+  const { sent, say } = await conversation([BASE]);
+
+  await say("Which reports are missing?");
+  await userEvent.click(await screen.findByRole("button", { name: /keep this scope/i }));
+  await say("And last month?");
+
+  expect(sent).toHaveLength(2);
+  expect(sent[0]!.conversation_id).toBeNull();
+  expect(sent[1]!.conversation_id).toBe("c1");
+});
+
+test("a conversation the server rejects does not wedge every later question", async () => {
+  const { sent, say } = await conversation([BASE, { __status: 404 }, BASE]);
+
+  await say("Which reports are missing?");
+  await userEvent.click(await screen.findByRole("button", { name: /keep this scope/i }));
+  await say("And last month?");
+  await screen.findByText(/could not be answered/i);
+  await say("Try again");
+
+  // The rejected id is dropped rather than resent, so the third question starts fresh.
+  expect(sent[1]!.conversation_id).toBe("c1");
+  expect(sent[2]!.conversation_id).toBeNull();
 });

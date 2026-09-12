@@ -39,7 +39,16 @@ export function AssistantPage() {
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!question.trim()) return;
-    ask.mutate({ question, conversation_id: conversationId }, { onSuccess: () => setQuestion("") });
+    ask.mutate(
+      { question, conversation_id: conversationId },
+      {
+        onSuccess: () => setQuestion(""),
+        // A conversation the server will not accept — deleted, or from another session — would
+        // otherwise fail every later question in this tab. Drop it and let the next one start
+        // a fresh conversation.
+        onError: () => setConversationId(null),
+      },
+    );
   };
 
   return (
@@ -155,10 +164,12 @@ export function AssistantPage() {
             </div>
           )}
 
-          {!conversationId && (
+          {!conversationId && answer.conversation_id && (
             <button
               type="button"
-              onClick={() => setConversationId(answer.id)}
+              // The conversation, not `answer.id`: that one is minted per answer and is not
+              // something `AskIn.conversation_id` can resolve (QA-05).
+              onClick={() => setConversationId(answer.conversation_id ?? null)}
               className="text-xs underline"
             >
               {t("assistant.keepScope")}

@@ -170,6 +170,18 @@
             "title": "Clarifying Question",
             "type": "string"
           },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
           "facts": {
             "items": {
               "$ref": "#/components/schemas/FactOut"
