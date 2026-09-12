@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
+import { localDateToInstant } from "@/lib/dates";
 
 type Kinds = { kinds: string[]; default: string[] };
 
@@ -19,15 +20,20 @@ export function ExportsPage() {
     queryKey: ["exports", "kinds"],
     queryFn: () => api.get<Kinds>("/api/v1/exports/kinds"),
   });
-  const [selected, setSelected] = useState<string[]>([]);
+  // null means "has not chosen", which is not the same as "chose nothing". Conflating them made
+  // unticking the last box silently restore the server defaults, so the download carried kinds
+  // the professor had just removed — and the boxes re-ticked themselves on screen.
+  const [selected, setSelected] = useState<string[] | null>(null);
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
 
-  const chosen = selected.length ? selected : (kinds.data?.default ?? []);
+  const chosen = selected ?? kinds.data?.default ?? [];
   const params = new URLSearchParams();
   for (const kind of chosen) params.append("kinds", kind);
-  if (since) params.set("since", `${since}T00:00:00Z`);
-  if (until) params.set("until", `${until}T23:59:59Z`);
+  // The inputs give a workspace-local calendar date; stamping it `Z` would read it as UTC and
+  // move the window by the workspace's offset (UI-06).
+  if (since) params.set("since", localDateToInstant(since, "start"));
+  if (until) params.set("until", localDateToInstant(until, "end"));
 
   return (
     <section className="space-y-6">
@@ -44,11 +50,12 @@ export function ExportsPage() {
               type="checkbox"
               checked={chosen.includes(kind)}
               onChange={(event) =>
-                setSelected((previous) =>
-                  event.target.checked
-                    ? [...new Set([...(previous.length ? previous : chosen), kind])]
-                    : (previous.length ? previous : chosen).filter((value) => value !== kind),
-                )
+                setSelected((previous) => {
+                  const current = previous ?? chosen;
+                  return event.target.checked
+                    ? [...new Set([...current, kind])]
+                    : current.filter((value) => value !== kind);
+                })
               }
             />
             {t(`exports.kind.${kind}`, { defaultValue: kind })}
