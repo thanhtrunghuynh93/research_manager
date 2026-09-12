@@ -32,7 +32,10 @@ export function useApprove(id: string) {
   const queryClient = useQueryClient();
   // Minted per attempt rather than per call, so a retry is the same approval. Inside mutationFn
   // each retry carried a new key, which is exactly what the header exists to prevent.
-  const key = useRef(newIdempotencyKey());
+  // Lazily: `useRef(newIdempotencyKey())` would mint a key on every render and throw the
+  // rest away — and it is what turned an unavailable crypto API into a render-time crash.
+  const key = useRef<string>();
+  key.current ??= newIdempotencyKey();
   return useMutation({
     mutationFn: (payload: { override?: Record<string, unknown> | null; rationale?: string }) =>
       api.post<Review>(`/api/v1/assessments/${id}/approve`, payload, {

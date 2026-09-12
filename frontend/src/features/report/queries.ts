@@ -60,7 +60,10 @@ export function useSubmitReport(periodId: string) {
   // REP-05: a double click, or a retry of a request whose response was lost, must not create a
   // second version. The key therefore identifies the *attempt*, so it has to be minted outside
   // mutationFn — inside it, every retry got a fresh key and the server saw a new submission.
-  const key = useRef(newIdempotencyKey());
+  // Lazily: `useRef(newIdempotencyKey())` would mint a key on every render and throw the
+  // rest away — and it is what turned an unavailable crypto API into a render-time crash.
+  const key = useRef<string>();
+  key.current ??= newIdempotencyKey();
   return useMutation({
     mutationFn: (entries: Entry[]) =>
       api.post<Version>(
