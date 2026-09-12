@@ -35,6 +35,7 @@ from app.core.storage import (
     current_store,
     extension_for_content_type,
     extracted_text_key,
+    is_sha256_hex,
     sha256_of,
     storage_key,
 )
@@ -44,6 +45,9 @@ from app.reporting.models import (
     ArtifactKind,
     ArtifactVersion,
     ExtractionState,
+    ProjectReportEntry,
+    ReportVersion,
+    WeeklyReport,
 )
 
 log = logging.getLogger(__name__)
@@ -114,7 +118,9 @@ async def request_upload(
     if byte_size > max_file_bytes():
         limit = get_settings().upload_max_file_mb
         raise ValidationError(f"this file is larger than the {limit} MB per-file limit")
-    if len(sha256) != 64:
+    if not is_sha256_hex(sha256):
+        # Checked as a *format*, not only a length: the checksum is interpolated into the object
+        # key, and a 64-character path fragment would grant a write outside the workspace prefix.
         raise ValidationError("a SHA-256 checksum of the file is required before uploading")
 
     artifact = await _open_artifact(
@@ -182,6 +188,18 @@ async def confirm_upload(
         raise ValidationError("there is no pending upload for this artifact")
 
     active = store or current_store()
+
+    # The declared size bounded only what the client *said* it would send; this is what arrived.
+    # Checked from the object's metadata rather than after reading it, so an oversized upload
+    # never crosses into this process (the point of granting a direct PUT in the first place).
+    info = await active.head(version.storage_key)
+    if info is None:
+        raise ValidationError("no object was uploaded to the granted location")
+    if info.byte_size > max_file_bytes():
+        limit = get_settings().upload_max_file_mb
+        await active.delete(version.storage_key)
+        raise ValidationError(f"this file is larger than the {limit} MB per-file limit")
+
     data = await active.get_bytes(version.storage_key)
     if data is None:
         raise ValidationError("no object was uploaded to the granted location")
@@ -377,13 +395,46 @@ async def list_for_entry(
 async def attach_to_entry(
     session: AsyncSession, scope: Scope, artifact_id: UUID, *, entry_id: UUID, period_id: UUID
 ) -> None:
-    """Bind a draft's file to the entry it supports, once the entry exists."""
+    """Bind a draft's file to the entry it supports, once the entry exists.
+
+    `entry_id` and `period_id` are checked, not stored as given. `Artifact.entry_id` carries no
+    foreign key, and `list_for_entry` shows the professor everything filed under an entry — so an
+    unchecked value here would let one student's file appear as evidence supporting another
+    student's entry, or be filed under a week it has nothing to do with.
+    """
     artifact = await _require_artifact(session, scope, artifact_id)
     if artifact.owner_student_id != scope.user_id and not scope.is_prof:
         raise ForbiddenError("only the student who attached this artifact may move it")
+
+    owner_id, entry_period_id = await _entry_owner_and_period(session, scope, entry_id)
+    if owner_id != artifact.owner_student_id:
+        raise ForbiddenError("an artifact can only support its own author's entry")
+    if entry_period_id != period_id:
+        raise ValidationError("that entry belongs to a different reporting period")
+
     artifact.entry_id = entry_id
     artifact.period_id = period_id
     await session.flush()
+
+
+async def _entry_owner_and_period(
+    session: AsyncSession, scope: Scope, entry_id: UUID
+) -> tuple[UUID, UUID]:
+    """Whose entry this is and which week it is for, within the caller's workspace."""
+    row = (
+        await session.execute(
+            select(WeeklyReport.student_id, WeeklyReport.period_id)
+            .join(ReportVersion, ReportVersion.report_id == WeeklyReport.id)
+            .join(ProjectReportEntry, ProjectReportEntry.report_version_id == ReportVersion.id)
+            .where(
+                ProjectReportEntry.id == entry_id,
+                ProjectReportEntry.workspace_id == scope.workspace_id,
+            )
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError("report entry not found")
+    return row[0], row[1]
 
 
 # ------------------------------------------------------------------ internals

@@ -407,3 +407,143 @@ async def test_only_the_owner_may_move_their_attachment(
         await artifacts.attach_to_entry(
             db, outsider, version.artifact_id, entry_id=project.id, period_id=period.id
         )
+
+
+# ---------------------------------------------------------------- what the grant is allowed to be
+#
+# The storage key is built from ids and the checksum, and a presigned PUT is issued for it. The
+# ids are ours; the checksum is not, so its *format* is part of the security boundary.
+
+
+async def test_a_checksum_that_is_not_hex_is_refused(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    """64 characters of `../` would normalise the granted key above the workspace prefix."""
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    traversal = "../" * 21 + "x"
+    assert len(traversal) == 64
+
+    with pytest.raises(ValidationError, match="SHA-256"):
+        await artifacts.request_upload(
+            db,
+            scope,
+            project_id=project.id,
+            filename="notes.md",
+            byte_size=len(NOTE),
+            sha256=traversal,
+            store=store,
+        )
+
+
+async def test_the_key_builder_refuses_a_checksum_it_cannot_trust() -> None:
+    """Stated at the boundary as well as at the edge: a key is a path."""
+    from uuid import uuid4
+
+    from app.core.storage import storage_key
+
+    with pytest.raises(ValueError, match="hex"):
+        storage_key(
+            workspace_id=uuid4(),
+            artifact_id=uuid4(),
+            version_no=1,
+            sha256="../" * 21 + "x",
+            filename="notes.md",
+        )
+
+
+async def test_an_upload_larger_than_the_limit_is_refused_at_confirm(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    """The declared size bounds only the claim; this is the size of what actually arrived."""
+    from app.core.config import get_settings
+
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    oversized = b"x" * (get_settings().upload_max_file_mb * 1024 * 1024 + 1)
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        filename="notes.md",
+        byte_size=8,  # the claim
+        sha256=sha256_of(oversized),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, oversized, content_type="text/markdown")
+
+    with pytest.raises(ValidationError, match="limit"):
+        await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+
+
+async def test_an_artifact_cannot_be_filed_under_another_students_entry(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """`list_for_entry` shows the professor everything filed here, as that student's evidence."""
+    period, project = await _project(db, prof_scope, student_a)
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_b.id, joined_on=date(2026, 9, 1)
+    )
+    await reporting_service.ensure_obligations(db, prof_scope, period.id)
+
+    victim = await identity_service.scope_for(db, student_a)
+    submitted = await reporting_service.submit_report(
+        db,
+        victim,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Ran the ablation.",
+                "results": "No improvement.",
+            }
+        ],
+    )
+    victim_entry_id = submitted.entries[0].id
+
+    attacker = await identity_service.scope_for(db, student_b)
+    mine = await _upload(db, attacker, store, project)
+
+    with pytest.raises(ForbiddenError, match="own author"):
+        await artifacts.attach_to_entry(
+            db, attacker, mine.artifact_id, entry_id=victim_entry_id, period_id=period.id
+        )
+
+
+async def test_an_artifact_cannot_be_filed_under_an_unrelated_week(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    from uuid import uuid4
+
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    submitted = await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Ran the ablation.",
+                "results": "No improvement.",
+            }
+        ],
+    )
+    version = await _upload(db, scope, store, project)
+
+    with pytest.raises(ValidationError, match="different reporting period"):
+        await artifacts.attach_to_entry(
+            db,
+            scope,
+            version.artifact_id,
+            entry_id=submitted.entries[0].id,
+            period_id=uuid4(),
+        )

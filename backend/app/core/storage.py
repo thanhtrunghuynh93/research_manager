@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
@@ -132,10 +133,26 @@ def extension_for_content_type(content_type: str) -> str:
     return ""
 
 
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+
+
+def is_sha256_hex(value: str) -> bool:
+    """A SHA-256 digest, lowercase hex. Anything else must not reach a key."""
+    return bool(SHA256_HEX.match(value))
+
+
 def storage_key(
     *, workspace_id: UUID, artifact_id: UUID, version_no: int, sha256: str, filename: str
 ) -> str:
-    """`{workspace}/artifacts/{artifact}/{version}/{sha256}.{ext}` (architecture §5.6)."""
+    """`{workspace}/artifacts/{artifact}/{version}/{sha256}.{ext}` (architecture §5.6).
+
+    A key is a path, so every segment interpolated into it has to be something a caller cannot
+    shape. The ids are ours; the checksum is the client's, so it is checked here as well as at the
+    edge — a 64-character string of `../` would otherwise normalise above the workspace prefix and
+    turn a presigned PUT into a write anywhere in the bucket.
+    """
+    if not is_sha256_hex(sha256):
+        raise ValueError("a storage key needs a lowercase hex SHA-256 digest")
     extension = extension_of(filename)
     leaf = f"{sha256}.{extension}" if extension else sha256
     return f"{workspace_id}/artifacts/{artifact_id}/{version_no}/{leaf}"
