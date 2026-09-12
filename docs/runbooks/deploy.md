@@ -4,6 +4,17 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
 
 1. On the VPS: `cd /opt/research-management && git fetch --tags && git checkout <tag>`.
 2. Confirm `infra/.env` has every variable in `.env.example` (`diff <(grep -o '^[A-Z_]*' .env.example | sort) <(grep -o '^[A-Z_]*' infra/.env | sort)`).
+   That compares *keys*; three of them also have to be non-empty, and an empty value fails
+   silently in a different way in each case:
+   - `RM_SECRET_KEY` — the shipped default is `dev-only-change-me`. Leaving it is the same as
+     having no session protection at all.
+   - `RM_METRICS_TOKEN` — with `RM_ENV=prod` and no token, `/api/metrics` refuses everybody and
+     the api log says so at start-up. Prometheus scrapes the api container directly on the
+     internal network; Caddy blocks `/api/metrics` at the edge either way.
+   - `RM_GITHUB_WEBHOOK_SECRET` — only if a GitHub App is configured. With an app id set and no
+     webhook secret, `POST /api/v1/webhooks/github` returns 503 rather than verifying deliveries
+     against an empty HMAC key, so pushes will not trigger a sync until it is set. It must match
+     the secret entered in the GitHub App itself.
 3. Pull images: `docker compose --env-file infra/.env -f infra/docker-compose.yml pull`.
 4. Take a pre-deploy backup: `docker compose ... exec backup backup.sh`.
 5. Apply: `docker compose ... up -d`. Migrations run from the api container:
@@ -27,6 +38,17 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
    `worker starting`; the professor overview loads. If `RM_OPENAI_API_KEY` is unset the api log
    says so at start-up and assessments run on the deterministic fake gateway — which is a valid
    way to run a pilot, but it should be a decision rather than a surprise.
+
+   Then verify the seam, because a healthy api and a running worker do not prove they are joined:
+   submit a report as a student (or `POST /api/v1/admin/assessments/retry`) and confirm a row
+   appears in the queue and then leaves it.
+   ```bash
+   docker compose ... exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+     -c "SELECT status, task_name, count(*) FROM procrastinate_jobs GROUP BY 1,2"
+   ```
+   An empty `todo` and a rising `succeeded` is the product running unattended. Rows stuck in
+   `todo` mean the worker is not consuming; no rows at all after a submission mean nothing is
+   deferring, which is what `tests/jobs/test_defer_seam.py` exists to catch before a deploy.
 9. If readiness fails: `docker compose ... logs --tail=200 api worker`, then roll back with
    `git checkout <previous-tag> && docker compose ... up -d` and `alembic downgrade <rev>` only if
    the migration is reversible (check the migration file first).
