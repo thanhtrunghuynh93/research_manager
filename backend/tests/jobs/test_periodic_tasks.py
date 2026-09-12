@@ -136,6 +136,36 @@ async def test_the_queue_gauges_are_populated_from_the_queue_tables(db: AsyncSes
     assert summary["queue"]["oldest_seconds"] >= 0
 
 
+async def test_a_waiting_job_with_no_schedule_still_ages(db: AsyncSession) -> None:
+    """The regression: the gauge read min(scheduled_at), which is NULL for a plain defer.
+
+    min() skips NULLs, so a backlog of thousands of immediately-deferred jobs reported an age of
+    zero and the ten-minute "worker is behind" warning in `tasks.queue_health` could never fire —
+    the exact scenario that task exists for (architecture §12, requirements §11).
+    """
+    from sqlalchemy import text
+
+    job_id = (
+        await db.execute(
+            text(
+                "INSERT INTO procrastinate_jobs (queue_name, task_name, status, scheduled_at) "
+                "VALUES ('default', 'tests.stalled', 'todo', NULL) RETURNING id"
+            )
+        )
+    ).scalar_one()
+    await db.execute(
+        text(
+            "INSERT INTO procrastinate_events (job_id, type, at) "
+            "VALUES (:job_id, 'deferred', now() - interval '2 hours')"
+        ),
+        {"job_id": job_id},
+    )
+
+    summary = await observability.refresh(db)
+
+    assert summary["queue"]["oldest_seconds"] > 3600
+
+
 async def test_a_failing_section_does_not_take_the_refresh_with_it(
     db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

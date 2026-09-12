@@ -54,11 +54,20 @@ async def _queue(session: AsyncSession) -> dict[str, Any]:
     for status in ("todo", "doing", "succeeded", "failed", "cancelled", "aborted"):
         metrics.QUEUE_DEPTH.labels(status=status).set(depths.get(status, 0))
 
+    # `scheduled_at` is NULL for every job deferred without a delay, which is nearly all of them,
+    # and min() skips NULLs — so a backlog of thousands of immediately-deferred jobs reported an
+    # age of zero and the "worker is behind" warning could never fire. The `deferred` event
+    # carries when the job was actually enqueued, which is what "waiting how long" means.
     oldest = (
         await session.execute(
             text(
-                "SELECT EXTRACT(EPOCH FROM (now() - min(scheduled_at))) "
-                "FROM procrastinate_jobs WHERE status = 'todo'"
+                "SELECT EXTRACT(EPOCH FROM (now() - min(COALESCE(j.scheduled_at, e.at)))) "
+                "FROM procrastinate_jobs j "
+                "LEFT JOIN LATERAL ("
+                "  SELECT min(at) AS at FROM procrastinate_events"
+                "  WHERE job_id = j.id AND type = 'deferred'"
+                ") e ON TRUE "
+                "WHERE j.status = 'todo'"
             )
         )
     ).scalar()
