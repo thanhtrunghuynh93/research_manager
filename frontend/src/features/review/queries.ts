@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 
 import { api, newIdempotencyKey } from "@/api/client";
 import { overviewKey } from "@/features/overview/queries";
@@ -29,12 +30,16 @@ export function useAssessmentEvidence(id: string | undefined) {
  */
 export function useApprove(id: string) {
   const queryClient = useQueryClient();
+  // Minted per attempt rather than per call, so a retry is the same approval. Inside mutationFn
+  // each retry carried a new key, which is exactly what the header exists to prevent.
+  const key = useRef(newIdempotencyKey());
   return useMutation({
     mutationFn: (payload: { override?: Record<string, unknown> | null; rationale?: string }) =>
       api.post<Review>(`/api/v1/assessments/${id}/approve`, payload, {
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: key.current,
       }),
     onSuccess: () => {
+      key.current = newIdempotencyKey();
       void queryClient.invalidateQueries({ queryKey: assessmentKey(id) });
       void queryClient.invalidateQueries({ queryKey: overviewKey });
     },

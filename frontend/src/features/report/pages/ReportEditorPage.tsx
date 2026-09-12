@@ -35,6 +35,7 @@ export function ReportEditorPage() {
   const submit = useSubmitReport(periodId);
 
   const [drafts, setDrafts] = useState<Drafts | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Record<string, Attachment[]>>({});
 
@@ -45,8 +46,11 @@ export function ReportEditorPage() {
   const stageOf = (projectId: string) =>
     projects.data?.items.find((project) => project.id === projectId)?.stage ?? "implementation";
 
-  // Recover the saved draft once both the obligations and the report have arrived.
-  if (drafts === null && obligations.data && report.isFetched) {
+  // Recover the saved draft once the obligations, the report *and* the projects have arrived.
+  // Projects are in the guard because `stageOf` falls back to "implementation" without them, and
+  // drafts are seeded once: a slow /projects response would otherwise submit every entry under
+  // the wrong stage, with nothing on screen to show it (the stage is not an editable field).
+  if (drafts === null && obligations.data && report.isFetched && projects.data) {
     const saved = (report.data?.draft_content as { entries?: Drafts } | undefined)?.entries ?? {};
     const initial: Drafts = {};
     for (const obligation of required) {
@@ -58,9 +62,12 @@ export function ReportEditorPage() {
     setActive(required[0]?.project_id ?? null);
   }
 
-  const autosave = useAutosave(drafts ?? {}, (value) => saveDraft.mutateAsync({ entries: value }));
+  // `drafts`, not `drafts ?? {}`: an empty object would be taken as the loaded draft, and merely
+  // opening the editor would PATCH it 1.5 s later — creating a DRAFT report and flipping the
+  // student off "not started" without them typing anything.
+  const autosave = useAutosave(drafts, (value) => saveDraft.mutateAsync({ entries: value }));
 
-  if (periods.isPending || obligations.isPending || drafts === null) {
+  if (periods.isPending || obligations.isPending || projects.isPending || drafts === null) {
     return <p className="text-muted-foreground">{t("common.loading")}</p>;
   }
   if (!period) return <p className="text-muted-foreground">{t("me.noPeriod")}</p>;
@@ -68,7 +75,15 @@ export function ReportEditorPage() {
   const problem = submit.error instanceof ApiError ? submit.error.problem.detail : null;
 
   async function onSubmit() {
-    await autosave.flush();
+    // The flush is a full round-trip, and `submit.isPending` is false throughout it — so without
+    // this the button stayed enabled and a second click started a second submission (REP-05).
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await autosave.flush();
+    } finally {
+      setSubmitting(false);
+    }
     submit.mutate(
       Object.values(drafts ?? {}).map((draft) => ({
         project_id: draft.project_id,
@@ -151,7 +166,7 @@ export function ReportEditorPage() {
         <button
           type="button"
           onClick={() => void onSubmit()}
-          disabled={submit.isPending}
+          disabled={submitting || submit.isPending}
           className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-60"
         >
           {t("report.submit")}

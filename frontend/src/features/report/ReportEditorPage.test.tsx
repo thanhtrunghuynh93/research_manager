@@ -152,3 +152,141 @@ test("shows the deadline for the week being reported", async () => {
 
   expect(await screen.findByTestId("deadline")).toHaveTextContent("23:59");
 });
+
+// ---------------------------------------------------------------- what must not be lost or doubled
+
+test("opening the editor without typing saves nothing", async () => {
+  // The hook baselined on `{}` before the draft loaded, so every visit PATCHed 1.5 s later —
+  // creating a report in DRAFT and flipping the student off "not started".
+  const saved: unknown[] = [];
+  renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", async ({ request }) => {
+      saved.push(await request.json());
+      return HttpResponse.json({});
+    }),
+  ]);
+
+  await screen.findByLabelText(/work performed/i);
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+
+  expect(saved).toEqual([]);
+});
+
+test("an edit made just before navigating away is still saved", async () => {
+  // The effect cleanup cancelled the pending timer, so an edit within the debounce window was
+  // dropped with no error and the indicator's last word was "saved".
+  const saved: { entries: Record<string, { work_performed: string }> }[] = [];
+  const { unmount } = renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", async ({ request }) => {
+      const body = (await request.json()) as { content: (typeof saved)[number] };
+      saved.push(body.content);
+      return HttpResponse.json({});
+    }),
+  ]);
+  const user = userEvent.setup();
+
+  await user.type(await screen.findByLabelText(/work performed/i), "Two paragraphs of work");
+  unmount();
+
+  await waitFor(() => expect(saved.length).toBeGreaterThan(0));
+  expect(saved[0]!.entries.pr1!.work_performed).toBe("Two paragraphs of work");
+});
+
+test("a double click on submit creates one version, not two", async () => {
+  const submissions: (string | null)[] = [];
+  renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", async () => {
+      // A real round-trip: the flush is awaited before the submit, and the button stayed
+      // enabled throughout it because `submit.isPending` was still false.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return HttpResponse.json({});
+    }),
+    http.post("/api/v1/periods/p1/report/submit", async ({ request }) => {
+      submissions.push(request.headers.get("Idempotency-Key"));
+      return HttpResponse.json({
+        id: "v1",
+        report_id: "r1",
+        version_no: 1,
+        author_id: "s1",
+        submitted_at: "2026-09-20T10:00:00Z",
+        timing_status: "on_time",
+        entries: [],
+      });
+    }),
+  ]);
+  const user = userEvent.setup();
+
+  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  const button = screen.getByRole("button", { name: /submit/i });
+  await Promise.all([user.click(button), user.click(button)]);
+
+  await waitFor(() => expect(submissions.length).toBeGreaterThan(0));
+  expect(submissions).toHaveLength(1);
+});
+
+test("a retried submission carries the same idempotency key", async () => {
+  // The key was minted inside mutationFn, so a retry looked like a new submission to the server.
+  const keys: (string | null)[] = [];
+  renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
+    http.post("/api/v1/periods/p1/report/submit", async ({ request }) => {
+      keys.push(request.headers.get("Idempotency-Key"));
+      return keys.length === 1
+        ? HttpResponse.json({ title: "Server error", status: 500, detail: "oops" }, { status: 500 })
+        : HttpResponse.json({
+            id: "v1",
+            report_id: "r1",
+            version_no: 1,
+            author_id: "s1",
+            submitted_at: "2026-09-20T10:00:00Z",
+            timing_status: "on_time",
+            entries: [],
+          });
+    }),
+  ]);
+  const user = userEvent.setup();
+
+  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  await user.click(screen.getByRole("button", { name: /submit/i }));
+  await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: /submit/i }));
+
+  await waitFor(() => expect(keys).toHaveLength(2));
+  expect(keys[0]).toBe(keys[1]);
+});
+
+test("waits for the projects before deciding each entry's stage", async () => {
+  // `stageOf` falls back to "implementation", drafts are seeded once, and the stage is not shown
+  // in the form — so a slow /projects response filed a theory project as implementation with
+  // nothing on screen to correct.
+  const submissions: { entries: { project_id: string; stage: string }[] }[] = [];
+  renderPage([
+    http.get("/api/v1/projects", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return HttpResponse.json({ items: PROJECTS });
+    }),
+    http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
+    http.post("/api/v1/periods/p1/report/submit", async ({ request }) => {
+      submissions.push((await request.json()) as (typeof submissions)[number]);
+      return HttpResponse.json({
+        id: "v1",
+        report_id: "r1",
+        version_no: 1,
+        author_id: "s1",
+        submitted_at: "2026-09-20T10:00:00Z",
+        timing_status: "on_time",
+        entries: [],
+      });
+    }),
+  ]);
+  const user = userEvent.setup();
+
+  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  await user.click(screen.getByRole("button", { name: /submit/i }));
+
+  await waitFor(() => expect(submissions).toHaveLength(1));
+  const stages = Object.fromEntries(
+    submissions[0]!.entries.map((entry) => [entry.project_id, entry.stage]),
+  );
+  expect(stages).toEqual({ pr1: "implementation", pr2: "theory" });
+});
