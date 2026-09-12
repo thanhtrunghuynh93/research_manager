@@ -354,6 +354,10 @@ Image build: one `backend/Dockerfile` produces `rm-backend`; `frontend/` builds 
 
 ```
 scripts/
+├── run.sh                     start the stack in real mode; refuses to start with a credential
+│                              missing, because each integration otherwise falls back to a fake
+├── run_mock.sh                the same in mock mode: fake gateway, in-memory connector, mailpit;
+│                              a separate compose project, so seeded demo data never mixes in
 ├── dev-up.sh                  compose dev stack, wait for readiness, run migrations
 ├── seed_demo.py               calls app.cli seed: one professor, 6 students, 4 projects, 8 periods, fake repo events
 ├── seed_benchmark.py          50 students × 30 projects × 3 years, 100k chunks, for the performance suite

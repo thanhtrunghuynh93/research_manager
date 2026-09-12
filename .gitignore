@@ -24,6 +24,8 @@ frontend/test-results/
 # Environment and secrets
 .env
 infra/.env
+# Per-mode env files for scripts/run.sh; infra/.env.real holds live provider credentials.
+infra/.env.*
 *.pem
 *.key
 # Host secrets mounted into the containers. The README explaining them is kept.

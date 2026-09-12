@@ -16,6 +16,21 @@ A supervision workspace for one professor and their students: weekly report pack
 Prerequisites: Docker with Compose, [uv](https://docs.astral.sh/uv/), Node 20+ with npm.
 
 ```bash
+scripts/run_mock.sh --seed    # everything on the fakes, with the demo dataset
+```
+
+That starts postgres, minio and mailpit, runs the migrations, brings up the api and worker with
+reload, and serves the app on http://localhost:8020. Assessments are produced by the
+deterministic gateway rather than a model provider, which exercises the whole workflow without
+spending anything — see `scripts/run_mock.sh --help`.
+
+To run against real integrations instead, fill in `infra/.env.real` and use `scripts/run.sh`. It
+refuses to start when a credential is missing rather than falling back to the fake, because the
+fallback is silent and its output looks real.
+
+The individual steps are also available as make targets:
+
+```bash
 cp .env.example infra/.env
 make dev          # starts postgres, minio, mailpit; runs migrations; starts api + worker with reload
 make bootstrap    # creates the workspace and professor; prints the invitation link
