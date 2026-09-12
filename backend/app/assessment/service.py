@@ -745,6 +745,31 @@ async def current_review(
     return None if review is None else ReviewOut.model_validate(review)
 
 
+async def list_supervision_notes(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    since: Any = None,
+    until: Any = None,
+) -> list[SupervisionNote]:
+    """QA-06: the professor's own notes, on the professor's own branch. A student never gets here.
+
+    The role check is the barrier, and it is here rather than in the caller because forgetting it
+    upstream would be a disclosure rather than a bug.
+    """
+    scope.require_prof()
+    return await repo.list_supervision_notes(
+        session,
+        scope,
+        student_id=student_id,
+        project_id=project_id,
+        since=since,
+        until=until,
+    )
+
+
 async def list_feedback(
     session: AsyncSession, scope: Scope, assessment_id: UUID
 ) -> list[FeedbackOut]:

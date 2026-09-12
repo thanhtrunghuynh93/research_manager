@@ -64,3 +64,49 @@ class RubricOutput(BaseModel):
     limitations: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
     discussion_agenda: list[str] = Field(default_factory=list)
+
+
+# ------------------------------------------------------------------ the assistant (§11)
+
+
+class RoutePlan(BaseModel):
+    """What the router decided: which facts to compute, what to search for, and about whom.
+
+    Entities come back as the names the asker used. They are resolved against the database before
+    anything is read, so a name the model invented finds nothing rather than reaching a record
+    (architecture §11).
+    """
+
+    intent: Literal["fact", "narrative", "mixed", "clarify"] = "mixed"
+    fact_functions: list[str] = Field(default_factory=list)
+    student_names: list[str] = Field(default_factory=list)
+    project_names: list[str] = Field(default_factory=list)
+    # A free-text search over report and repository evidence; empty for a pure fact question.
+    search_query: str = ""
+    # ISO dates when the question named a period; the service resolves relative phrases itself.
+    since: str = ""
+    until: str = ""
+    as_of: str = ""
+    # Set when a name or a scope is ambiguous. QA-05: ask rather than guess.
+    clarifying_question: str = ""
+
+
+class AnswerSection(BaseModel):
+    """One statement, with the evidence it rests on. Empty ids mean it rests on the facts given."""
+
+    text: str
+    evidence_ref_ids: list[str] = Field(default_factory=list)
+
+
+class AnswerDraft(BaseModel):
+    """What the generation step must return (QA-03).
+
+    `facts_used` and `synthesis` are separate fields because they are different kinds of claim and
+    the reader is entitled to see which is which.
+    """
+
+    answer: str
+    synthesis: list[AnswerSection] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    cited_evidence_ref_ids: list[str] = Field(default_factory=list)

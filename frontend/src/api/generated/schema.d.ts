@@ -241,6 +241,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/assistant/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask a question about the workspace's research
+         * @description The answer carries its scope, its facts, its citations, and its gaps (QA-03).
+         */
+        post: operations["ask_api_v1_assistant_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assistant/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own conversations */
+        get: operations["list_conversations_api_v1_assistant_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assistant/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One conversation's turns */
+        get: operations["list_messages_api_v1_assistant_conversations__conversation_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/accept-invitation": {
         parameters: {
             query?: never;
@@ -1115,6 +1169,92 @@ export interface components {
             /** Tokens Out */
             tokens_out: number;
         };
+        /**
+         * AnswerOut
+         * @description The whole contract. Everything a reader needs to decide how much to trust this.
+         */
+        AnswerOut: {
+            /** Answer */
+            answer: string;
+            /**
+             * Cached
+             * @default false
+             */
+            cached: boolean;
+            /** Citations */
+            citations?: components["schemas"]["CitationOut"][];
+            /**
+             * Clarifying Question
+             * @default
+             */
+            clarifying_question: string;
+            /** Facts */
+            facts?: components["schemas"]["FactOut"][];
+            /** Gaps */
+            gaps?: string[];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Model Name
+             * @default
+             */
+            model_name: string;
+            /** Prompt Versions */
+            prompt_versions?: {
+                [key: string]: string;
+            };
+            /** Question */
+            question: string;
+            scope: components["schemas"]["AnswerScope"];
+            /** Suggestions */
+            suggestions?: string[];
+            /** Synthesis */
+            synthesis?: string[];
+            /** Time Range */
+            time_range: string;
+        };
+        /**
+         * AnswerScope
+         * @description QA-05: what the answer was about, rendered beside it so a follow-up is unambiguous.
+         */
+        AnswerScope: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Project Name
+             * @default
+             */
+            project_name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "prof" | "student";
+            /** Since */
+            since?: string | null;
+            /** Student Id */
+            student_id?: string | null;
+            /**
+             * Student Name
+             * @default
+             */
+            student_name: string;
+            /** Until */
+            until?: string | null;
+        };
         /** ApproveIn */
         ApproveIn: {
             /** Override */
@@ -1123,6 +1263,23 @@ export interface components {
             } | null;
             /** Rationale */
             rationale?: string | null;
+        };
+        /** AskIn */
+        AskIn: {
+            /** As Of */
+            as_of?: string | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Question */
+            question: string;
+            /** Since */
+            since?: string | null;
+            /** Student Id */
+            student_id?: string | null;
+            /** Until */
+            until?: string | null;
         };
         /** AssessmentOut */
         AssessmentOut: {
@@ -1253,6 +1410,68 @@ export interface components {
             /** Week Start Weekday */
             week_start_weekday: number;
         };
+        /**
+         * CitationOut
+         * @description QA-03: a citation must open an authorized record, so it carries its locator and version.
+         */
+        CitationOut: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Locator
+             * @default
+             */
+            locator: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Kind */
+            source_kind: string;
+            /**
+             * Source Version
+             * @default
+             */
+            source_version: string;
+        };
+        /** ConversationOut */
+        ConversationOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Scope */
+            scope: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** CorrectionIn */
         CorrectionIn: {
             /** Body */
@@ -1379,6 +1598,32 @@ export interface components {
              * Format: date-time
              */
             until: string;
+        };
+        /**
+         * FactOut
+         * @description A computed value with the function behind it, kept separate from prose (QA-02).
+         */
+        FactOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Rows */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+            /** Value */
+            value: unknown;
         };
         /**
          * FeedbackKind
@@ -1519,6 +1764,36 @@ export interface components {
              */
             student_id: string;
         };
+        /** MessageOut */
+        MessageOut: {
+            /** Answer */
+            answer: {
+                [key: string]: unknown;
+            };
+            /** Body */
+            body: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            role: components["schemas"]["MessageRole"];
+        };
+        /**
+         * MessageRole
+         * @enum {string}
+         */
+        MessageRole: "user" | "assistant";
         /** MilestoneIn */
         MilestoneIn: {
             /** Contributor Ids */
@@ -2837,6 +3112,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_api_v1_assistant_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversations_api_v1_assistant_conversations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationOut"][];
+                };
+            };
+        };
+    };
+    list_messages_api_v1_assistant_conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"][];
                 };
             };
             /** @description Validation Error */

@@ -17,6 +17,7 @@ from app.assessment.models import (
     ReviewState,
     RubricVersion,
     RunState,
+    SupervisionNote,
 )
 from app.core.authz import Scope, visible_to
 
@@ -308,3 +309,29 @@ async def partial_runs(session: AsyncSession, scope: Scope) -> list[AnalysisRun]
         .scalars()
         .all()
     )
+
+
+async def list_supervision_notes(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> list[SupervisionNote]:
+    """QA-06: professor-only by construction. The caller checks the role before asking."""
+    statement = (
+        select(SupervisionNote)
+        .where(SupervisionNote.workspace_id == scope.workspace_id)
+        .order_by(SupervisionNote.created_at.desc())
+    )
+    if student_id is not None:
+        statement = statement.where(SupervisionNote.student_id == student_id)
+    if project_id is not None:
+        statement = statement.where(SupervisionNote.project_id == project_id)
+    if since is not None:
+        statement = statement.where(SupervisionNote.created_at >= since)
+    if until is not None:
+        statement = statement.where(SupervisionNote.created_at <= until)
+    return list((await session.execute(statement)).scalars().all())

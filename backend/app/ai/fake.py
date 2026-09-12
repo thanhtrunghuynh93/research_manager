@@ -14,11 +14,14 @@ from typing import Any
 
 from app.ai.gateway import Budget, CallContext, Result, Schema
 from app.ai.schemas import (
+    AnswerDraft,
+    AnswerSection,
     Claim,
     ClaimList,
     ClaimVerdict,
     ClaimVerdicts,
     DimensionRating,
+    RoutePlan,
     RubricOutput,
 )
 
@@ -87,7 +90,42 @@ class FakeGateway:
             return self._verdicts(inputs)
         if prompt_id == "rate_rubric":
             return self._rubric(inputs)
+        if prompt_id == "route_question":
+            return self._route(inputs)
+        if prompt_id == "answer":
+            return self._answer(inputs)
         return None
+
+    def _route(self, inputs: dict[str, Any]) -> RoutePlan:
+        """No intent classification: the real router's keyword fallback does that job, and a
+        fake that guessed would hide which of the two was under test."""
+        return RoutePlan(intent="mixed", search_query=str(inputs.get("question", "")))
+
+    def _answer(self, inputs: dict[str, Any]) -> AnswerDraft:
+        """Says only what it was given, and cites only ids that were supplied.
+
+        That is not a limitation to work around: an answer step that invented support would let
+        the citation validation pass for the wrong reason."""
+        evidence = inputs.get("evidence", [])
+        supplied = [str(item.get("id")) for item in evidence if not item.get("private")]
+        computed = inputs.get("facts", [])
+        lines = [f"{fact['label']}: {fact['value']}" for fact in computed]
+        return AnswerDraft(
+            answer=" ".join(lines) or "The records supplied do not answer that question.",
+            synthesis=[
+                AnswerSection(
+                    text="Drawn from the retrieved evidence.",
+                    evidence_ref_ids=supplied[:2],
+                )
+            ]
+            if supplied
+            else [],
+            suggestions=[],
+            gaps=(
+                [] if (supplied or computed) else ["no evidence and no computed fact was supplied"]
+            ),
+            cited_evidence_ref_ids=supplied[:3],
+        )
 
     def _claims(self, entry: str) -> ClaimList:
         sentences = [s.strip() for s in _SENTENCE.split(entry) if len(s.strip()) > 15]
