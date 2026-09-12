@@ -624,7 +624,21 @@ async def map_identity(
         else IdentityVerification.PENDING
     )
     if existing is not None:
-        existing.verification = state
+        # Never downgrade a confirmed mapping by restating it. Re-submitting an email-only alias
+        # computes PENDING, which used to overwrite a CONFIRMED_BY_PROF row — silently dropping it
+        # out of RESOLVING_VERIFICATIONS, so every later commit by that student stopped being
+        # attributed with nothing anywhere saying why. Withdrawing a confirmation is
+        # `reject_identity`, which is a decision rather than a side effect (REPO-03).
+        if _outranks(state, existing.verification) or verification is not None:
+            existing.verification = state
+            if state is not IdentityVerification.PENDING:
+                existing.confirmed_by = scope.user_id
+        # A login learned later completes the row rather than replacing it.
+        if login and not existing.login:
+            existing.login = login
+            existing.is_bot = _looks_like_a_bot(login)
+        if email and not existing.email:
+            existing.email = email
         await session.flush()
         return IdentityOut.model_validate(existing)
 
@@ -650,6 +664,20 @@ async def map_identity(
         after={"student_id": str(student_id), "login": login, "email": email},
     )
     return IdentityOut.model_validate(identity)
+
+
+# Weakest first: how much a mapping is worth trusting (REPO-03).
+_VERIFICATION_RANK: dict[IdentityVerification, int] = {
+    IdentityVerification.REJECTED: 0,
+    IdentityVerification.PENDING: 1,
+    IdentityVerification.CONFIRMED_BY_STUDENT: 2,
+    IdentityVerification.VERIFIED_OAUTH: 3,
+    IdentityVerification.CONFIRMED_BY_PROF: 4,
+}
+
+
+def _outranks(candidate: IdentityVerification, current: IdentityVerification) -> bool:
+    return _VERIFICATION_RANK.get(candidate, 0) > _VERIFICATION_RANK.get(current, 0)
 
 
 async def confirm_identity(session: AsyncSession, scope: Scope, identity_id: UUID) -> IdentityOut:
@@ -733,9 +761,10 @@ async def resolve_contributions(
             role = _role_of(actor)
             if role is None:
                 continue
-            identity = _match_identity(identities, actor)
-            if identity is None:
+            match = _match_identity(identities, actor)
+            if match is None:
                 continue  # an unrecognised account is left unresolved rather than guessed at
+            identity, matched_on = match
 
             project_id, state = _project_for(event, links)
             written += await _record_contribution(
@@ -750,8 +779,8 @@ async def resolve_contributions(
                 project_id=project_id,
                 attribution_state=state,
                 provenance={
-                    "matched_on": "login" if actor.get("login") else "email",
-                    "value": actor.get("login") or actor.get("email"),
+                    "matched_on": matched_on,
+                    "value": actor.get("login") if matched_on == "login" else actor.get("email"),
                     "verification": identity.verification.value,
                     "source_version": event.source_version,
                 },
@@ -774,17 +803,33 @@ def _role_of(actor: dict[str, Any]) -> ContributionRole | None:
 
 def _match_identity(
     identities: list[DeveloperIdentity], actor: dict[str, Any]
-) -> DeveloperIdentity | None:
-    """REPO-03: only a verified login or a confirmed alias attributes anything."""
+) -> tuple[DeveloperIdentity, str] | None:
+    """REPO-03: only a verified login or a confirmed alias attributes anything.
+
+    Returns what matched as well as who, because that is what REPO-04 gives a student to challenge
+    a misattribution with — and it has to describe the match rather than the actor.
+
+    Logins are checked across every identity before any email is: an exact login is the stronger
+    evidence, and a shared lab address is the weaker. Deciding that by iteration order meant
+    whichever row Postgres returned first won, so a stale alias on one student could outrank an
+    exact confirmed login on another — attributing the commit to the wrong person and then citing
+    a login it had never looked at.
+    """
     login = (actor.get("login") or "").lower()
     email = (actor.get("email") or "").lower()
-    for identity in identities:
-        if identity.verification not in RESOLVING_VERIFICATIONS or identity.is_bot:
-            continue
-        if login and (identity.login or "").lower() == login:
-            return identity
-        if email and (identity.email or "").lower() == email:
-            return identity
+    usable = [
+        identity
+        for identity in identities
+        if identity.verification in RESOLVING_VERIFICATIONS and not identity.is_bot
+    ]
+    if login:
+        for identity in usable:
+            if (identity.login or "").lower() == login:
+                return identity, "login"
+    if email:
+        for identity in usable:
+            if (identity.email or "").lower() == email:
+                return identity, "email"
     return None
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -263,16 +263,45 @@ async def find_identity(
     login: str | None,
     email: str | None,
 ) -> DeveloperIdentity | None:
-    statement = select(DeveloperIdentity).where(
-        DeveloperIdentity.workspace_id == workspace_id, DeveloperIdentity.provider == provider
-    )
-    if login is not None:
-        statement = statement.where(DeveloperIdentity.login == login)
-    elif email is not None:
-        statement = statement.where(DeveloperIdentity.email == email)
-    else:
+    """A row matching either identifier, the login preferred when both match different rows.
+
+    Checked as `login OR email`, not `login else email`: the table is unique on each column
+    separately, so a call carrying both could collide on the email while the query only looked at
+    the login — and the duplicate guard above it missed that, leaving an IntegrityError to reach
+    the caller as a 500 instead of the conflict the same input gives sequentially (REPO-03).
+    """
+    matches = [
+        predicate
+        for predicate, value in (
+            (DeveloperIdentity.login == login, login),
+            (DeveloperIdentity.email == email, email),
+        )
+        if value is not None
+    ]
+    if not matches:
         return None
-    return (await session.execute(statement)).scalars().first()
+
+    rows = (
+        (
+            await session.execute(
+                select(DeveloperIdentity)
+                .where(
+                    DeveloperIdentity.workspace_id == workspace_id,
+                    DeveloperIdentity.provider == provider,
+                    or_(*matches),
+                )
+                # An exact login is stronger evidence than a shared address, and without an order
+                # the winner was whichever row Postgres happened to return first.
+                .order_by(
+                    case((DeveloperIdentity.login == login, 0), else_=1),
+                    DeveloperIdentity.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return rows[0] if rows else None
 
 
 async def distinct_contributed_events(
