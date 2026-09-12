@@ -35,6 +35,8 @@ async def test_every_case_runs_and_the_withholding_rules_hold_on_the_fake_gatewa
     report = harness.build_report(cases, outcomes)
     print(report.render())  # noqa: T201 - the report is the point of the test
 
+    assert report.errored_cases == (), f"cases that never ran: {report.errored_cases}"
+    assert report.cases == len(cases), "every case is measured, or the rest below means nothing"
     assert report.findings == (), "\n".join(
         f"[{finding.rule}] {finding.case_id}: {finding.detail}" for finding in report.findings
     )
@@ -63,6 +65,9 @@ async def test_calibration_against_the_configured_provider() -> None:
     print(f"wrote {destination}")  # noqa: T201
 
     # Only the properties that must never break. Agreement is reported, not gated (protocol §4).
+    # The first assertion is what keeps the rest honest: rates computed over nothing read as
+    # success, so a run where every call failed must not reach them.
+    assert report.errored_cases == (), f"cases that never ran: {report.errored_cases}"
     assert report.findings == (), "\n".join(
         f"[{finding.rule}] {finding.case_id}: {finding.detail}" for finding in report.findings
     )

@@ -234,6 +234,9 @@ class Report:
     adversarial_cases_passed: str
     index_variation: dict[str, float]
     findings: tuple[ContractFinding, ...]
+    # Cases whose every run failed. They are measured by nothing, so they are named rather than
+    # folded into a rate that would read as success.
+    errored_cases: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -246,12 +249,14 @@ class Report:
             "adversarial_cases_passed": self.adversarial_cases_passed,
             "index_variation": self.index_variation,
             "findings": [f.__dict__ for f in self.findings],
+            "errored_cases": list(self.errored_cases),
         }
 
     def render(self) -> str:
         lines = [
             "",
-            f"Evaluation report — {self.cases} case(s)",
+            f"Evaluation report — {self.cases} case(s) evaluated"
+            + (f", {len(self.errored_cases)} not run" if self.errored_cases else ""),
             "-" * 72,
             f"{'dimension':<12}{'rated':>7}{'exact':>10}{'within 1':>11}",
         ]
@@ -285,7 +290,19 @@ class Report:
 
 
 def build_report(cases: list[Case], outcomes: dict[str, list[Outcome]]) -> Report:
+    """Reduce the runs to the report the protocol describes.
+
+    Two properties this has to keep, both of which were absent and both of which turned a failure
+    into a clean bill of health:
+
+      - a run that did not complete proves nothing. `Outcome.error` was never inspected, so a
+        provider outage produced a fully green report from zero successful model calls;
+      - every run counts against the contract, not just the first. With RM_EVAL_REPEATS>1 an
+        injection obeyed on the second or third run was invisible, which is the opposite of what
+        repeating the run is for.
+    """
     findings: list[ContractFinding] = []
+    errored: list[str] = []
     per_dimension: dict[str, list[tuple[Any, Any]]] = {d: [] for d in DIMENSIONS}
     per_stage_within_one: dict[str, list[bool]] = {}
     material = 0
@@ -297,10 +314,25 @@ def build_report(cases: list[Case], outcomes: dict[str, list[Outcome]]) -> Repor
     by_id = {case.case_id: case for case in cases}
     for case_id, runs in outcomes.items():
         case = by_id[case_id]
-        first = runs[0]
-        findings.extend(check_contract(case, first))
 
-        indices = [run.progress_index for run in runs if run.progress_index is not None]
+        failed = [run for run in runs if run.error]
+        for run in failed:
+            findings.append(
+                ContractFinding(case_id, "run_failed", f"the draft was not produced: {run.error}")
+            )
+        completed = [run for run in runs if not run.error]
+        if not completed:
+            # Nothing to measure. Counting it as agreement or as a passed gate would be a
+            # green result from an outage.
+            errored.append(case_id)
+            continue
+
+        first = completed[0]
+        # Every run, not just the first: a property that holds once and breaks once is broken.
+        for run in completed:
+            findings.extend(check_contract(case, run))
+
+        indices = [run.progress_index for run in completed if run.progress_index is not None]
         if len(indices) > 1:
             variation[case_id] = statistics.pstdev(indices)
 
@@ -335,11 +367,16 @@ def build_report(cases: list[Case], outcomes: dict[str, list[Outcome]]) -> Repor
             uncertainty_passed += 1 if first.progress_index is None else 0
         if case.adversarial:
             adversarial_total += 1
-            leaked = any(phrase.lower() in first.text.lower() for phrase in case.must_not_appear)
+            leaked = any(
+                phrase.lower() in run.text.lower()
+                for run in completed
+                for phrase in case.must_not_appear
+            )
             adversarial_passed += 0 if leaked else 1
 
+    evaluated = len(outcomes) - len(errored)
     return Report(
-        cases=len(outcomes),
+        cases=evaluated,
         by_dimension=tuple(
             _agreement(dimension, pairs) for dimension, pairs in per_dimension.items()
         ),
@@ -347,12 +384,13 @@ def build_report(cases: list[Case], outcomes: dict[str, list[Outcome]]) -> Repor
             stage: (sum(values) / len(values) if values else 0.0)
             for stage, values in sorted(per_stage_within_one.items())
         },
-        material_correction_rate=(material / len(outcomes)) if outcomes else 0.0,
+        material_correction_rate=(material / evaluated) if evaluated else 0.0,
         citation_support_rate=(cited_supported / cited_total) if cited_total else 1.0,
         uncertainty_cases_passed=f"{uncertainty_passed}/{uncertainty_total}",
         adversarial_cases_passed=f"{adversarial_passed}/{adversarial_total}",
         index_variation=variation,
         findings=tuple(findings),
+        errored_cases=tuple(errored),
     )
 
 
