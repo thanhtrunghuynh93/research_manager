@@ -624,6 +624,112 @@ class EntryForIndexing:
     submitted_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class SubmissionRecord:
+    """One submitted version, with the week and the timing it carries (REP-05)."""
+
+    version_id: UUID
+    report_id: UUID
+    student_id: UUID
+    period_id: UUID
+    version_no: int
+    submitted_at: datetime
+    timing_status: str
+    local_start: date
+    local_end: date
+    deadline_utc: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class EntryRecord:
+    """One project entry of a submitted version, as a question about the work would read it."""
+
+    entry_id: UUID
+    version_id: UUID
+    student_id: UUID
+    project_id: UUID
+    period_id: UUID
+    stage: str
+    work_performed: str
+    results: str
+    deviations: str
+    questions: str
+    next_plan: dict[str, Any]
+    submitted_at: datetime
+
+
+async def submissions(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    as_of: datetime | None = None,
+) -> list[SubmissionRecord]:
+    """Submitted versions the caller may read (QA-02).
+
+    The assistant asks through this rather than reading the tables, so the timing counts it
+    reports and the reports a student can open are filtered by the same predicate (AUTH-02).
+    """
+    rows = await repository.submitted_versions(
+        session, scope, student_id=student_id, since=since, until=until, as_of=as_of
+    )
+    return [
+        SubmissionRecord(
+            version_id=version.id,
+            report_id=report.id,
+            student_id=report.student_id,
+            period_id=report.period_id,
+            version_no=version.version_no,
+            submitted_at=version.submitted_at,
+            timing_status=str(version.timing_status),
+            local_start=period.local_start,
+            local_end=period.local_end,
+            deadline_utc=period.deadline_utc,
+        )
+        for version, report, period in rows
+    ]
+
+
+async def entries_in_range(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    as_of: datetime | None = None,
+) -> list[EntryRecord]:
+    rows = await repository.entries_in_range(
+        session,
+        scope,
+        student_id=student_id,
+        project_id=project_id,
+        since=since,
+        until=until,
+        as_of=as_of,
+    )
+    return [
+        EntryRecord(
+            entry_id=entry.id,
+            version_id=version.id,
+            student_id=report.student_id,
+            project_id=entry.project_id,
+            period_id=report.period_id,
+            stage=str(entry.stage),
+            work_performed=entry.work_performed,
+            results=entry.results,
+            deviations=entry.deviations,
+            questions=entry.questions,
+            next_plan=entry.next_plan,
+            submitted_at=version.submitted_at,
+        )
+        for entry, version, report in rows
+    ]
+
+
 async def entries_for_indexing(
     session: AsyncSession, *, report_version_id: UUID
 ) -> list[EntryForIndexing]:

@@ -758,6 +758,43 @@ async def latest_run(
     return await repo.latest_run(session, student_id, project_id, period_id)
 
 
+async def review_queue(
+    session: AsyncSession, scope: Scope, *, as_of: Any = None
+) -> list[AssessmentOut]:
+    """UI-01: the drafts waiting on the professor, oldest first."""
+    rows = await repo.review_queue(session, scope, as_of=as_of)
+    return [await _assessment_out(session, row) for row in rows]
+
+
+@dataclass(frozen=True, slots=True)
+class StalledRun:
+    """A run that produced no draft, and the reason, so the cause is legible (AC-13)."""
+
+    run_id: UUID
+    student_id: UUID
+    project_id: UUID
+    period_id: UUID
+    state: str
+    reason: str
+    started_at: Any
+
+
+async def stalled_runs(session: AsyncSession, scope: Scope) -> list[StalledRun]:
+    scope.require_prof()
+    return [
+        StalledRun(
+            run_id=run.id,
+            student_id=run.student_id,
+            project_id=run.project_id,
+            period_id=run.period_id,
+            state=str(run.state),
+            reason=run.error_summary or "",
+            started_at=run.started_at,
+        )
+        for run in await repo.partial_runs(session, scope)
+    ]
+
+
 async def progress_series(
     session: AsyncSession, scope: Scope, *, student_id: UUID, project_id: UUID
 ) -> list[TrendPoint]:

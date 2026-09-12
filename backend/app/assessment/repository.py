@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -15,6 +16,7 @@ from app.assessment.models import (
     Feedback,
     ReviewState,
     RubricVersion,
+    RunState,
 )
 from app.core.authz import Scope, visible_to
 
@@ -260,6 +262,47 @@ async def list_feedback(session: AsyncSession, scope: Scope, assessment_id: UUID
                     visible_to(scope, Feedback),
                 )
                 .order_by(Feedback.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def review_queue(
+    session: AsyncSession, scope: Scope, *, as_of: datetime | None = None
+) -> list[AssessmentVersion]:
+    """UI-01: drafts waiting for the professor, oldest first — the order to work them in."""
+    statement = (
+        select(AssessmentVersion)
+        .join(
+            AssessmentReview,
+            AssessmentReview.assessment_version_id == AssessmentVersion.id,
+        )
+        .where(
+            visible_to(scope, AssessmentVersion),
+            AssessmentReview.state == ReviewState.DRAFT,
+        )
+        .order_by(AssessmentVersion.created_at)
+    )
+    if as_of is not None:
+        statement = statement.where(AssessmentVersion.created_at <= as_of)
+    return list((await session.execute(statement)).scalars().all())
+
+
+async def partial_runs(session: AsyncSession, scope: Scope) -> list[AnalysisRun]:
+    """Runs that stopped short: a failed model step, or a budget that ran out (AC-13)."""
+    return list(
+        (
+            await session.execute(
+                select(AnalysisRun)
+                .where(
+                    AnalysisRun.workspace_id == scope.workspace_id,
+                    AnalysisRun.state.in_(
+                        [RunState.PARTIAL, RunState.FAILED, RunState.DELAYED_BUDGET]
+                    ),
+                )
+                .order_by(AnalysisRun.started_at.desc())
             )
         )
         .scalars()

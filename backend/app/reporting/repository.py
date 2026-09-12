@@ -333,3 +333,65 @@ async def list_revision_requests(
         .scalars()
         .all()
     )
+
+
+async def submitted_versions(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    as_of: datetime | None = None,
+) -> list[tuple[ReportVersion, WeeklyReport, ReportingPeriod]]:
+    """Submitted versions the caller may read, bounded by when they were submitted.
+
+    `as_of` is the historical cut: a question about 1 September must not see a version submitted
+    on the 5th (QA-04).
+    """
+    statement = (
+        select(ReportVersion, WeeklyReport, ReportingPeriod)
+        .join(WeeklyReport, WeeklyReport.id == ReportVersion.report_id)
+        .join(ReportingPeriod, ReportingPeriod.id == WeeklyReport.period_id)
+        .where(visible_to(scope, ReportVersion))
+        .order_by(ReportVersion.submitted_at)
+    )
+    if student_id is not None:
+        statement = statement.where(WeeklyReport.student_id == student_id)
+    if since is not None:
+        statement = statement.where(ReportVersion.submitted_at >= since)
+    if until is not None:
+        statement = statement.where(ReportVersion.submitted_at <= until)
+    if as_of is not None:
+        statement = statement.where(ReportVersion.submitted_at <= as_of)
+    return [tuple(row) for row in (await session.execute(statement)).all()]
+
+
+async def entries_in_range(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    as_of: datetime | None = None,
+) -> list[tuple[ProjectReportEntry, ReportVersion, WeeklyReport]]:
+    statement = (
+        select(ProjectReportEntry, ReportVersion, WeeklyReport)
+        .join(ReportVersion, ReportVersion.id == ProjectReportEntry.report_version_id)
+        .join(WeeklyReport, WeeklyReport.id == ReportVersion.report_id)
+        .where(visible_to(scope, ProjectReportEntry))
+        .order_by(ReportVersion.submitted_at)
+    )
+    if student_id is not None:
+        statement = statement.where(WeeklyReport.student_id == student_id)
+    if project_id is not None:
+        statement = statement.where(ProjectReportEntry.project_id == project_id)
+    if since is not None:
+        statement = statement.where(ReportVersion.submitted_at >= since)
+    if until is not None:
+        statement = statement.where(ReportVersion.submitted_at <= until)
+    if as_of is not None:
+        statement = statement.where(ReportVersion.submitted_at <= as_of)
+    return [tuple(row) for row in (await session.execute(statement)).all()]
