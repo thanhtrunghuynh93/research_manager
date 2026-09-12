@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.2 — 12 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
+Version 0.3 — 12 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -18,14 +18,29 @@ layout. Update it in the pull request that changes what it describes.
 | 6 | `assessment/`: snapshot, metrics, pipeline, review | Done |
 | 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Done |
 | 8 | `assistant/`, exports, professor overview, backup drill, release | Done |
+| 9 | The seams: assessment triggering, the periodic tasks, the repository API | Done |
 
-At the time of writing: 578 backend tests, 41 frontend tests, 92.0 % backend coverage, thirteen
+At the time of writing: 620 backend tests, 41 frontend tests, 91.1 % backend coverage, thirteen
 migrations, and all five import-linter contracts holding. Every one of the nineteen acceptance
 scenarios has a test.
 
-The MVP feature set in requirements §12 is complete. What remains before a pilot is calibration
-and operation, not construction: the rubric has to be rated against real work (§4 below), and the
-professor still owes the decisions in §5.
+**Version 0.2 of this document claimed the MVP was complete. It was not**, and the error is worth
+recording because of its shape: every module was built and tested, and three of the seams between
+them were missing, which no module-level test could see.
+
+- Nothing subscribed to `ReportSubmitted` on behalf of `assessment`, so a submitted report indexed
+  itself and notified the professor and never produced a draft. The review queue stayed empty until
+  somebody asked for each assessment by hand.
+- Four of the six periodic tasks in architecture §12 did not exist, so the reporting calendar and
+  the plan baselines only advanced when a person POSTed for them.
+- `evidence` was complete and unreachable: every service existed and no route did, so a repository
+  could not be connected through the product at all.
+
+All three are now built (§2, step 9). The lesson for the next reviewer of this document: a step
+marked Done means its module is done, and the question worth asking separately is what calls it.
+
+What remains before a pilot is calibration and operation rather than construction: the rubric has
+to be rated against real work, and the professor still owes the decisions in §5.
 
 ## 2 What each finished step delivers
 
@@ -163,6 +178,29 @@ The demo dataset (`app.cli seed demo`) and the missed-deadline drill (`seed miss
 give the Playwright suite something to act on; the e2e specs read mailpit to prove REP-08 end to
 end, which the service tests cannot.
 
+### Step 9 — the seams (architecture §9.1, §12; REPO-01..05)
+
+`assessment/events.py` subscribes to `ReportSubmitted` and enqueues one pipeline job per entry
+whose content moved — two projects in one package give two assessments (AC-01), an entry carried
+forward unchanged gives none (AC-17). The queueing lock is the job key, so a redelivered event and
+a manual retry are the same job. An enqueue that fails is logged and swallowed: the submitted
+version is the thing that cannot be lost, and a missing draft is recoverable from the retry
+endpoint (requirements §10, AC-13).
+
+Eight periodic tasks now run: `ensure_periods` and `freeze_baselines` daily, `scan_due_reminders`
+and `send_queued_emails` on their short cycles, `dispatch_due_reminders` every fifteen minutes,
+`incremental_sync` every thirty, `queue_health` every five, and `retention_sweep` nightly. The two
+calendar tasks are idempotent by construction, so a worker that was down for a day catches up
+rather than skipping a week.
+
+The repository routes close REPO-01 through REPO-05 as a *product* rather than a module: connect,
+link to a project, map a developer identity, resync, search the evidence index, and the signed
+GitHub webhook — which also enqueues the targeted run architecture §8.3 describes and reports
+whether the delivery matched anything, because one landing nowhere looks identical to one working.
+
+`/api/metrics` serves the series requirements §11 names. The assistant gained the SSE stream its
+client helper was already written against.
+
 ## 3 What is deliberately not built
 
 | Gap | Requirement | Why |
@@ -172,6 +210,8 @@ end, which the service tests cannot.
 | Row-Level Security | §11 | ADR 0004: application-level authorization first, RLS as defence in depth after the MVP |
 | Student-side assistant | §2, §12 | Next release; the retrieval path and the predicate are already shared, so it is a surface rather than a rebuild |
 | Rubric calibration | ASSESS-03, §13 | Needs the professor's own ratings on real weeks. The harness and the protocol are ready for them |
+| Retention and authorized deletion | §11 "Data control" | `retention_sweep` expires the answer cache, which has a defined lifetime. Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
+| Performance benchmarks | §11, §15 | `scripts/bench/` is empty. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured against the 100k-chunk corpus the seed script can build |
 
 ### Acceptance scenarios
 
@@ -207,6 +247,11 @@ produced something wrong. Each is reflected in the code and in the document it c
 | Relative dates are resolved in Python, not by the router model | "Last month" has an exact answer, and a language model is the wrong instrument for arithmetic on dates |
 | Attachment text is indexed `student_private`, matching the artifact record | The artifact is readable by its owner and the professor; indexing its text as project-shared would let a project-mate retrieve through search what they cannot open directly |
 | A link is extracted by the server's `Content-Type`, not by the URL's last path segment | `/abs/2401.00001` has no extension worth reading, and the response says what it actually sent |
+| A failed enqueue is logged and swallowed, not raised | Requirements §10: report acceptance must not wait on anything downstream. A missing draft is recoverable from the retry endpoint; an unrecorded submission is not recoverable at all |
+| The connector factory falls back to the in-memory connector and says so in the log | A misconfigured key should surface as stale evidence on the dashboard, not as a dead worker that stops syncing every repository. Silently syncing nothing is the one outcome that must not happen, because it is indistinguishable from a student who did nothing (AC-04) |
+| A webhook for an unknown repository is accepted, recorded, and reported as unmatched | Asking GitHub to retry something that will never match is noise rather than resilience; but a webhook landing nowhere looks identical to one working, so the response says which it was |
+| Metric labels may never identify a person | A metric is scraped into a system with different access rules from this one, so a student id in a label would be a disclosure through the monitoring stack |
+| `retention_sweep` expires only the answer cache | It is the one record with a defined lifetime. Inventing a deletion schedule for reports and assessments would be irreversible and is the professor's decision (requirements §14) |
 | The evaluation harness reports agreement rather than asserting a threshold | Requirements §13 says the threshold is agreed with the professor during the pilot. Asserting one now would turn calibration into a test that gets tuned until it passes |
 
 ## 5 Open decisions still owed by the professor
@@ -247,6 +292,20 @@ bash scripts/gen_api_client.sh && git diff --exit-code -- docs/api frontend/src/
 Migrations are verified by applying them to an empty database, running `alembic check` for drift,
 then downgrading and re-applying. The worker is verified by running it against a real queue: that
 is how the missing engine initialisation in step 4 was found.
+
+A check worth running by hand after any change to the seams, because no unit test covers the
+wiring itself — the worker must register every task, and the periodic list must match
+architecture §12:
+
+```bash
+cd backend && uv run python -c "
+import importlib
+from app.core.jobs import TASK_MODULES, procrastinate_app
+for module in TASK_MODULES: importlib.import_module(module)
+print(sorted(procrastinate_app.tasks))
+print(sorted(d.task.name for d in procrastinate_app.periodic_registry.periodic_tasks.values()))
+"
+```
 
 The end-to-end suite needs the Compose stack and the demo dataset:
 

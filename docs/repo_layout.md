@@ -62,6 +62,8 @@ backend/
 │   ├── worker.py              procrastinate app entry: imports every module's tasks.py, registers periodic tasks
 │   ├── cli.py                 typer root command; subcommands registered by modules
 │   ├── seed.py                demo dataset and the AC-19 missed-deadline drill
+│   ├── tasks.py               periodic jobs that span modules: calendar, queue health, retention
+│   ├── observability.py       reads the current state into the metric gauges
 │   ├── core/
 │   │   ├── config.py          Settings (pydantic-settings), one class, env-var names in section 3.6
 │   │   ├── db.py              engine, session factory, metadata, Base, get_session dependency
@@ -73,6 +75,7 @@ backend/
 │   │   ├── errors.py          domain exceptions → HTTP problem details mapping
 │   │   ├── ids.py             uuid7()
 │   │   ├── storage.py         ObjectStore protocol, presigned URLs, S3/MinIO and in-memory stores
+│   │   ├── metrics.py         the Prometheus series; filled by app/observability.py
 │   │   ├── pagination.py      cursor pagination helpers
 │   │   └── types.py           shared enums (Role, Visibility, JobState)
 │   ├── identity/              module shape in 3.2
@@ -85,12 +88,14 @@ backend/
 │   │   ├── connectors/
 │   │   │   ├── base.py        RepositoryConnector protocol, RepoRef, Page, DiffResult, WebhookEvent
 │   │   │   ├── github.py      GitHub App implementation
+│   │   │   ├── factory.py     picks a connector for a stored repository; falls back loudly
 │   │   │   └── fake.py        in-memory connector for tests and demo seed
 │   │   └── index/
 │   │       ├── chunking.py
 │   │       ├── embeddings.py  Embedder protocol + registry; content-hash cache (ai registers the
 │   │       │                gateway-backed one at start-up, so evidence never imports app.ai)
 │   │       └── retrieval.py   hybrid SQL (permission predicate first, then rank fusion)
+│   │   └── tasks.py           incremental_sync (30 min), targeted sync from a webhook
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
 │   │   ├── metrics.py         progress_index, plan_completion, coverage_pct, confidence — pure functions
@@ -99,6 +104,9 @@ backend/
 │   │   │   ├── matching.py    match_claims job
 │   │   │   ├── rating.py      rate_rubric job + validate_output()
 │   │   │   └── draft.py       create_draft job
+│   │   ├── events.py          subscribes to ReportSubmitted; enqueues one job per changed entry
+│   │   ├── tasks.py           the pipeline as a worker job
+│   │   ├── ops.py             model spend and budgets, for the professor-only admin routes
 │   │   └── review.py          approve, override, request_revision services
 │   ├── assistant/
 │   │   ├── router.py          intent + entity extraction → plan
