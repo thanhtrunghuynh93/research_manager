@@ -5073,7 +5073,7 @@
     },
     "/api/v1/admin/assessments/retry": {
       "post": {
-        "description": "Every step is idempotent on its key, so a retry produces no duplicate (architecture \u00a712).",
+        "description": "Every step is idempotent on its key, so a retry produces no duplicate (architecture \u00a712).\n\nProfScopeDep establishes that the caller is a professor, not *whose* professor. Each of the\nthree subjects is resolved through the caller's own scope first, so this cannot be pointed at\nanother workspace's student \u2014 which would have run the pipeline, spent that workspace's AI\nbudget, and returned its rubric scores and feedback in this response (AUTH-02).",
         "operationId": "retry_assessment_api_v1_admin_assessments_retry_post",
         "parameters": [
           {

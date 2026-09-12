@@ -117,3 +117,53 @@ async def test_sync_health_is_empty_rather_than_absent_without_repositories(
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+async def test_the_retry_route_refuses_a_student_from_another_workspace(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+) -> None:
+    """AUTH-02: being a professor says which workspace, not that any workspace will do.
+
+    The route guarded the caller's *role* and then handed `student_id` to a pipeline that derives
+    its workspace from that student — so it would have run, billed, and returned another
+    workspace's rubric scores and generated feedback.
+    """
+    from uuid import uuid4
+
+    from tests.factories import make_user, make_workspace
+
+    other = await make_workspace(db, name="Another Lab")
+    stranger = await make_user(db, other, email="stranger@other.edu")
+    await db.commit()
+
+    await _login(client, prof)
+    response = await client.post(
+        "/api/v1/admin/assessments/retry",
+        params={
+            "student_id": str(stranger.id),
+            "project_id": str(uuid4()),
+            "period_id": str(uuid4()),
+        },
+    )
+
+    assert response.status_code == 404
+
+
+async def test_a_student_may_not_retry_an_assessment(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    from uuid import uuid4
+
+    await _login(client, student_a)
+    response = await client.post(
+        "/api/v1/admin/assessments/retry",
+        params={
+            "student_id": str(student_a.id),
+            "project_id": str(uuid4()),
+            "period_id": str(uuid4()),
+        },
+    )
+
+    assert response.status_code == 403

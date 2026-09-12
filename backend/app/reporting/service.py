@@ -157,6 +157,11 @@ async def ensure_periods(
     return [PeriodOut.model_validate(row) for row in rows]
 
 
+async def get_period(session: AsyncSession, scope: Scope, period_id: UUID) -> PeriodOut:
+    """One period, or NotFound when it is outside the caller's workspace."""
+    return PeriodOut.model_validate(await _require_period(session, scope, period_id))
+
+
 async def list_periods(
     session: AsyncSession, scope: Scope, *, through: date | None = None
 ) -> list[PeriodOut]:

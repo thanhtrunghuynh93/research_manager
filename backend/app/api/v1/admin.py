@@ -21,6 +21,9 @@ from app.assessment import service as assessment_service
 from app.assessment.schemas import AssessmentOut
 from app.evidence import service as evidence_service
 from app.evidence.schemas import SyncRunOut
+from app.identity import service as identity_service
+from app.projects import service as projects_service
+from app.reporting import service as reporting_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -108,7 +111,21 @@ async def retry_assessment(
     scope: ProfScopeDep,
     session: SessionDep,
 ) -> AssessmentOut | None:
-    """Every step is idempotent on its key, so a retry produces no duplicate (architecture §12)."""
+    """Every step is idempotent on its key, so a retry produces no duplicate (architecture §12).
+
+    ProfScopeDep establishes that the caller is a professor, not *whose* professor. Each of the
+    three subjects is resolved through the caller's own scope first, so this cannot be pointed at
+    another workspace's student — which would have run the pipeline, spent that workspace's AI
+    budget, and returned its rubric scores and feedback in this response (AUTH-02).
+    """
+    await identity_service.get_user(session, scope, student_id)
+    await projects_service.get_project(session, scope, project_id)
+    await reporting_service.get_period(session, scope, period_id)
+
     return await assessment_service.run_pipeline(
-        session, student_id=student_id, project_id=project_id, period_id=period_id
+        session,
+        student_id=student_id,
+        project_id=project_id,
+        period_id=period_id,
+        caller_scope=scope,
     )

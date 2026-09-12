@@ -178,16 +178,26 @@ async def run_pipeline(
     period_id: UUID,
     report_version_id: UUID | None = None,
     gateway: AIGateway | None = None,
+    caller_scope: Scope | None = None,
 ) -> AssessmentOut | None:
     """Produce a draft assessment, or None when there is nothing new to assess.
 
     Returns None when this entry's content has not changed since the version the current
     assessment already used: revising one project's entry must not re-assess another (AC-17).
+
+    The workspace comes from the student, because the worker that normally calls this has no
+    Scope. `caller_scope` is for the callers that do have one: it pins the run to the caller's own
+    workspace, so a route that only checks the caller's *role* cannot be pointed at a student
+    somewhere else (AUTH-02).
     """
     student = await identity_service.contact_for_job(session, student_id)
     if student is None:
         raise NotFoundError("student not found")
     workspace_id = student.workspace_id
+    if caller_scope is not None and workspace_id != caller_scope.workspace_id:
+        # Indistinguishable from "no such student", which is what a caller outside the workspace
+        # is entitled to learn.
+        raise NotFoundError("student not found")
     system = Scope(
         workspace_id=workspace_id,
         user_id=student_id,

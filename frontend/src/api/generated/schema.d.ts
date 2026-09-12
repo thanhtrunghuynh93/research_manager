@@ -85,6 +85,11 @@ export interface paths {
         /**
          * Re-run one assessment pipeline
          * @description Every step is idempotent on its key, so a retry produces no duplicate (architecture §12).
+         *
+         *     ProfScopeDep establishes that the caller is a professor, not *whose* professor. Each of the
+         *     three subjects is resolved through the caller's own scope first, so this cannot be pointed at
+         *     another workspace's student — which would have run the pipeline, spent that workspace's AI
+         *     budget, and returned its rubric scores and feedback in this response (AUTH-02).
          */
         post: operations["retry_assessment_api_v1_admin_assessments_retry_post"];
         delete?: never;
