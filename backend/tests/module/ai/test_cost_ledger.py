@@ -200,3 +200,35 @@ async def test_only_the_professor_may_set_a_budget(
 
 def _month_start(moment: datetime) -> datetime:
     return moment.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def test_a_project_in_its_warning_band_still_meets_the_workspace_cap(
+    db: AsyncSession, prof_scope: Scope, workspace: identity_models.Workspace
+) -> None:
+    """The regression: a project warning returned early, skipping the workspace check entirely.
+
+    Both limits apply. A project at 85% of its own budget was allowed to spend without limit
+    against a workspace budget that was already exhausted.
+    """
+    project_id = uuid7()
+    await identity_service.set_ai_budgets(
+        db,
+        prof_scope,
+        {"monthly_usd": "100", "project_monthly_usd": {str(project_id): "10"}},
+    )
+
+    # Inside the project's warning band (8.50 of 10), and far past the workspace cap.
+    await _call(db, workspace, project_id=project_id, tokens_in=4_250_000, tokens_out=0)
+    await _call(db, workspace, project_id=None, tokens_in=125_000_000, tokens_out=0)
+
+    project_spend = (
+        await cost.usage(db, workspace_id=workspace.id, project_id=project_id)
+    ).cost_usd
+    workspace_spend = (await cost.usage(db, workspace_id=workspace.id)).cost_usd
+    assert Decimal(8) <= project_spend < Decimal(10), f"warning band, not over: {project_spend}"
+    assert workspace_spend > Decimal(100), f"workspace already over: {workspace_spend}"
+
+    state = await cost.check_budget(db, workspace_id=workspace.id, project_id=project_id)
+
+    assert state.allowed is False
+    assert "workspace" in state.reason.lower()

@@ -208,21 +208,29 @@ async def check_budget(
     budgets = await identity_service.ai_budgets(session, workspace_id)
     start = month_start(at)
 
+    project_state: BudgetState | None = None
     project_limit = _limit(_project_limits(budgets).get(str(project_id)))
     if project_id is not None and project_limit is not None:
         spent = (
             await usage(session, workspace_id=workspace_id, project_id=project_id, since=start)
         ).cost_usd
         state = _decide(spent, project_limit, scope="project")
-        if not state.allowed or state.warning:
+        if not state.allowed:
             return state
+        project_state = state
 
     workspace_limit = _limit(budgets.get("monthly_usd"))
     if workspace_limit is not None:
         spent = (await usage(session, workspace_id=workspace_id, since=start)).cost_usd
-        return _decide(spent, workspace_limit, scope="workspace")
+        workspace_state = _decide(spent, workspace_limit, scope="workspace")
+        # Both limits apply. Returning early on the project *warning* skipped the workspace check
+        # entirely, so every project sitting between 80% and 100% of its own budget spent freely
+        # against a workspace budget that was already exhausted.
+        if not workspace_state.allowed or project_state is None:
+            return workspace_state
+        return workspace_state if workspace_state.warning else project_state
 
-    return BudgetState(allowed=True)
+    return project_state or BudgetState(allowed=True)
 
 
 def _decide(spent: Decimal, limit: Decimal, *, scope: str) -> BudgetState:
