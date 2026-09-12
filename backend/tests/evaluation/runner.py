@@ -43,7 +43,8 @@ async def run_case(case: Case, gateway: AIGateway) -> Outcome:
         "rate_rubric",
         {
             "rubric": {"dimensions": DEFAULT_DIMENSIONS},
-            "baseline": "(no frozen baseline in the evaluation set)",
+            # The real shape: a list of addressable commitments. The evaluation set has none.
+            "baseline": [],
             "entry": case.report,
             "evidence": evidence,
             "verdicts": [verdict.model_dump() for verdict in verdicts.value.verdicts],

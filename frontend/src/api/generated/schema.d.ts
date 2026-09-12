@@ -3249,6 +3249,8 @@ export interface components {
              * Format: uuid
              */
             repository_id: string;
+            /** Retry After Seconds */
+            retry_after_seconds?: number | null;
             /**
              * Started At
              * Format: date-time

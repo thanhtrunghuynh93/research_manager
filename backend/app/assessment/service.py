@@ -56,7 +56,7 @@ from app.core import metrics as core_metrics
 from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now
-from app.core.errors import ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.types import Visibility
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -71,6 +71,10 @@ DEFAULT_DIMENSIONS: dict[str, Any] = {
     "artifacts": {"weight": 15, "label": "Usable research artifacts"},
 }
 PROMPT_VERSION = "v1"
+# Per-prompt overrides. `rate_rubric` v2 supplies the plan baseline the v1 template already asked
+# for but was never given, and tells the model to rate every rubric dimension rather than only the
+# ones it has something to say about (ASSESS-05, ASSESS-06).
+PROMPT_VERSIONS: dict[str, str] = {"rate_rubric": "v2"}
 
 
 # ------------------------------------------------------------------ rubric
@@ -129,6 +133,9 @@ async def build_snapshot(
         project_id=project_id,
         window_start=period.start_utc,
         window_end=period.end_utc,
+        entry_ids=await reporting_service.entry_ids_for_period(
+            session, student_id=student_id, project_id=project_id, period_id=period_id
+        ),
     )
 
     row = EvidenceSnapshot(
@@ -164,6 +171,51 @@ async def snapshot_items(session: AsyncSession, snapshot_id: UUID) -> list[Snaps
     return [
         SnapshotItemOut.model_validate(row)
         for row in await repo.snapshot_items_with_text(session, snapshot_id)
+    ]
+
+
+def _baseline_for_prompt(baseline: Any) -> list[dict[str, Any]]:
+    """The frozen commitments, as the rating step sees them.
+
+    Ids travel so the returned `plan_items` can be matched back; weights do not, because the
+    weighted sum is arithmetic and belongs in `metrics`, not in a model's head (ADR 0006).
+    """
+    if baseline is None:
+        return []
+    return [
+        {
+            "item_id": str(item.id),
+            "planned_outcome": item.planned_outcome,
+            "acceptance_criteria": item.acceptance_criteria,
+        }
+        for item in baseline.items
+    ]
+
+
+def _plan_items(baseline: Any, output: RubricOutput | None) -> list[PlanItem] | None:
+    """ASSESS-05: weighted completion of the frozen commitments, or None without a baseline.
+
+    The fraction is the draft's proposal — requirements §ASSESS-05 says a fraction becomes
+    accepted only when the professor approves the assessment, and the draft is what they approve.
+    It used to be hardcoded to zero, so every student with a baseline was shown 0% completion
+    every week regardless of what they had done.
+
+    A commitment the draft says nothing about counts as zero, which is the floor the evidence
+    supports rather than a judgement: nothing was offered for it.
+    """
+    if baseline is None:
+        return None
+
+    proposed: dict[str, Decimal] = {}
+    for item in output.plan_items if output else []:
+        proposed[str(item.item_id)] = Decimal(str(item.proposed_completion))
+
+    return [
+        PlanItem(
+            weight=Decimal(str(item.weight)),
+            accepted_completion=proposed.get(str(item.id), Decimal(0)),
+        )
+        for item in baseline.items
     ]
 
 
@@ -234,7 +286,15 @@ async def run_pipeline(
     run.snapshot_id = snapshot_row.id
     items = await snapshot_items(session, snapshot_row.id)
     evidence = [
-        {"id": str(item.evidence_ref_id), "text": item.text, "locator": item.locator}
+        {
+            "id": str(item.evidence_ref_id),
+            "text": item.text,
+            "locator": item.locator,
+            # REPO-06: work merged this week but written earlier is real and is not this week's
+            # progress. The snapshot records the distinction; dropping it here left the rating
+            # step unable to make it.
+            "integration_of_earlier_work": item.integration_of_earlier_work,
+        }
         for item in items
     ]
 
@@ -243,11 +303,22 @@ async def run_pipeline(
         RestrictedGateway() if project.ai_restricted else (gateway or _default_gateway())
     )
 
+    # Read before the model call rather than only after it: the rating step is what proposes how
+    # far each commitment got, and it cannot do that without seeing the commitments (ASSESS-05).
+    baseline = await projects_service.effective_baseline_for_student(
+        session,
+        workspace_id=workspace_id,
+        student_id=student_id,
+        project_id=project_id,
+        period_id=period_id,
+    )
+
     rubric_result, steps, prompt_versions = await _analyse(
         active_gateway,
         entry_text=entry.text if entry else "",
         evidence=evidence,
         rubric={"dimensions": rubric.dimensions or DEFAULT_DIMENSIONS},
+        baseline=_baseline_for_prompt(baseline),
         project_id=project_id,
         restricted=project.ai_restricted,
         context=_billing(session, workspace_id, project_id, student.email),
@@ -280,6 +351,7 @@ async def run_pipeline(
         period_id=period_id,
         report_version_id=report_version_id,
         entry=entry,
+        baseline=baseline,
         output=rubric_result,
         restricted=project.ai_restricted,
         model_name=getattr(active_gateway, "model", "unknown"),
@@ -329,6 +401,7 @@ async def _analyse(
     entry_text: str,
     evidence: list[dict[str, Any]],
     rubric: dict[str, Any],
+    baseline: list[dict[str, Any]],
     project_id: UUID,
     restricted: bool,
     context: _Billing,
@@ -368,6 +441,7 @@ async def _analyse(
         "rate_rubric",
         {
             "rubric": rubric,
+            "baseline": baseline,
             "entry": entry_text,
             "evidence": evidence,
             "verdicts": [verdict.model_dump() for verdict in verdicts.value.verdicts],
@@ -405,7 +479,7 @@ async def _call(
     schema: type[Any],
     billing: _Billing,
 ) -> Any:
-    prompt = load_prompt(prompt_id, PROMPT_VERSION)
+    prompt = load_prompt(prompt_id, PROMPT_VERSIONS.get(prompt_id, PROMPT_VERSION))
     return await gateway.complete_structured(
         prompt_id=prompt_id,
         inputs=inputs,
@@ -468,6 +542,7 @@ async def _record_assessment(
     period_id: UUID,
     report_version_id: UUID | None,
     entry: Any,
+    baseline: Any,
     output: RubricOutput | None,
     restricted: bool,
     model_name: str,
@@ -504,29 +579,21 @@ async def _record_assessment(
             "discussion_agenda": output.discussion_agenda,
         }
 
-    rating_values: dict[str, Any] = {name: value["rating"] for name, value in ratings.items()}
-    index = progress_index(rating_values, weights)
+    # Every rubric dimension, whether or not the model returned it: one it left out is one
+    # nothing settled, not one that does not apply.
+    rated: dict[str, Any] = {name: ratings.get(name, {}).get("rating", UNKNOWN) for name in weights}
+    index = progress_index(rated, weights)
 
-    baseline = await projects_service.effective_baseline_for_student(
-        session,
-        workspace_id=system.workspace_id,
-        student_id=student_id,
-        project_id=project_id,
-        period_id=period_id,
-    )
-    completion = plan_completion(
-        [
-            PlanItem(weight=Decimal(str(item.weight)), accepted_completion=Decimal(0))
-            for item in (baseline.items if baseline else [])
-        ]
-        if baseline
-        else None
-    )
+    completion = plan_completion(_plan_items(baseline, output))
 
+    # Built from the *rubric*, not from the keys the model happened to return. A dimension the
+    # model left out is one nothing settled, so it counts against coverage; reading the
+    # denominator off the response instead made a partial answer look like full coverage and
+    # HIGH confidence (ASSESS-06).
     sufficiency = {
-        name: value["rating"] not in (UNKNOWN,)
-        for name, value in ratings.items()
-        if value["rating"] != NOT_APPLICABLE
+        name: rated[name] != UNKNOWN
+        for name in weights
+        if name not in excluded and rated[name] != NOT_APPLICABLE
     }
     coverage = coverage_pct(sufficiency, weights)
     level, reasons = confidence(
@@ -621,6 +688,13 @@ async def approve(
         raise NotFoundError("assessment review not found")
     if review.state is ReviewState.APPROVED:
         return ReviewOut.model_validate(review)
+    if review.state is ReviewState.SUPERSEDED:
+        # A newer version of this week's assessment exists, so this draft no longer describes the
+        # report. Approving it from a stale tab would publish the old reading beside the new one,
+        # and both would appear in the student's trend (ASSESS-08).
+        raise ConflictError("a newer assessment has replaced this one; approve that instead")
+    if review.state is ReviewState.WITHDRAWN:
+        raise ConflictError("this assessment was withdrawn; a withdrawal is not re-approved")
 
     review.state = ReviewState.APPROVED
     review.reviewer_id = scope.user_id
@@ -647,6 +721,9 @@ async def withdraw(session: AsyncSession, scope: Scope, assessment_id: UUID) -> 
         raise NotFoundError("assessment review not found")
     review.state = ReviewState.WITHDRAWN
     review.reviewer_id = scope.user_id
+    # It is no longer published, so it no longer has a publication time. Leaving the old one in
+    # place let `_assessment_out` keep reporting a withdrawn assessment as published.
+    review.published_at = None
     write_audit(
         session,
         workspace_id=scope.workspace_id,

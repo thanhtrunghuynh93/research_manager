@@ -21,6 +21,7 @@ from app.ai.schemas import (
     ClaimVerdict,
     ClaimVerdicts,
     DimensionRating,
+    PlanItemAssessment,
     RoutePlan,
     RubricOutput,
 )
@@ -37,6 +38,10 @@ class FakeGateway:
     fail_prompts: set[str] = field(default_factory=set)
     calls: list[str] = field(default_factory=list)
     default_rating: str = "3"
+    # What it proposes for each frozen commitment. Zero by default and stated as such: the fake
+    # can produce schema-valid output but cannot judge how far a commitment got, and a made-up
+    # fraction is a number a student would be shown (ASSESS-05).
+    default_plan_completion: float = 0.0
 
     async def complete_structured(
         self,
@@ -157,6 +162,17 @@ class FakeGateway:
             "artifacts",
         ]
         evidence_ids = [str(item.get("id")) for item in inputs.get("evidence", [])]
+        baseline = inputs.get("baseline")
+        plan_items = [
+            PlanItemAssessment(
+                item_id=str(item.get("item_id")),
+                proposed_completion=self.default_plan_completion,
+                reason="the fake gateway does not judge commitment completion",
+                evidence_ref_ids=[],
+            )
+            for item in (baseline if isinstance(baseline, list) else [])
+            if isinstance(item, dict)
+        ]
         rated = {}
         for dimension in dimensions:
             # Without evidence there is nothing to rate, which is `unknown`, not zero.
@@ -172,6 +188,7 @@ class FakeGateway:
             )
         return RubricOutput(
             dimensions=rated,
+            plan_items=plan_items,
             accomplishments=["reported work was read from the entry"] if evidence_ids else [],
             blockers=[],
             discrepancies=[],

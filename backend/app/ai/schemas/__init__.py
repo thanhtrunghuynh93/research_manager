@@ -47,7 +47,13 @@ class DimensionRating(BaseModel):
 
 
 class PlanItemAssessment(BaseModel):
-    task_id: str
+    """One frozen commitment, and how far the draft says it got (ASSESS-05).
+
+    `item_id` is the plan baseline item's id, which is what the prompt supplies; every baseline
+    item has one, where `task_id` is optional and cannot address the whole plan.
+    """
+
+    item_id: str
     proposed_completion: float = Field(ge=0, le=1)
     reason: str
     evidence_ref_ids: list[str] = Field(default_factory=list)
