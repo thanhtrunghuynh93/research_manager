@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,6 +129,36 @@ async def advance_access_epoch(session: AsyncSession, workspace_id: UUID) -> int
 async def access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
     """Job-level read: the epoch a snapshot or cached answer was built under (AUTH-03)."""
     return await repository.access_epoch(session, workspace_id)
+
+
+async def ai_budgets(session: AsyncSession, workspace_id: UUID) -> dict[str, Any]:
+    """The workspace's monthly model-spending limits (requirements §11 "Cost control").
+
+    A job-level read: the gateway checks a budget with no Scope to hand, and an empty result means
+    no limit has been configured rather than a limit of zero.
+    """
+    return await repository.ai_budgets(session, workspace_id)
+
+
+async def set_ai_budgets(
+    session: AsyncSession, scope: Scope, budgets: dict[str, Any]
+) -> dict[str, Any]:
+    """The professor's decision about what may be spent, audited like any other setting."""
+    scope.require_prof()
+    before = await repository.ai_budgets(session, scope.workspace_id)
+    after = await repository.set_ai_budgets(session, scope.workspace_id, budgets)
+    write_audit(
+        session,
+        workspace_id=scope.workspace_id,
+        actor_id=scope.user_id,
+        action="workspace.ai_budgets_set",
+        target_table="workspaces",
+        target_id=scope.workspace_id,
+        before=before,
+        after=after,
+    )
+    await session.flush()
+    return after
 
 
 async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:

@@ -8,6 +8,7 @@ caller rather than serve one, and every one of them is reached only through iden
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -47,6 +48,28 @@ async def bump_access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
             .returning(Workspace.access_epoch)
         )
     ).scalar_one()
+
+
+async def ai_budgets(session: AsyncSession, workspace_id: UUID) -> dict[str, Any]:
+    budgets = (
+        await session.execute(select(Workspace.ai_budgets).where(Workspace.id == workspace_id))
+    ).scalar_one_or_none()
+    return dict(budgets) if budgets else {}
+
+
+async def set_ai_budgets(
+    session: AsyncSession, workspace_id: UUID, budgets: dict[str, Any]
+) -> dict[str, Any]:
+    return dict(
+        (
+            await session.execute(
+                update(Workspace)
+                .where(Workspace.id == workspace_id)
+                .values(ai_budgets=budgets)
+                .returning(Workspace.ai_budgets)
+            )
+        ).scalar_one()
+    )
 
 
 async def get_visible_user(session: AsyncSession, scope: Scope, user_id: UUID) -> User | None:

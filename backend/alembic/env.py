@@ -11,6 +11,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.ai.models  # noqa: F401
 import app.assessment.models  # noqa: F401
 import app.core.audit  # noqa: F401  (every module with ORM models is imported for autogenerate)
 import app.evidence.models  # noqa: F401

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -21,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UUIDPrimaryKeyMixin
@@ -73,6 +75,10 @@ class Workspace(UUIDPrimaryKeyMixin, Base):
         ForeignKey("users.id", use_alter=True, ondelete="SET NULL")
     )
     access_epoch: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # Monthly spending limits for model calls, as
+    # {"monthly_usd": "50", "project_monthly_usd": {"<project id>": "10"}}.
+    # Absent keys mean "no limit configured", which is not a limit of zero (architecture §10).
+    ai_budgets: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
