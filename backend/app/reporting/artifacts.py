@@ -143,18 +143,33 @@ async def request_upload(
     )
     content_type = content_type_for(filename)
 
-    session.add(
-        ArtifactVersion(
-            workspace_id=scope.workspace_id,
-            artifact_id=artifact.id,
-            version_no=version_no,
-            sha256=sha256,
-            byte_size=byte_size,
-            content_type=content_type,
-            storage_key=key,
-            extraction_state=ExtractionState.PENDING,
+    # `current_version_no` only advances on confirm, so a second grant before one computes the
+    # same version_no and violates uq (artifact_id, version_no). Asking again is ordinary — the
+    # presigned URL expires in fifteen minutes, and a student who picked the wrong file asks for
+    # another — and the old behaviour made every retry a 500 and the artifact permanently
+    # unreplaceable. The pending row is re-pointed instead: nothing was uploaded against it.
+    pending = await _pending_version(session, artifact.id)
+    if pending is not None and pending.version_no == version_no:
+        if pending.storage_key != key:
+            await (store or current_store()).delete(pending.storage_key)
+        pending.sha256 = sha256
+        pending.byte_size = byte_size
+        pending.content_type = content_type
+        pending.storage_key = key
+        pending.extraction_state = ExtractionState.PENDING
+    else:
+        session.add(
+            ArtifactVersion(
+                workspace_id=scope.workspace_id,
+                artifact_id=artifact.id,
+                version_no=version_no,
+                sha256=sha256,
+                byte_size=byte_size,
+                content_type=content_type,
+                storage_key=key,
+                extraction_state=ExtractionState.PENDING,
+            )
         )
-    )
     await session.flush()
 
     active = store or current_store()
