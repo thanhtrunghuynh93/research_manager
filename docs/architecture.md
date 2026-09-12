@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.1 — 11 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.3
+Version 0.2 — 12 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.3
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -629,6 +629,23 @@ class EmailSender(Protocol):
 | AC-17 | 5.2 (`content_changed_in_version_id`), 9.1, 9.5 |
 | AC-18 | 5.5 |
 | AC-19 | 7.2, 13 |
+
+## 16.1 Where the implementation refines this document
+
+Two corrections and one addition, each carried in
+[implementation_status.md](implementation_status.md) §4 with its reason:
+
+- §7.1's period formula derived `meeting_date` from `local_start`, which put the deadline the day
+  before the period opened. It is derived from `local_end`: the meeting follows the week it
+  discusses.
+- §5.7 has `evidence` obtaining vectors from a registered `Embedder` rather than calling the
+  gateway, because §4.1 forbids `app.evidence` importing `app.ai`. The index passes an
+  `EmbedContext` naming the workspace and project, so a gateway-backed embedder can still write the
+  `ai_calls` row that `app.evidence` cannot.
+- `app.exports` is a bounded context between `app.assistant` and `app.assessment` in the layer
+  order, not merely the router §4.1 implies. A bundle spans reporting, projects and assessment, and
+  assembling it through those modules' services is what makes export authorization identical to
+  interactive access rather than a second implementation of it.
 
 ## 17 Open decisions
 

@@ -1,8 +1,8 @@
 # Research Management System — Repository Layout
 
-Version 0.1 — 11 September 2026 — companion to [architecture.md](architecture.md) and [research_management_requirements.md](research_management_requirements.md)
+Version 0.2 — 12 September 2026 — companion to [architecture.md](architecture.md) and [research_management_requirements.md](research_management_requirements.md)
 
-This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It is a specification for the repository, not a description of code that exists yet. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
+This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 
 ## 1 Principles
 
@@ -60,7 +60,8 @@ backend/
 │   ├── __init__.py
 │   ├── main.py                FastAPI factory: create_app(settings) → mounts api routers, middleware, lifespan
 │   ├── worker.py              procrastinate app entry: imports every module's tasks.py, registers periodic tasks
-│   ├── cli.py                 typer root command; subcommands registered by modules (breakglass, seed, export)
+│   ├── cli.py                 typer root command; subcommands registered by modules
+│   ├── seed.py                demo dataset and the AC-19 missed-deadline drill
 │   ├── core/
 │   │   ├── config.py          Settings (pydantic-settings), one class, env-var names in section 3.6
 │   │   ├── db.py              engine, session factory, metadata, Base, get_session dependency
@@ -71,11 +72,15 @@ backend/
 │   │   ├── context.py         request/job id contextvar readable by lower layers (audit, logging)
 │   │   ├── errors.py          domain exceptions → HTTP problem details mapping
 │   │   ├── ids.py             uuid7()
+│   │   ├── storage.py         ObjectStore protocol, presigned URLs, S3/MinIO and in-memory stores
 │   │   ├── pagination.py      cursor pagination helpers
 │   │   └── types.py           shared enums (Role, Visibility, JobState)
 │   ├── identity/              module shape in 3.2
 │   ├── projects/
 │   ├── reporting/
+│   │   ├── artifacts.py       uploads, links, versions, download (REP-04)
+│   │   ├── extraction.py      text from markdown, csv, pdf, docx, notebooks
+│   │   └── links.py           SSRF-guarded link fetching
 │   ├── evidence/
 │   │   ├── connectors/
 │   │   │   ├── base.py        RepositoryConnector protocol, RepoRef, Page, DiffResult, WebhookEvent
@@ -109,9 +114,13 @@ backend/
 │   │   │   └── console.py     dev sender: logs to stdout / writes to MinIO "outbox"
 │   │   ├── templates/         Jinja2, en/ and vi/ subfolders, plain-text and HTML pairs
 │   │   ├── scheduler_tasks.py ensure_periods, freeze_baselines, scan_due_reminders, dispatch_missed_deadline
-│   │   └── preferences.py
+│   │   ├── preferences.py
+│   │   └── cli.py             dispatch-missed-deadline, send-queued-emails
+│   ├── exports/               bundle assembly across reporting, projects and assessment (UI-06)
 │   ├── ai/
-│   │   ├── gateway.py         AIGateway: complete_structured(), embed(); the only OpenAI import
+│   │   ├── gateway.py         AIGateway protocol, OpenAIGateway, prompt framing; the only OpenAI import
+│   │   ├── bootstrap.py       installs the gateway and the embedder at start-up
+│   │   ├── models.py          ai_calls, the cost ledger
 │   │   ├── prompts/
 │   │   │   ├── registry.py    load(prompt_id, version) → Prompt(model, temperature, schema, text)
 │   │   │   ├── extract_claims/v1.md + manifest.toml
@@ -120,7 +129,7 @@ backend/
 │   │   │   ├── route_question/v1.md + manifest.toml
 │   │   │   └── answer/v1.md + manifest.toml
 │   │   ├── schemas/           Pydantic models for every structured output (RubricOutput, ClaimList, RoutePlan, Answer)
-│   │   ├── cost.py            ai_calls ledger writes, budget checks
+│   │   ├── cost.py            ledger writes, published prices, budget checks
 │   │   ├── redaction.py
 │   │   └── fake.py            deterministic fake gateway for tests (fixtures keyed by prompt_id)
 │   └── api/
@@ -176,13 +185,13 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Layered bounded contexts"
 type = "layers"
-layers = ["app.assistant", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
+layers = ["app.assistant", "app.exports", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
 
 [[tool.importlinter.contracts]]
 name = "Only assessment and assistant use the AI gateway"
 type = "forbidden"
 allow_indirect_imports = "true"   # the API calls assessment.service, which may reach the gateway
-source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.api", "app.core"]
+source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.exports", "app.api", "app.core"]
 forbidden_modules = ["app.ai"]
 
 [[tool.importlinter.contracts]]
@@ -235,7 +244,7 @@ Conventions: test names state the behaviour (`test_late_submission_keeps_first_s
 | ruff | `[tool.ruff]` line length 100, rules E,F,I,B,UP,S,N | Lint and format |
 | mypy | strict, plugins for SQLAlchemy and Pydantic | Type check |
 | import-linter | section 3.3 | Module boundaries |
-| pytest | `-p no:cacheprovider`, `asyncio_mode = auto`, markers `unit`, `module`, `acceptance`, `evaluation` | Tests |
+| pytest | `-p no:cacheprovider`, `asyncio_mode = auto`, markers `unit`, `module`, `api`, `authz`, `acceptance`, `evaluation_contract`, `evaluation` | Tests |
 | alembic | autogenerate diff checked in CI (`make migrate-check`) | Schema drift |
 | gitleaks | pre-commit and CI | Secret scanning |
 

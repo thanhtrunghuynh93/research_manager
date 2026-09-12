@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.1 — 11 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
+Version 0.2 — 12 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -12,15 +12,20 @@ layout. Update it in the pull request that changes what it describes.
 | --- | --- | --- |
 | 1 | Repository skeleton, `core/`, health endpoints, dev Compose, CI | Done |
 | 2 | `identity/`: users, invitations, sessions, authz, break-glass | Done |
-| 3 | `projects/` and `reporting/`: periods, obligations, drafts, submission, versions, plan baselines; student frontend | Done except artifacts |
-| 4 | `notifications/`: scheduler tasks, missed-deadline email, in-app messages | Done except the Playwright e2e |
+| 3 | `projects/` and `reporting/`: periods, obligations, drafts, submission, versions, plan baselines, artifacts; student frontend | Done |
+| 4 | `notifications/`: scheduler tasks, missed-deadline email, in-app messages | Done |
 | 5 | `evidence/`: connectors, identity mapping, indexing and retrieval | Done |
 | 6 | `assessment/`: snapshot, metrics, pipeline, review | Done |
-| 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Seam built, provider not |
-| 8 | `assistant/`, exports, professor overview, backup drill, release | Not started |
+| 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Done |
+| 8 | `assistant/`, exports, professor overview, backup drill, release | Done |
 
-At the time of writing: 376 backend tests, 14 frontend tests, 92.6 % backend coverage, ten
-migrations, and all five import-linter contracts holding.
+At the time of writing: 578 backend tests, 41 frontend tests, 92.0 % backend coverage, thirteen
+migrations, and all five import-linter contracts holding. Every one of the nineteen acceptance
+scenarios has a test.
+
+The MVP feature set in requirements §12 is complete. What remains before a pilot is calibration
+and operation, not construction: the rubric has to be rated against real work (§4 below), and the
+professor still owes the decisions in §5.
 
 ## 2 What each finished step delivers
 
@@ -53,8 +58,14 @@ Plan baselines freeze at period start from the previous report's next-week plan,
 baseline when there is nothing to freeze; a student may then propose a first plan, which becomes a
 commitment only once the professor accepts it.
 
+Attachments (REP-04) upload straight to object storage: the API validates the size, issues a
+presigned PUT, and then verifies what arrived against the checksum the client declared. Extraction
+records three outcomes rather than two, because a file we could not read and a file with no text to
+read lead to opposite conclusions about the week. Links are fetched only after the resolved address
+is checked, and every redirect is checked again.
+
 The frontend covers sign-in, the student overview, and the weekly editor with a tab per required
-project, autosave, and an idempotent submit.
+project, autosave, attachments, and an idempotent submit.
 
 ### Step 4 — `notifications/` (REP-07, REP-08, UI-07)
 
@@ -64,6 +75,10 @@ outstanding list in-app at the same time and receives no email. In-app notificat
 per-recipient visibility and mutable preferences, with the critical categories unmutable.
 
 The procrastinate schema ships as a migration, so a deploy still runs only `alembic upgrade head`.
+
+`app.cli notifications dispatch-missed-deadline` runs the dispatch again after a mail
+misconfiguration is fixed; it is safe to repeat because the notification key and the delivery row
+make a repeat a no-op.
 
 ### Step 5 — `evidence/` (REPO-01..08)
 
@@ -99,27 +114,74 @@ no provider at all.
 Drafts are the professor's to approve. An override requires a recorded reason and keeps the model's
 own output beside it; a revision creates a new version while the approved one still stands.
 
-## 3 What is deliberately not built yet
+### Step 7 — `ai/` (ASSESS-09, requirements §11, §13)
 
-| Gap | Requirement | Why it waits |
+`gateway.py` is the only module that imports the OpenAI SDK. A prompt file splits at its first
+labelled section: the instructions stay above, and every piece of student text, diff or README is
+rendered into the untrusted block below them. Placeholders are filled by plain substitution rather
+than a template engine, because a real engine would hand that text an expression language to sit
+in. No tool is offered to the model in any call, so there is nothing for an injected instruction to
+reach even if one is followed.
+
+Inputs are redacted before they are serialised; what was removed is recorded as a rule name, never
+as the value. Retries cover only errors that could plausibly clear. Every outcome — completed,
+refused, failed, delayed by budget — writes an `ai_calls` row in the caller's transaction, and a
+model with no published rate records its tokens and leaves the cost null rather than guessing.
+
+A spent budget is its own run state. A run that produced no draft has three possible causes and the
+professor needs to tell them apart: the money ran out, the model failed, or nothing changed.
+
+The evaluation set in [`docs/evaluation/`](evaluation/) holds ten seed cases covering the categories
+requirements §13 names. The harness keeps two questions apart: contract properties are pass/fail and
+run on every CI pass against the deterministic gateway; agreement with the professor needs the real
+provider and is reported rather than asserted, because a threshold invented before anyone has seen
+real disagreement is a number to hit rather than a decision to make.
+
+### Step 8 — `assistant/`, exports, overview, operations (QA-01..07, UI-01, UI-06)
+
+The assistant runs one flow in a fixed order, because the order is the safety property: route,
+resolve entities against the database, compute facts, retrieve, re-check, generate, validate
+citations, cache.
+
+A fact question never reaches the generation step. The obligations table says how many reports are
+missing and that number is rendered, not written — the AC-15 tests script the fake gateway to
+answer "seven" so that passing proves it was not consulted. Citations are checked against what was
+actually retrieved; an invented one is dropped and the drop is stated.
+
+Confidentiality is structural rather than instructed: supervision notes live in a table nothing
+indexes and are read through a function the student branch never calls. The answer cache is keyed by
+the asker as well as the question and dies with the access epoch it was written under.
+
+Exports assemble a bundle through the owning modules' services, so "export authorization must match
+interactive access" holds by construction. Asking for a kind you may not export is refused rather
+than answered with an empty list, because an empty list is a claim that there is nothing there.
+
+The professor overview is built from the same fact functions the assistant uses, so the number on
+the dashboard and the number in an answer cannot disagree.
+
+The demo dataset (`app.cli seed demo`) and the missed-deadline drill (`seed missed-deadline-drill`)
+give the Playwright suite something to act on; the e2e specs read mailpit to prove REP-08 end to
+end, which the service tests cannot.
+
+## 3 What is deliberately not built
+
+| Gap | Requirement | Why |
 | --- | --- | --- |
-| File attachments and extraction | REP-04 | Needs MinIO presigned uploads plus worker-side extraction; belongs with the artifact pipeline rather than bolted onto submission |
-| Playwright end-to-end for the missed-deadline email | repo_layout §9 step 4 | The service-level proof exists (`tests/acceptance/test_ac_19.py`); the browser-level one needs the full Compose stack in CI |
-| OpenAI gateway, cost ledger, budgets | ASSESS-09, §11 | The seam and the fake are built; the provider needs the data-boundary decisions in requirements §14 first |
-| Professor overview, review workspace, project and student screens | UI-01, UI-03, UI-04, UI-05 | Backend endpoints exist; the screens are step 8 |
-| Professor assistant | QA-01..07 | Step 8, on top of the same retrieval and the same predicate |
-| Exports | UI-06 | Step 8 |
-| Backup restore drill, release workflow | AC-16 | Step 8; the scripts exist and have not been exercised |
+| OCR for scanned documents | REP-04 | Explicitly later work in the specification. A scanned PDF is recorded as "no text layer", not as an extraction failure |
 | Second repository provider, experiment trackers | §12 next release | Out of MVP scope by the specification |
+| Row-Level Security | §11 | ADR 0004: application-level authorization first, RLS as defence in depth after the MVP |
+| Student-side assistant | §2, §12 | Next release; the retrieval path and the predicate are already shared, so it is a surface rather than a rebuild |
+| Rubric calibration | ASSESS-03, §13 | Needs the professor's own ratings on real weeks. The harness and the protocol are ready for them |
 
 ### Acceptance scenarios
 
-Proved: AC-01, AC-02, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-13, AC-14, AC-17, AC-18, AC-19.
+All nineteen have tests: AC-01 through AC-19. `scripts/check_traceability.py` asserts it on every
+CI run and prints the list.
 
-Not yet: AC-03 (partly proved in the module tests; the full scenario needs the review screen),
-AC-10 and AC-15 (the assistant), AC-11 (the answer cache), AC-12 (adversarial fixtures in the
-evaluation set), AC-16 (the restore drill). `scripts/check_traceability.py` prints the current list
-on every CI run.
+AC-16 runs a real `pg_dump` and `pg_restore` cycle and reads the restored database back through the
+ordinary services. It claims what a test can claim — that the records, the permission boundary and
+the immutability triggers survive — and not the wall-clock recovery time, which
+`scripts/restore_drill.sh` measures on real infrastructure.
 
 ## 4 Decisions taken while building
 
@@ -131,12 +193,21 @@ produced something wrong. Each is reflected in the code and in the document it c
 | `meeting_date` is derived from the period's end, not its start (architecture §7.1 corrected) | The formula as written placed the deadline the day before the period opened. The meeting follows the week it discusses |
 | `project_memberships.left_on` is exclusive | With an inclusive end, "remove this student now" left their access alive until midnight |
 | Embeddings come from a registered `Embedder`, not a direct gateway call | repo_layout §3.1 said otherwise, but §3.3 forbids `evidence` importing `ai`, and a restricted project must be able to index without a provider |
+| The index tells the embedder who to bill, through `EmbedContext` | Same contract: `evidence` cannot write an `ai_calls` row, but it can say which workspace a batch is for and leave the accounting to whoever makes the vectors |
 | `repository_events` and `plan_baselines` carry targeted guards rather than the blanket immutability trigger | REPO-06 must record that a force push removed an object upstream, and a proposed baseline must be acceptable; the guards allow exactly those transitions and nothing else |
-| Email delivery is a queued row drained by a periodic task, not one job per message | Same at-least-once behaviour, with the attempt count and last error in one place |
+| Email delivery is a queued row drained by a periodic task, not one job per message | Same at-least-once behaviour, with the attempt count and the last error in one place |
 | Two import contracts scoped to direct imports | The API reaches models through `service.py` and the gateway through `assessment.service`; that is the intended arrangement, and the contracts now forbid what they meant to forbid |
 | Full-text search uses the `simple` configuration | Reports are written in English and Vietnamese; English stemming distorts the latter. Revisit with the retrieval benchmark |
-| Report entries are indexed by `evidence` reacting to a `ReportSubmitted` event | Reporting stays unaware of evidence, which is the layer direction the architecture sets |
+| Report entries and attachments are indexed by `evidence` reacting to events | Reporting stays unaware of evidence, which is the layer direction the architecture sets. `ArtifactExtracted` uses the same seam `ReportSubmitted` does |
 | Deadlines render as 23:59 rather than 11:59 PM | The requirement states the rule in 24-hour time, and the workspace's timezone convention matches |
+| `app.exports` is a bounded context, not just a router | A bundle spans reporting, projects and assessment; assembling it through those modules' services is what makes export authorization identical to interactive access rather than a second implementation of it |
+| Model prices live in a table in `ai/cost.py`, and an unknown model records a null cost | A guessed price would be believed. The tokens are the fact; the money is arithmetic over a published rate |
+| A spent budget is a distinct run state, not a `partial` | The professor's response to "the money ran out" is different from their response to "the model failed", so the record distinguishes them |
+| The assistant resolves entity names against records the caller can already see | A model asked about a name will produce a plausible id. Matching against the caller's own visible set means a wrong guess finds nothing rather than reaching a record |
+| Relative dates are resolved in Python, not by the router model | "Last month" has an exact answer, and a language model is the wrong instrument for arithmetic on dates |
+| Attachment text is indexed `student_private`, matching the artifact record | The artifact is readable by its owner and the professor; indexing its text as project-shared would let a project-mate retrieve through search what they cannot open directly |
+| A link is extracted by the server's `Content-Type`, not by the URL's last path segment | `/abs/2401.00001` has no extension worth reading, and the response says what it actually sent |
+| The evaluation harness reports agreement rather than asserting a threshold | Requirements §13 says the threshold is agreed with the professor during the pilot. Asserting one now would turn calibration into a test that gets tuned until it passes |
 
 ## 5 Open decisions still owed by the professor
 
@@ -145,12 +216,16 @@ Carried from requirements §14 and architecture §17, narrowed to what is still 
 1. **Mail provider** — SMTP relay or a transactional API. The `EmailSender` protocol takes either;
    the dev stack uses mailpit.
 2. **Model and data-processing terms** — which content may reach OpenAI, and which projects need
-   `ai_restricted`. Step 7 cannot be finished honestly without this.
+   `ai_restricted`. The gateway, the ledger and the restriction flag are built and wired; what is
+   missing is the decision about what may be sent.
 3. **Rubric calibration** — the default weights and anchors are the specification's proposals. The
-   pilot gates in §13 are the point at which they become real.
-4. **VPS region and offsite backup destination**.
-5. **Whether to add Row-Level Security** as defence in depth after the MVP.
-6. **Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.
+   pilot gates in §13 are the point at which they become real, and
+   [`docs/evaluation/protocol.md`](evaluation/protocol.md) is the procedure.
+4. **Monthly AI budget** — `admin/ai/budgets` accepts one; none is configured, which means no limit
+   rather than a limit of zero.
+5. **VPS region and offsite backup destination**.
+6. **Whether to add Row-Level Security** as defence in depth after the MVP.
+7. **Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.
 
 The first repository provider is settled: GitHub, as ADR 0005 assumed.
 
@@ -172,3 +247,17 @@ bash scripts/gen_api_client.sh && git diff --exit-code -- docs/api frontend/src/
 Migrations are verified by applying them to an empty database, running `alembic check` for drift,
 then downgrading and re-applying. The worker is verified by running it against a real queue: that
 is how the missing engine initialisation in step 4 was found.
+
+The end-to-end suite needs the Compose stack and the demo dataset:
+
+```bash
+bash scripts/dev-up.sh
+cd backend && uv run python -m app.cli seed demo
+cd ../frontend && npm run e2e
+```
+
+The calibration run costs money and is opt-in:
+
+```bash
+cd backend && RM_EVAL=1 uv run pytest tests/evaluation -m evaluation -s
+```

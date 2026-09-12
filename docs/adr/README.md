@@ -12,3 +12,6 @@ Format: Context, Decision, Consequences. Keep each under a page.
 | [0005](0005-github-app-connector.md) | GitHub App as the first repository connector |
 | [0006](0006-deterministic-metrics.md) | Rubric arithmetic outside the language model |
 | [0007](0007-openai-behind-gateway.md) | OpenAI GPT API behind a single internal gateway |
+| [0008](0008-facts-outside-the-model.md) | The assistant computes facts in SQL, never through the model |
+| [0009](0009-access-epoch-for-cached-answers.md) | A counter, not an invalidation sweep, expires cached answers |
+| [0010](0010-presigned-uploads-verified-after-the-fact.md) | Uploads are granted, then verified; extraction has three outcomes |

@@ -8,18 +8,30 @@ De-identified student–project–weeks covering coding, literature, theory, exp
 writing, including: incomplete evidence, shared contributions, negative results, changed plans,
 Vietnamese and English reports, and adversarial repository text (instructions inside a README).
 
-Layout (to be created with the assessment module):
+Layout:
 
 ```
 docs/evaluation/
-  cases/<case-id>/report.md, evidence/, expected.json   professor ratings and expected claim statuses
-  questions.jsonl                                        50 professor questions with expected facts and citations
+  cases/<case-id>/report.md, evidence/, expected.json   ratings and expected claim statuses
+  questions.jsonl                                        professor questions with expected facts
   protocol.md                                            how the professor rates; how agreement is computed
 ```
 
-The harness in `backend/tests/evaluation` runs every case through the pipeline with the real
-gateway when `RM_EVAL=1` and reports agreement by dimension, material correction rate, and
-run-to-run variation.
+Ten seed cases exist, covering every category above. They are de-identified constructions, and
+their ratings are the specification's anchors applied by the author of the set — **not the
+professor's judgement**. The pilot gate is 30 student–project–weeks rated by the professor on real
+work; until those exist, agreement numbers measure agreement with the anchors, which is a check on
+the prompt rather than evidence that the rubric is calibrated.
+
+`questions.jsonl` holds 20 of the 50 the gate asks for, chosen to cover every question kind the
+assistant must handle: facts computed in SQL, narrative, longitudinal across a rubric change,
+uncertainty, confidentiality, and one adversarial.
+
+The harness in `backend/tests/evaluation` keeps two questions apart. Contract properties — the
+index withheld when evidence is absent, no citation outside the snapshot, no instruction obeyed
+from a README — are pass/fail and run on every CI pass against the deterministic gateway. Agreement
+with the professor needs the real provider, runs under `RM_EVAL=1`, and is reported rather than
+asserted. See [protocol.md](protocol.md) for why, and for what each measure means.
 
 ## Pilot gates
 
