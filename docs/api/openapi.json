@@ -30,6 +30,122 @@
         "title": "AcceptInvitationIn",
         "type": "object"
       },
+      "AiBudgetsIn": {
+        "properties": {
+          "monthly_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Usd"
+          },
+          "project_monthly_usd": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Project Monthly Usd",
+            "type": "object"
+          }
+        },
+        "title": "AiBudgetsIn",
+        "type": "object"
+      },
+      "AiBudgetsOut": {
+        "properties": {
+          "analysis_delayed": {
+            "title": "Analysis Delayed",
+            "type": "boolean"
+          },
+          "monthly_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Usd"
+          },
+          "project_monthly_usd": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Project Monthly Usd",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "spent_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spent Usd",
+            "type": "string"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "spent_usd",
+          "analysis_delayed",
+          "warning",
+          "reason"
+        ],
+        "title": "AiBudgetsOut",
+        "type": "object"
+      },
+      "AiUsageOut": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_incomplete": {
+            "title": "Cost Incomplete",
+            "type": "boolean"
+          },
+          "cost_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "failed",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "cost_incomplete",
+          "since"
+        ],
+        "title": "AiUsageOut",
+        "type": "object"
+      },
       "ApproveIn": {
         "properties": {
           "override": {
@@ -2206,6 +2322,36 @@
         "title": "ReportState",
         "type": "string"
       },
+      "RepositoryHealth": {
+        "description": "One repository's sync state, so a stale source is named rather than read as no work.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repository_id": {
+            "format": "uuid",
+            "title": "Repository Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id",
+          "full_name"
+        ],
+        "title": "RepositoryHealth",
+        "type": "object"
+      },
       "ResearchDecisionIn": {
         "properties": {
           "decided_on": {
@@ -2625,6 +2771,106 @@
         ],
         "title": "SupervisionNoteIn",
         "type": "object"
+      },
+      "SyncKind": {
+        "enum": [
+          "initial",
+          "incremental",
+          "webhook",
+          "manual"
+        ],
+        "title": "SyncKind",
+        "type": "string"
+      },
+      "SyncRunOut": {
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "events_ingested": {
+            "title": "Events Ingested",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SyncKind"
+          },
+          "pages_done": {
+            "title": "Pages Done",
+            "type": "integer"
+          },
+          "repository_id": {
+            "format": "uuid",
+            "title": "Repository Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SyncState"
+          },
+          "watermark": {
+            "additionalProperties": true,
+            "title": "Watermark",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "repository_id",
+          "kind",
+          "state",
+          "watermark",
+          "pages_done",
+          "events_ingested",
+          "attempt",
+          "started_at"
+        ],
+        "title": "SyncRunOut",
+        "type": "object"
+      },
+      "SyncState": {
+        "description": "Job states the requirements ask to be distinguishable (requirements \u00a710).",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "partial",
+          "failed"
+        ],
+        "title": "SyncState",
+        "type": "string"
       },
       "TaskIn": {
         "properties": {
@@ -3234,6 +3480,214 @@
         "summary": "Readiness",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/budgets": {
+      "get": {
+        "operationId": "ai_budgets_api_v1_admin_ai_budgets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiBudgetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Configured budgets and whether they are delaying analysis",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "operationId": "set_ai_budgets_api_v1_admin_ai_budgets_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiBudgetsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiBudgetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set the monthly budgets",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/usage": {
+      "get": {
+        "operationId": "ai_usage_api_v1_admin_ai_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiUsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Model spend this month",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/assessments/retry": {
+      "post": {
+        "description": "Every step is idempotent on its key, so a retry produces no duplicate (architecture \u00a712).",
+        "operationId": "retry_assessment_api_v1_admin_assessments_retry_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Student Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AssessmentOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Retry Assessment Api V1 Admin Assessments Retry Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Re-run one assessment pipeline",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/sync": {
+      "get": {
+        "description": "UI-01: last successful sync, covered range, and authorization errors (REPO-05).",
+        "operationId": "sync_health_api_v1_admin_sync_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RepositoryHealth"
+                  },
+                  "title": "Response Sync Health Api V1 Admin Sync Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Repository sync health",
+        "tags": [
+          "admin"
         ]
       }
     },

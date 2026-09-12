@@ -38,6 +38,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ai/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Configured budgets and whether they are delaying analysis */
+        get: operations["ai_budgets_api_v1_admin_ai_budgets_get"];
+        /** Set the monthly budgets */
+        put: operations["set_ai_budgets_api_v1_admin_ai_budgets_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ai/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model spend this month */
+        get: operations["ai_usage_api_v1_admin_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/assessments/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-run one assessment pipeline
+         * @description Every step is idempotent on its key, so a retry produces no duplicate (architecture §12).
+         */
+        post: operations["retry_assessment_api_v1_admin_assessments_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Repository sync health
+         * @description UI-01: last successful sync, covered range, and authorization errors (REPO-05).
+         */
+        get: operations["sync_health_api_v1_admin_sync_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assessments": {
         parameters: {
             query?: never;
@@ -994,6 +1069,52 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** AiBudgetsIn */
+        AiBudgetsIn: {
+            /** Monthly Usd */
+            monthly_usd?: string | null;
+            /** Project Monthly Usd */
+            project_monthly_usd?: {
+                [key: string]: string;
+            };
+        };
+        /** AiBudgetsOut */
+        AiBudgetsOut: {
+            /** Analysis Delayed */
+            analysis_delayed: boolean;
+            /** Monthly Usd */
+            monthly_usd?: string | null;
+            /** Project Monthly Usd */
+            project_monthly_usd?: {
+                [key: string]: string;
+            };
+            /** Reason */
+            reason: string;
+            /** Spent Usd */
+            spent_usd: string;
+            /** Warning */
+            warning: boolean;
+        };
+        /** AiUsageOut */
+        AiUsageOut: {
+            /** Calls */
+            calls: number;
+            /** Cost Incomplete */
+            cost_incomplete: boolean;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Failed */
+            failed: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+        };
         /** ApproveIn */
         ApproveIn: {
             /** Override */
@@ -1878,6 +1999,20 @@ export interface components {
          * @enum {string}
          */
         ReportState: "draft" | "submitted" | "revision_requested" | "resubmitted" | "reviewed";
+        /**
+         * RepositoryHealth
+         * @description One repository's sync state, so a stale source is named rather than read as no work.
+         */
+        RepositoryHealth: {
+            /** Full Name */
+            full_name: string;
+            last_run?: components["schemas"]["SyncRunOut"] | null;
+            /**
+             * Repository Id
+             * Format: uuid
+             */
+            repository_id: string;
+        };
         /** ResearchDecisionIn */
         ResearchDecisionIn: {
             /** Decided On */
@@ -2053,6 +2188,51 @@ export interface components {
             /** Student Id */
             student_id?: string | null;
         };
+        /**
+         * SyncKind
+         * @enum {string}
+         */
+        SyncKind: "initial" | "incremental" | "webhook" | "manual";
+        /** SyncRunOut */
+        SyncRunOut: {
+            /** Attempt */
+            attempt: number;
+            /** Error Summary */
+            error_summary?: string | null;
+            /** Events Ingested */
+            events_ingested: number;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["SyncKind"];
+            /** Pages Done */
+            pages_done: number;
+            /**
+             * Repository Id
+             * Format: uuid
+             */
+            repository_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            state: components["schemas"]["SyncState"];
+            /** Watermark */
+            watermark: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SyncState
+         * @description Job states the requirements ask to be distinguishable (requirements §10).
+         * @enum {string}
+         */
+        SyncState: "queued" | "running" | "completed" | "partial" | "failed";
         /** TaskIn */
         TaskIn: {
             /**
@@ -2302,6 +2482,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Readiness"];
+                };
+            };
+        };
+    };
+    ai_budgets_api_v1_admin_ai_budgets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiBudgetsOut"];
+                };
+            };
+        };
+    };
+    set_ai_budgets_api_v1_admin_ai_budgets_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiBudgetsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiBudgetsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_usage_api_v1_admin_ai_usage_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiUsageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_assessment_api_v1_admin_assessments_retry_post: {
+        parameters: {
+            query: {
+                student_id: string;
+                project_id: string;
+                period_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_health_api_v1_admin_sync_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryHealth"][];
                 };
             };
         };

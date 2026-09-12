@@ -85,6 +85,8 @@ testpaths = ["tests"]
 markers = [
   "unit: pure functions, no I/O",
   "module: service-level tests against a real database",
+  "api: HTTP tests through the ASGI app",
+  "authz: one test per access acceptance scenario",
   "acceptance: one test per requirements acceptance scenario",
   "evaluation: AI evaluation harness, run only with RM_EVAL=1",
 ]
@@ -138,7 +140,7 @@ type = "forbidden"
 source_modules = ["app"]
 forbidden_modules = ["openai"]
 ignore_imports = ["app.ai.gateway -> openai"]
-unmatched_ignore_imports_alerting = "none"  # gateway lands in a later PR
+unmatched_ignore_imports_alerting = "none"
 
 [[tool.importlinter.contracts]]
 name = "Notifications depend on reporting and core only"

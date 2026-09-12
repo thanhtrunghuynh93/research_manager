@@ -9,6 +9,7 @@ a person approves it.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -238,14 +239,20 @@ async def run_pipeline(
         rubric={"dimensions": rubric.dimensions or DEFAULT_DIMENSIONS},
         project_id=project_id,
         restricted=project.ai_restricted,
+        context=_billing(session, workspace_id, project_id, student.email),
     )
     run.steps = steps
     run.prompt_versions = prompt_versions
 
     if rubric_result is None and not project.ai_restricted:
-        # AC-13: the run is partial and retryable; the report and its timestamp are untouched.
-        run.state = RunState.PARTIAL
-        run.error_summary = steps.get("error", "the model step did not complete")
+        # Three different reasons produce no draft, and the professor needs to tell them apart:
+        # the money ran out, the model failed, or there was nothing to assess. Only the second is
+        # a fault (requirements §11, AC-13).
+        delayed = steps.get("delayed_budget")
+        run.state = RunState.DELAYED_BUDGET if delayed else RunState.PARTIAL
+        run.error_summary = (
+            delayed if delayed else steps.get("error", "the model step did not complete")
+        )
         run.finished_at = now()
         await session.flush()
         return None
@@ -280,6 +287,31 @@ def _default_gateway() -> AIGateway:
     return current_gateway()
 
 
+@dataclass(frozen=True, slots=True)
+class _Billing:
+    """Who pays for a call and whose work it is about.
+
+    The session travels with it so a ledger row lands in the same transaction as the assessment it
+    paid for, and `subject_email` is the one address redaction keeps (architecture §10).
+    """
+
+    session: AsyncSession
+    workspace_id: UUID
+    project_id: UUID
+    subject_email: str | None
+
+
+def _billing(
+    session: AsyncSession, workspace_id: UUID, project_id: UUID, subject_email: str | None
+) -> _Billing:
+    return _Billing(
+        session=session,
+        workspace_id=workspace_id,
+        project_id=project_id,
+        subject_email=subject_email,
+    )
+
+
 async def _analyse(
     gateway: AIGateway,
     *,
@@ -288,6 +320,7 @@ async def _analyse(
     rubric: dict[str, Any],
     project_id: UUID,
     restricted: bool,
+    context: _Billing,
 ) -> tuple[RubricOutput | None, dict[str, Any], dict[str, str]]:
     """Claims, then matching, then rating — each step recorded (architecture §9.1)."""
     steps: dict[str, Any] = {}
@@ -296,11 +329,11 @@ async def _analyse(
         steps["restricted"] = True
         return None, steps, prompt_versions
 
-    claims = await _call(gateway, "extract_claims", {"entry": entry_text}, ClaimList, project_id)
+    claims = await _call(gateway, "extract_claims", {"entry": entry_text}, ClaimList, context)
     steps["extract_claims"] = "completed" if claims.ok else "failed"
     prompt_versions["extract_claims"] = claims.prompt_version
     if not claims.ok:
-        steps["error"] = f"extract_claims: {claims.error}"
+        _record_failure(steps, "extract_claims", claims)
         return None, steps, prompt_versions
 
     verdicts = await _call(
@@ -311,12 +344,12 @@ async def _analyse(
             "evidence": evidence,
         },
         ClaimVerdicts,
-        project_id,
+        context,
     )
     steps["match_claims"] = "completed" if verdicts.ok else "failed"
     prompt_versions["match_claims"] = verdicts.prompt_version
     if not verdicts.ok:
-        steps["error"] = f"match_claims: {verdicts.error}"
+        _record_failure(steps, "match_claims", verdicts)
         return None, steps, prompt_versions
 
     rating = await _call(
@@ -329,12 +362,12 @@ async def _analyse(
             "verdicts": [verdict.model_dump() for verdict in verdicts.value.verdicts],
         },
         RubricOutput,
-        project_id,
+        context,
     )
     steps["rate_rubric"] = "completed" if rating.ok else "failed"
     prompt_versions["rate_rubric"] = rating.prompt_version
     if not rating.ok:
-        steps["error"] = f"rate_rubric: {rating.error}"
+        _record_failure(steps, "rate_rubric", rating)
         return None, steps, prompt_versions
 
     unverifiable = sum(1 for verdict in verdicts.value.verdicts if verdict.status == "unverifiable")
@@ -345,12 +378,21 @@ async def _analyse(
     return rating.value, steps, prompt_versions
 
 
+def _record_failure(steps: dict[str, Any], step: str, result: Any) -> None:
+    """A budget that ran out is not a failure of the model, and is recorded as itself."""
+    if result.error == "delayed_budget":
+        steps[step] = "delayed_budget"
+        steps["delayed_budget"] = "; ".join(result.notes) or "the AI budget for this month is spent"
+        return
+    steps["error"] = f"{step}: {result.error}"
+
+
 async def _call(
     gateway: AIGateway,
     prompt_id: str,
     inputs: dict[str, Any],
     schema: type[Any],
-    project_id: UUID,
+    billing: _Billing,
 ) -> Any:
     prompt = load_prompt(prompt_id, PROMPT_VERSION)
     return await gateway.complete_structured(
@@ -359,7 +401,12 @@ async def _call(
         schema=schema,
         budget=Budget(max_tokens=prompt.max_tokens),
         context=CallContext(
-            prompt_id=prompt_id, prompt_version=prompt.version, project_id=project_id
+            prompt_id=prompt_id,
+            prompt_version=prompt.version,
+            project_id=billing.project_id,
+            workspace_id=billing.workspace_id,
+            session=billing.session,
+            subject_email=billing.subject_email,
         ),
     )
 
