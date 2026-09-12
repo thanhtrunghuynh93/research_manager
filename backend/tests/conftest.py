@@ -29,10 +29,14 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @pytest.fixture(scope="session")
-def database_url() -> Iterator[str]:
-    url = os.environ.get("RM_TEST_DATABASE_URL")
-    if url:
-        yield url
+def postgres_container() -> Iterator[object | None]:
+    """The container running the test database, or None when an external one is configured.
+
+    Exposed because the restore drill (AC-16) needs `pg_dump` and `pg_restore`, which live in the
+    server image rather than on this machine.
+    """
+    if os.environ.get("RM_TEST_DATABASE_URL"):
+        yield None
         return
     try:
         from testcontainers.community.postgres import PostgresContainer
@@ -40,7 +44,16 @@ def database_url() -> Iterator[str]:
         from testcontainers.postgres import PostgresContainer
 
     with PostgresContainer("pgvector/pgvector:pg16", driver="psycopg") as pg:
-        yield pg.get_connection_url()
+        yield pg
+
+
+@pytest.fixture(scope="session")
+def database_url(postgres_container: object | None) -> str:
+    external = os.environ.get("RM_TEST_DATABASE_URL")
+    if external:
+        return external
+    assert postgres_container is not None
+    return postgres_container.get_connection_url()  # type: ignore[attr-defined]
 
 
 @pytest.fixture(scope="session")
