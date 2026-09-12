@@ -414,6 +414,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A machine-readable bundle of authorized records
+         * @description Identifiers, versions, relationships, and approval status (requirements §11).
+         */
+        get: operations["build_bundle_api_v1_exports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What this account may export */
+        get: operations["list_kinds_api_v1_exports_kinds_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/{kind}.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One kind as a spreadsheet */
+        get: operations["build_csv_api_v1_exports__kind__csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/milestones/{milestone_id}": {
         parameters: {
             query?: never;
@@ -612,6 +666,23 @@ export interface paths {
         put?: never;
         /** Extend one obligation's deadline */
         post: operations["extend_obligation_api_v1_obligations__obligation_id__extend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The professor's current week at a glance */
+        get: operations["overview_api_v1_overview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1359,6 +1430,32 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** BudgetState */
+        BudgetState: {
+            /** Analysis Delayed */
+            analysis_delayed: boolean;
+            /** Monthly Usd */
+            monthly_usd?: string | null;
+            /** Reason */
+            reason: string;
+            /** Spent Usd */
+            spent_usd: string;
+            /** Warning */
+            warning: boolean;
+        };
+        /** BundleOut */
+        BundleOut: {
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Records */
+            records?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
         /** CalendarConfigIn */
         CalendarConfigIn: {
             /**
@@ -1478,6 +1575,21 @@ export interface components {
             body: string;
             /** Evidence */
             evidence?: unknown[];
+        };
+        /** CurrentPeriod */
+        CurrentPeriod: {
+            /** Deadline Utc */
+            deadline_utc: string;
+            /** Local End */
+            local_end: string;
+            /** Local Start */
+            local_start: string;
+            /** Meeting Date */
+            meeting_date: string;
+            /** Period Id */
+            period_id: string;
+            /** Timezone */
+            timezone: string;
         };
         /** DraftIn */
         DraftIn: {
@@ -2000,6 +2112,51 @@ export interface components {
          * @enum {string}
          */
         ObligationState: "required" | "excused";
+        /**
+         * Outstanding
+         * @description REP-08: who still owes a report, after exemptions and extensions, at a stated instant.
+         */
+        Outstanding: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Count */
+            count: number;
+            /** Entries */
+            entries?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** OverviewOut */
+        OverviewOut: {
+            ai_budget: components["schemas"]["BudgetState"];
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            current_period?: components["schemas"]["CurrentPeriod"] | null;
+            outstanding: components["schemas"]["Outstanding"];
+            /** Review Queue */
+            review_queue?: {
+                [key: string]: unknown;
+            }[];
+            /** Stalled Analyses */
+            stalled_analyses?: {
+                [key: string]: unknown;
+            }[];
+            /** Sync Issues */
+            sync_issues?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** Page[ProjectOut] */
         Page_ProjectOut_: {
             /** Items */
@@ -3412,6 +3569,97 @@ export interface operations {
             };
         };
     };
+    build_bundle_api_v1_exports_get: {
+        parameters: {
+            query?: {
+                kinds?: string[] | null;
+                student_id?: string | null;
+                project_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_kinds_api_v1_exports_kinds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string[];
+                    };
+                };
+            };
+        };
+    };
+    build_csv_api_v1_exports__kind__csv_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                project_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_milestone_api_v1_milestones__milestone_id__patch: {
         parameters: {
             query?: never;
@@ -3769,6 +4017,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_api_v1_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOut"];
                 };
             };
         };

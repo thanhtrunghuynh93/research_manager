@@ -657,6 +657,67 @@
         "title": "AssessmentOut",
         "type": "object"
       },
+      "BudgetState": {
+        "properties": {
+          "analysis_delayed": {
+            "title": "Analysis Delayed",
+            "type": "boolean"
+          },
+          "monthly_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Usd"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "string"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "analysis_delayed",
+          "warning",
+          "reason",
+          "spent_usd"
+        ],
+        "title": "BudgetState",
+        "type": "object"
+      },
+      "BundleOut": {
+        "properties": {
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "records": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "title": "Records",
+            "type": "object"
+          }
+        },
+        "title": "BundleOut",
+        "type": "object"
+      },
       "CalendarConfigIn": {
         "properties": {
           "effective_from": {
@@ -842,6 +903,44 @@
           "body"
         ],
         "title": "CorrectionIn",
+        "type": "object"
+      },
+      "CurrentPeriod": {
+        "properties": {
+          "deadline_utc": {
+            "title": "Deadline Utc",
+            "type": "string"
+          },
+          "local_end": {
+            "title": "Local End",
+            "type": "string"
+          },
+          "local_start": {
+            "title": "Local Start",
+            "type": "string"
+          },
+          "meeting_date": {
+            "title": "Meeting Date",
+            "type": "string"
+          },
+          "period_id": {
+            "title": "Period Id",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_id",
+          "local_start",
+          "local_end",
+          "meeting_date",
+          "deadline_utc",
+          "timezone"
+        ],
+        "title": "CurrentPeriod",
         "type": "object"
       },
       "DraftIn": {
@@ -2035,6 +2134,95 @@
         ],
         "title": "ObligationState",
         "type": "string"
+      },
+      "Outstanding": {
+        "description": "REP-08: who still owes a report, after exemptions and extensions, at a stated instant.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "as_of"
+        ],
+        "title": "Outstanding",
+        "type": "object"
+      },
+      "OverviewOut": {
+        "properties": {
+          "ai_budget": {
+            "$ref": "#/components/schemas/BudgetState"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "current_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentPeriod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outstanding": {
+            "$ref": "#/components/schemas/Outstanding"
+          },
+          "review_queue": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Review Queue",
+            "type": "array"
+          },
+          "stalled_analyses": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Stalled Analyses",
+            "type": "array"
+          },
+          "sync_issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Sync Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of",
+          "outstanding",
+          "ai_budget"
+        ],
+        "title": "OverviewOut",
+        "type": "object"
       },
       "Page_ProjectOut_": {
         "properties": {
@@ -4859,6 +5047,258 @@
         ]
       }
     },
+    "/api/v1/exports": {
+      "get": {
+        "description": "Identifiers, versions, relationships, and approval status (requirements \u00a711).",
+        "operationId": "build_bundle_api_v1_exports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kinds"
+            }
+          },
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A machine-readable bundle of authorized records",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/v1/exports/kinds": {
+      "get": {
+        "operationId": "list_kinds_api_v1_exports_kinds_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response List Kinds Api V1 Exports Kinds Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "What this account may export",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/v1/exports/{kind}.csv": {
+      "get": {
+        "operationId": "build_csv_api_v1_exports__kind__csv_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One kind as a spreadsheet",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
     "/api/v1/milestones/{milestone_id}": {
       "patch": {
         "operationId": "update_milestone_api_v1_milestones__milestone_id__patch",
@@ -5350,6 +5790,27 @@
         "summary": "Extend one obligation's deadline",
         "tags": [
           "reporting"
+        ]
+      }
+    },
+    "/api/v1/overview": {
+      "get": {
+        "operationId": "overview_api_v1_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The professor's current week at a glance",
+        "tags": [
+          "overview"
         ]
       }
     },

@@ -110,6 +110,9 @@ name = "Layered bounded contexts"
 type = "layers"
 layers = [
   "app.assistant",
+  # Exports read across reporting, projects and assessment and nothing depends on them, so they
+  # sit above assessment and below the assistant (docs/repo_layout.md §3.3).
+  "app.exports",
   "app.assessment",
   "app.evidence",
   "app.reporting",
@@ -130,6 +133,7 @@ source_modules = [
   "app.reporting",
   "app.evidence",
   "app.notifications",
+  "app.exports",
   "app.api",
   "app.core",
 ]
