@@ -4,9 +4,17 @@ The worker syncs on a schedule, so something has to decide which connector a sto
 gets without a person present. Two properties matter: a deployment with no GitHub App configured
 must still run — on the fake connector, which is what the pilot and the demo use — and it must say
 so, because silently syncing nothing looks exactly like a repository with no activity (AC-04).
+
+Webhook verification is the exception to that fallback, and has its own factory function for it:
+the in-memory connector's secret is a published constant, so a configured deployment that reached
+it would reject every genuine delivery and accept forged ones.
 """
 
 from __future__ import annotations
+
+import hashlib
+import hmac
+import json
 
 import pytest
 from pydantic import SecretStr
@@ -101,3 +109,56 @@ def test_the_factory_reports_whether_a_provider_is_actually_configured() -> None
         )
         is True
     )
+
+
+# ---------------------------------------------------------------- webhook verification
+
+
+def _signed(secret: str, payload: dict[str, object]) -> tuple[bytes, dict[str, str]]:
+    body = json.dumps(payload).encode()
+    signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return body, {
+        "X-GitHub-Delivery": "d1",
+        "X-GitHub-Event": "push",
+        "X-Hub-Signature-256": signature,
+    }
+
+
+def test_a_configured_webhook_secret_is_verified_against_the_real_connector() -> None:
+    settings = _settings(github_webhook_secret=SecretStr("the-real-secret"))
+    verifier = factory.webhook_verifier("github", settings)
+
+    assert isinstance(verifier, GitHubConnector)
+
+    body, headers = _signed("the-real-secret", {"repository": {"id": 7}})
+    event = verifier.verify_webhook(headers, body)
+    assert event is not None
+    assert event.external_repo_id == "7"
+
+
+def test_the_test_doubles_published_secret_does_not_verify_a_configured_deployment() -> None:
+    """The regression: the route built with no `credential_ref`, so it got the fake connector."""
+    settings = _settings(github_webhook_secret=SecretStr("the-real-secret"))
+    verifier = factory.webhook_verifier("github", settings)
+    assert verifier is not None
+
+    body, headers = _signed(FakeRepositoryConnector().webhook_secret, {"repository": {"id": 7}})
+    assert verifier.verify_webhook(headers, body) is None
+
+
+def test_an_unconfigured_deployment_still_verifies_its_own_deliveries() -> None:
+    assert isinstance(factory.webhook_verifier("github", _settings()), FakeRepositoryConnector)
+
+
+def test_a_configured_app_without_a_webhook_secret_refuses_rather_than_falls_back(tmp_path) -> None:
+    """Verifying against an empty secret would accept anything signed with an empty key."""
+    key_file = tmp_path / "app.pem"
+    key_file.write_text("-----BEGIN PRIVATE KEY-----\n")
+    settings = _settings(
+        github_app_id="123",
+        github_app_private_key_path=str(key_file),
+        github_webhook_secret=SecretStr(""),
+    )
+
+    assert factory.is_configured("github", settings) is True
+    assert factory.webhook_verifier("github", settings) is None

@@ -32,6 +32,43 @@ def is_configured(provider: str, settings: Settings | None = None) -> bool:
     return bool(active.github_app_id) and Path(active.github_app_private_key_path or "").is_file()
 
 
+def webhook_verifier(provider: str, settings: Settings | None = None) -> RepositoryConnector | None:
+    """The connector that checks a delivery signature — no installation involved.
+
+    Verification needs only the shared webhook secret, so this must not go through `build`:
+    `build` needs a `credential_ref` and falls back to the in-memory connector without one, which
+    would verify real deliveries against the test double's published secret (they would all be
+    rejected, and a forged one would be accepted).
+
+    Returns None when this deployment has a GitHub App but no webhook secret. Verifying against an
+    empty secret would accept any delivery signed with an empty key, so a misconfiguration has to
+    refuse rather than fall through.
+    """
+    if provider not in PROVIDERS:
+        raise ValueError(f"no connector for provider {provider!r}")
+
+    active = settings or get_settings()
+    secret = active.github_webhook_secret.get_secret_value()
+    if secret:
+        return GitHubConnector(
+            app_id=active.github_app_id,
+            private_key="",  # reads are not reachable from this instance
+            webhook_secret=secret,
+            installation_id="",
+        )
+    if not is_configured(provider, active):
+        log.info(
+            "no %s app configured; verifying deliveries with the in-memory connector", provider
+        )
+        return FakeRepositoryConnector()
+
+    log.error(
+        "a %s app is configured but no webhook secret is set; deliveries cannot be verified",
+        provider,
+    )
+    return None
+
+
 def build(
     provider: str,
     *,

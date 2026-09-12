@@ -21,7 +21,12 @@ from fastapi import APIRouter, Header, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import ProfScopeDep, ScopeDep, SessionDep
-from app.core.errors import ForbiddenError, UnauthenticatedError
+from app.core.errors import (
+    DependencyUnavailableError,
+    ForbiddenError,
+    UnauthenticatedError,
+)
+from app.core.jobs import defer_after_commit
 from app.evidence import service
 from app.evidence.schemas import (
     ContributionOut,
@@ -301,25 +306,30 @@ async def github_webhook(
     """
     from app.evidence.connectors import factory
 
+    verifier = factory.webhook_verifier("github")
+    if verifier is None:
+        # Configured app, no webhook secret: we cannot tell a real delivery from a forged one.
+        raise DependencyUnavailableError("webhook verification is not configured")
+
     body = await request.body()
     headers = dict(request.headers)
-    result = await service.ingest_webhook(
-        session,
-        headers=headers,
-        body=body,
-        connector=factory.build("github", credential_ref=None),
-    )
+    result = await service.ingest_webhook(session, headers=headers, body=body, connector=verifier)
     if result is None:
         raise UnauthenticatedError("the delivery signature did not verify")
 
     if result.accepted and result.repository_id is not None:
         # Architecture §8.3: a delivery triggers a targeted incremental run. Enqueued rather than
         # run here, so a slow provider call never holds the webhook response open and GitHub never
-        # sees a timeout it would retry.
+        # sees a timeout it would retry. Sent after the delivery row commits, so the job cannot
+        # run against a transaction that never landed (app.core.jobs).
         from app.evidence import tasks
 
-        await tasks.sync_one.configure(queueing_lock=f"sync:{result.repository_id}").defer_async(
-            repository_id=str(result.repository_id), kind="webhook"
+        defer_after_commit(
+            session,
+            tasks.sync_one,
+            queueing_lock=f"sync:{result.repository_id}",
+            repository_id=str(result.repository_id),
+            kind="webhook",
         )
 
     return WebhookAck(
