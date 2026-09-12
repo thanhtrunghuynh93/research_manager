@@ -121,3 +121,45 @@ async def test_only_the_professor_changes_a_role(
 
 async def test_listing_users_requires_a_session(client: AsyncClient) -> None:
     assert (await client.get("/api/v1/users")).status_code == 401
+
+
+# ---------------------------------------------------------------- malformed client input
+#
+# A cursor is opaque to the client, so a wrong one is ordinary. `decoded["after"]` raised KeyError
+# and `UUID(...)` raised ValueError, and both reached the catch-all handler as a 500 with a logged
+# stack trace for what is simply a bad request.
+
+
+@pytest.mark.parametrize(
+    ("cursor", "why"),
+    [
+        ("eyJuIjoxfQ==", "valid base64 and JSON, but no `after` key"),
+        ("eyJhZnRlciI6ICJub3QtYS11dWlkIn0=", "`after` is not a UUID"),
+        ("not-base64-at-all!!", "not decodable at all"),
+    ],
+)
+async def test_a_malformed_cursor_is_a_bad_request(
+    client: AsyncClient, prof: models.User, cursor: str, why: str
+) -> None:
+    await _sign_in(client, prof)
+
+    response = await client.get("/api/v1/users", params={"cursor": cursor})
+
+    assert response.status_code == 422, f"{why}: {response.text}"
+    assert response.json()["detail"] == "invalid cursor"
+
+
+async def test_a_valid_cursor_still_pages(
+    client: AsyncClient, prof: models.User, student_a: models.User, student_b: models.User
+) -> None:
+    await _sign_in(client, prof)
+
+    first = (await client.get("/api/v1/users", params={"limit": 1})).json()
+    assert first["next_cursor"]
+
+    second = (
+        await client.get("/api/v1/users", params={"limit": 1, "cursor": first["next_cursor"]})
+    ).json()
+
+    assert second["items"]
+    assert second["items"][0]["id"] != first["items"][0]["id"]

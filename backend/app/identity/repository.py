@@ -15,7 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
-from app.core.pagination import decode_cursor, encode_cursor
+from app.core.pagination import cursor_after, encode_cursor
 from app.core.types import Role
 from app.identity.models import (
     Invitation,
@@ -83,9 +83,9 @@ async def list_visible_users(
 ) -> tuple[list[User], str | None]:
     """Keyset pagination on the primary key, which is UUIDv7 and therefore in creation order."""
     statement = select(User).where(visible_to(scope, User)).order_by(User.id).limit(limit + 1)
-    decoded = decode_cursor(cursor)
-    if decoded is not None:
-        statement = statement.where(User.id > UUID(str(decoded["after"])))
+    after = cursor_after(cursor)
+    if after is not None:
+        statement = statement.where(User.id > after)
 
     rows = list((await session.execute(statement)).scalars().all())
     if len(rows) <= limit:

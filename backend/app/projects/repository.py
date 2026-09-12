@@ -9,7 +9,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
-from app.core.pagination import decode_cursor, encode_cursor
+from app.core.pagination import cursor_after, encode_cursor
+from app.identity.models import User
 from app.projects.models import (
     BaselineState,
     Milestone,
@@ -43,9 +44,9 @@ async def list_projects(
     statement = select(Project).where(visible_to(scope, Project)).order_by(Project.id)
     if status is not None:
         statement = statement.where(Project.status == status)
-    decoded = decode_cursor(cursor)
-    if decoded is not None:
-        statement = statement.where(Project.id > UUID(str(decoded["after"])))
+    after = cursor_after(cursor)
+    if after is not None:
+        statement = statement.where(Project.id > after)
 
     rows = list((await session.execute(statement.limit(limit + 1))).scalars().all())
     if len(rows) <= limit:
@@ -67,15 +68,17 @@ async def get_membership(
 
 async def list_memberships(
     session: AsyncSession, scope: Scope, project_id: UUID, *, include_past: bool
-) -> list[ProjectMembership]:
+) -> list[tuple[ProjectMembership, str]]:
+    """Each membership the caller may see, with the member's display name (PROJ-02)."""
     statement = (
-        select(ProjectMembership)
+        select(ProjectMembership, User.display_name)
+        .join(User, User.id == ProjectMembership.student_id)
         .where(ProjectMembership.project_id == project_id, visible_to(scope, ProjectMembership))
         .order_by(ProjectMembership.joined_on, ProjectMembership.id)
     )
     if not include_past:
         statement = statement.where(ProjectMembership.left_on.is_(None))
-    return list((await session.execute(statement)).scalars().all())
+    return [(row, name) for row, name in (await session.execute(statement))]
 
 
 async def active_membership(
