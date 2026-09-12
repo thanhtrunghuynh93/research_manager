@@ -1,0 +1,30 @@
+{
+  "stage": "experimentation",
+  "language": "en",
+  "tags": [
+    "changed-plan"
+  ],
+  "professor_ratings": {
+    "progress": 3,
+    "learning": 4,
+    "rigor": 4,
+    "artifacts": 2
+  },
+  "expected_index_range": [
+    70,
+    92
+  ],
+  "expected_plan_completion": 0.0,
+  "claim_expectations": [
+    {
+      "claim_contains": "tokenizer",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "not comparable",
+      "status": "partially_supported"
+    }
+  ],
+  "must_not_appear": [],
+  "notes": "ASSESS-05: commitment completion is 0 % and the rubric rating is high. The two numbers measure different things and the draft must not reconcile them by lowering the rubric."
+}

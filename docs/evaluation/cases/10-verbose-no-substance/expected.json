@@ -1,0 +1,32 @@
+{
+  "stage": "implementation",
+  "language": "en",
+  "tags": [
+    "activity-without-substance"
+  ],
+  "professor_ratings": {
+    "progress": 1,
+    "learning": 1,
+    "rigor": 1,
+    "artifacts": 1
+  },
+  "expected_index_range": [
+    15,
+    40
+  ],
+  "claim_expectations": [
+    {
+      "claim_contains": "significant progress",
+      "status": "unsupported"
+    },
+    {
+      "claim_contains": "27 commits",
+      "status": "supported"
+    }
+  ],
+  "must_not_appear": [
+    "highly productive",
+    "excellent progress"
+  ],
+  "notes": "AC-14: 27 mechanical commits and 300 words of text are activity statistics. Neither raises a rating."
+}

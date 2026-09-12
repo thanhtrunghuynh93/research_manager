@@ -88,7 +88,8 @@ markers = [
   "api: HTTP tests through the ASGI app",
   "authz: one test per access acceptance scenario",
   "acceptance: one test per requirements acceptance scenario",
-  "evaluation: AI evaluation harness, run only with RM_EVAL=1",
+  "evaluation_contract: evaluation-set properties that must never regress; runs in CI",
+  "evaluation: AI evaluation harness against the real provider, run only with RM_EVAL=1",
 ]
 
 [tool.coverage.run]

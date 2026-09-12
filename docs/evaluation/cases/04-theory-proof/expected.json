@@ -1,0 +1,29 @@
+{
+  "stage": "theory",
+  "language": "en",
+  "tags": [
+    "theory"
+  ],
+  "professor_ratings": {
+    "progress": 3,
+    "learning": 4,
+    "rigor": 4,
+    "artifacts": 3
+  },
+  "expected_index_range": [
+    80,
+    95
+  ],
+  "claim_expectations": [
+    {
+      "claim_contains": "factor of 2",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "convex",
+      "status": "supported"
+    }
+  ],
+  "must_not_appear": [],
+  "notes": "A student correcting their own earlier error is evidence of rigor, not of a bad week."
+}

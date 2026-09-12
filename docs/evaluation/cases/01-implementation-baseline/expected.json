@@ -1,0 +1,35 @@
+{
+  "stage": "implementation",
+  "language": "en",
+  "tags": [
+    "coding",
+    "experiments"
+  ],
+  "professor_ratings": {
+    "progress": 3,
+    "learning": 3,
+    "rigor": 3,
+    "artifacts": 3
+  },
+  "expected_index_range": [
+    70,
+    85
+  ],
+  "claim_expectations": [
+    {
+      "claim_contains": "nDCG@10 = 0.412",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "off-by-one",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "shorter documents",
+      "status": "unverifiable",
+      "why": "an interpretation of the gap; nothing in the evidence measures document length"
+    }
+  ],
+  "must_not_appear": [],
+  "notes": "The ordinary week the rubric is calibrated against: the agreed outcome was met and the evidence shows it."
+}
