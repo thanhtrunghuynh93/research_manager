@@ -56,7 +56,7 @@ async def sync_one(repository_id: str, kind: str = "manual") -> None:
             project_ids=frozenset(),
             access_epoch=0,
         )
-        await service.sync_repository(
+        run = await service.sync_repository(
             session,
             system,
             row.id,
@@ -65,3 +65,13 @@ async def sync_one(repository_id: str, kind: str = "manual") -> None:
         )
         await service.resolve_contributions(session, row.id)
         await session.commit()
+
+    if run.retry_after_seconds is not None:
+        # The run is recorded; raising is what reaches RETRY_TRANSIENT. Without it a rate limit
+        # left the remainder of the history waiting on the half-hourly sweep, which resumes from
+        # the same watermark and so would not have fetched it anyway (REPO-05).
+        from app.evidence.connectors.base import RateLimitedError
+
+        raise RateLimitedError(
+            f"{row.full_name} was rate limited", retry_after_seconds=run.retry_after_seconds
+        )

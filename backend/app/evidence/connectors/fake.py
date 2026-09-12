@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -50,6 +51,10 @@ class FakeRepositoryConnector:
     # Faults the sync loop must survive (architecture §8.3).
     fail_with: Exception | None = None
     rate_limit_after_pages: int | None = None
+    # GitHub pages commits, pull requests and issues newest-first. The fake defaults to the order
+    # it was given so existing tests keep their intent; set this to reproduce the real ordering,
+    # which is what makes a resume watermark's direction matter (REPO-05).
+    newest_first: bool = False
 
     calls: list[str] = field(default_factory=list)
     _pages_served: int = 0
@@ -92,7 +97,7 @@ class FakeRepositoryConnector:
     ) -> Page[CommitMeta]:
         self._guard("list_commits")
         selected = [c for c in self.commits if since is None or c.committed_at > since]
-        return self._paginate(selected, cursor)
+        return self._paginate(self._ordered(selected, lambda c: c.committed_at), cursor)
 
     async def get_commit_diff(self, repo: RepoRef, sha: str, max_bytes: int) -> DiffResult:
         self._guard("get_commit_diff")
@@ -112,7 +117,7 @@ class FakeRepositoryConnector:
             for pr in self.pull_requests
             if updated_since is None or pr.updated_at > updated_since
         ]
-        return self._paginate(selected, cursor)
+        return self._paginate(self._ordered(selected, lambda pr: pr.updated_at), cursor)
 
     async def list_reviews(self, repo: RepoRef, pr_number: int) -> list[Review]:
         self._guard("list_reviews")
@@ -127,7 +132,7 @@ class FakeRepositoryConnector:
             for issue in self.issues
             if updated_since is None or issue.updated_at > updated_since
         ]
-        return self._paginate(selected, cursor)
+        return self._paginate(self._ordered(selected, lambda issue: issue.updated_at), cursor)
 
     async def list_check_runs(self, repo: RepoRef, sha: str) -> list[CheckSummary]:
         self._guard("list_check_runs")
@@ -141,6 +146,9 @@ class FakeRepositoryConnector:
             raise self.fail_with
         if self.fail_with is not None:
             raise self.fail_with
+
+    def _ordered[T](self, items: list[T], moment: Callable[[T], datetime]) -> list[T]:
+        return sorted(items, key=moment, reverse=True) if self.newest_first else items
 
     def _paginate[T](self, items: list[T], cursor: str | None) -> Page[T]:
         if (

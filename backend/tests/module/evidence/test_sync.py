@@ -391,3 +391,77 @@ async def test_an_unknown_repository_is_not_found(db: AsyncSession, prof_scope: 
 
     with pytest.raises(NotFoundError):
         await service.sync_repository(db, prof_scope, uuid4(), connector=FakeRepositoryConnector())
+
+
+# ---------------------------------------------------------------- resuming after a partial run
+#
+# GitHub pages newest-first. A watermark that is the newest thing *seen* rather than the oldest
+# point we are *complete to* therefore skips everything a partial run did not reach, and the next
+# run reports success over a history with a hole in it — the "looks like nobody worked" reading
+# AC-04 exists to prevent.
+
+
+async def test_a_rate_limit_mid_history_does_not_skip_the_rest_of_it(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    connector = FakeRepositoryConnector(
+        page_size=2,
+        newest_first=True,
+        commits=[
+            _commit(f"sha{index}", authored=WEEK + timedelta(minutes=index)) for index in range(6)
+        ],
+        rate_limit_after_pages=1,
+    )
+    _, repository = await _connected(db, prof_scope, connector)
+
+    partial = await service.sync_repository(db, prof_scope, repository.id, connector=connector)
+    assert partial.state is models.SyncState.PARTIAL
+    assert len(await service.list_events(db, prof_scope, repository.id)) == 2, "progress is kept"
+
+    # The provider recovers; the next run must fetch what the first one never reached.
+    connector.rate_limit_after_pages = None
+    connector._pages_served = 0
+    second = await service.sync_repository(db, prof_scope, repository.id, connector=connector)
+
+    assert second.state is models.SyncState.COMPLETED
+    shas = {
+        event.source_version for event in await service.list_events(db, prof_scope, repository.id)
+    }
+    assert len(await service.list_events(db, prof_scope, repository.id)) == 6, (
+        f"the older half of the history was never ingested; got {sorted(s or '' for s in shas)}"
+    )
+
+
+async def test_a_completed_run_still_narrows_the_next_one(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """Correctness must not cost the incremental behaviour REPO-05 is for."""
+    connector = FakeRepositoryConnector(newest_first=True, commits=[_commit("aaa", authored=WEEK)])
+    _, repository = await _connected(db, prof_scope, connector)
+    first = await service.sync_repository(db, prof_scope, repository.id, connector=connector)
+
+    connector.commits.append(_commit("bbb", authored=WEEK + timedelta(days=1)))
+    second = await service.sync_repository(db, prof_scope, repository.id, connector=connector)
+
+    assert first.watermark["commits_since"] is not None
+    assert second.watermark["commits_since"] > first.watermark["commits_since"]
+    assert len(await service.list_events(db, prof_scope, repository.id)) == 2
+
+
+async def test_a_rate_limited_run_keeps_the_wait_the_provider_asked_for(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """It was parsed from Retry-After and then dropped, so nothing could schedule the retry."""
+    connector = FakeRepositoryConnector(
+        page_size=2,
+        commits=[
+            _commit(f"sha{index}", authored=WEEK + timedelta(minutes=index)) for index in range(6)
+        ],
+        rate_limit_after_pages=1,
+    )
+    _, repository = await _connected(db, prof_scope, connector)
+
+    run = await service.sync_repository(db, prof_scope, repository.id, connector=connector)
+
+    assert run.state is models.SyncState.PARTIAL
+    assert run.retry_after_seconds == 60

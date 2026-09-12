@@ -192,6 +192,9 @@ class SyncRun(UUIDPrimaryKeyMixin, Base):
     pages_done: Mapped[int] = mapped_column(Integer, default=0)
     events_ingested: Mapped[int] = mapped_column(Integer, default=0)
     error_summary: Mapped[str | None] = mapped_column(Text)
+    # What the provider asked us to wait, when it asked. The worker retries on it; an operator
+    # reads it to tell "rate limited, coming back" apart from "stuck" (REPO-05).
+    retry_after_seconds: Mapped[int | None] = mapped_column(Integer)
     attempt: Mapped[int] = mapped_column(Integer, default=1)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[datetime | None]

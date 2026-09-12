@@ -68,6 +68,7 @@ class SyncRunOut(BaseModel):
     pages_done: int
     events_ingested: int
     error_summary: str | None = None
+    retry_after_seconds: int | None = None
     attempt: int
     started_at: datetime
     finished_at: datetime | None = None
