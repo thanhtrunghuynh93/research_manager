@@ -66,7 +66,14 @@ class FakeGateway:
             error=None if built else f"no fake response for {prompt_id}",
         )
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        texts: list[str],
+        *,
+        workspace_id: Any = None,
+        project_id: Any = None,
+        session: Any = None,
+    ) -> list[list[float]]:
         from app.evidence.index.embeddings import DeterministicEmbedder
 
         return await DeterministicEmbedder().embed(texts)

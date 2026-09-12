@@ -42,7 +42,9 @@ async def test_an_unchanged_chunk_is_not_embedded_twice() -> None:
     class Counting:
         dimensions = embeddings.EMBEDDING_DIMENSIONS
 
-        async def embed(self, texts: list[str]) -> list[list[float]]:
+        async def embed(
+            self, texts: list[str], *, context: embeddings.EmbedContext | None = None
+        ) -> list[list[float]]:
             calls.append(texts)
             return [[0.0] * self.dimensions for _ in texts]
 
@@ -57,7 +59,9 @@ async def test_a_registered_embedder_replaces_the_default() -> None:
     class Fixed:
         dimensions = embeddings.EMBEDDING_DIMENSIONS
 
-        async def embed(self, texts: list[str]) -> list[list[float]]:
+        async def embed(
+            self, texts: list[str], *, context: embeddings.EmbedContext | None = None
+        ) -> list[list[float]]:
             return [[1.0] + [0.0] * (self.dimensions - 1) for _ in texts]
 
     previous = embeddings.current_embedder()

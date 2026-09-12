@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import logging
 
+from app.ai import bootstrap as ai_bootstrap
 from app.core.config import Settings, get_settings
 from app.core.db import init_engine
 from app.core.jobs import TASK_MODULES, procrastinate_app
@@ -26,6 +27,8 @@ def bootstrap(settings: Settings) -> None:
     for module in TASK_MODULES:
         importlib.import_module(module)
     init_engine(settings)
+    # The worker makes every model call the pipeline needs, so it installs the provider too.
+    ai_bootstrap.install(settings)
 
 
 def main() -> None:

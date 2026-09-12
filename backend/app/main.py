@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.ai import bootstrap as ai_bootstrap
 from app.api.middleware import (
     RequestContextMiddleware,
     RequestIdFilter,
@@ -42,6 +43,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         init_engine(settings)
+        # The provider is installed here rather than at import, so a test or a CLI command that
+        # never starts the app never registers one (architecture §10).
+        ai_bootstrap.install(settings)
         try:
             yield
         finally:

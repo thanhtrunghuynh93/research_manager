@@ -23,7 +23,8 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.models import AiCall, CallStatus
+from app.ai.models import AiCall
+from app.ai.models import CallStatus as CallStatus  # re-exported: the gateway records with it
 from app.core.clock import now
 
 log = logging.getLogger(__name__)

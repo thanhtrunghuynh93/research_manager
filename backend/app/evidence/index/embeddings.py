@@ -14,17 +14,37 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+from dataclasses import dataclass
 from typing import Protocol
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
 
 EMBEDDING_DIMENSIONS = 1536  # text-embedding-3-small; architecture §5.7
 
 
+@dataclass(frozen=True, slots=True)
+class EmbedContext:
+    """Who this embedding is for, so an embedder that costs money can account for it.
+
+    `app.evidence` may not import `app.ai` (docs/repo_layout.md §3.3), so the index cannot write a
+    cost-ledger row itself. It can say which workspace and project it is indexing for and leave the
+    accounting to whoever produces the vectors — the local embedder ignores this entirely.
+    """
+
+    workspace_id: UUID | None = None
+    project_id: UUID | None = None
+    session: AsyncSession | None = None
+
+
 class Embedder(Protocol):
     dimensions: int
 
-    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+    async def embed(
+        self, texts: list[str], *, context: EmbedContext | None = None
+    ) -> list[list[float]]: ...
 
 
 class DeterministicEmbedder:
@@ -37,7 +57,9 @@ class DeterministicEmbedder:
 
     dimensions = EMBEDDING_DIMENSIONS
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self, texts: list[str], *, context: EmbedContext | None = None
+    ) -> list[list[float]]:
         return [self._vector(text) for text in texts]
 
     def _vector(self, text: str) -> list[float]:
@@ -67,12 +89,17 @@ _cache: dict[tuple[str, str], list[float]] = {}
 CACHE_LIMIT = 10_000
 
 
-async def embed_texts(texts: list[str], *, embedder: Embedder | None = None) -> list[list[float]]:
+async def embed_texts(
+    texts: list[str],
+    *,
+    embedder: Embedder | None = None,
+    context: EmbedContext | None = None,
+) -> list[list[float]]:
     active = embedder or _embedder
     model = type(active).__name__
     missing = [text for text in texts if (model, _key(text)) not in _cache]
     if missing:
-        fresh = await active.embed(missing)
+        fresh = await active.embed(missing, context=context)
         for text, vector in zip(missing, fresh, strict=True):
             if len(_cache) >= CACHE_LIMIT:
                 _cache.clear()

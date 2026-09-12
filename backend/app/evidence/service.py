@@ -38,7 +38,7 @@ from app.evidence.connectors.base import (
 )
 from app.evidence.index import retrieval
 from app.evidence.index.chunking import chunk_text
-from app.evidence.index.embeddings import embed_texts
+from app.evidence.index.embeddings import EmbedContext, embed_texts
 from app.evidence.models import (
     AttributionState,
     ConnectionState,
@@ -876,7 +876,10 @@ async def index_evidence(
     chunks = chunk_text(text)
     await repo.delete_chunks(session, reference.id)
     if chunks:
-        vectors = await embed_texts([chunk.text for chunk in chunks])
+        vectors = await embed_texts(
+            [chunk.text for chunk in chunks],
+            context=EmbedContext(workspace_id=workspace_id, project_id=project_id, session=session),
+        )
         for chunk, vector in zip(chunks, vectors, strict=True):
             session.add(
                 EvidenceChunk(
@@ -914,7 +917,12 @@ async def search_evidence(
 
     embedding = None
     if mode in ("hybrid", "semantic"):
-        [embedding] = await embed_texts([text])
+        [embedding] = await embed_texts(
+            [text],
+            context=EmbedContext(
+                workspace_id=scope.workspace_id, project_id=project_id, session=session
+            ),
+        )
 
     hits = await retrieval.search(
         session,
