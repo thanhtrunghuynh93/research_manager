@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.3 — 12 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
+Version 0.4 — 12 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -19,10 +19,10 @@ layout. Update it in the pull request that changes what it describes.
 | 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Done |
 | 8 | `assistant/`, exports, professor overview, backup drill, release | Done |
 | 9 | The seams: assessment triggering, the periodic tasks, the repository API | Done |
+| 10 | A full review of the branch, and the defects it found | Done |
 
-At the time of writing: 620 backend tests, 41 frontend tests, 91.1 % backend coverage, thirteen
-migrations, and all five import-linter contracts holding. Every one of the nineteen acceptance
-scenarios has a test.
+At the time of writing: 710 backend tests, 60 frontend tests, 91.3 % backend coverage, fifteen
+migrations, and all five import-linter contracts holding. Every one of the nineteen acceptance scenarios has a test.
 
 **Version 0.2 of this document claimed the MVP was complete. It was not**, and the error is worth
 recording because of its shape: every module was built and tested, and three of the seams between
@@ -39,8 +39,29 @@ them were missing, which no module-level test could see.
 All three are now built (§2, step 9). The lesson for the next reviewer of this document: a step
 marked Done means its module is done, and the question worth asking separately is what calls it.
 
-What remains before a pilot is calibration and operation rather than construction: the rubric has
-to be rated against real work, and the professor still owes the decisions in §5.
+**Version 0.3 was then reviewed line by line, and the same shape appeared again.** A fourth seam
+was missing — the API process never opened the job queue, so every `defer_async` raised
+`AppNotOpen` and a submitted report still produced no draft, exactly the symptom §9 was meant to
+have cured. The review found more than fifty further defects, and what they had in common is
+worth recording as plainly as the seams were:
+
+- **A test that stubs the seam proves the module, not the product.** The assessment trigger test
+  monkeypatched `defer_pipeline`, the seed called `run_pipeline` directly, and the webhook test
+  signed its payload with the test double's own published secret — so three separate defects in
+  the same path were invisible while the suite was green.
+- **Docstrings asserted invariants the code did not hold.** `core/jobs.py` said jobs were enqueued
+  in the caller's transaction; `useAutosave` said it flushed on unmount; `links.py` said the fetch
+  was bounded in three directions; `embeddings.py` said a restricted project skipped the provider;
+  the exports bundle called itself complete. Each was a decision written down and then not
+  implemented, and each read as documentation of working behaviour.
+- **Wrong numbers look like numbers.** Commitment completion was computed with every fraction
+  hardcoded to zero; coverage took its denominator from whatever the model returned; the snapshot
+  carried a fortnight of already-assessed evidence. None of these fails — they produce a plausible
+  figure, which is the worst available outcome for an assessment system.
+
+All are fixed, each with a test that fails without the fix. What remains before a pilot
+is still calibration and operation rather than construction: the rubric has to be rated against
+real work, and the professor still owes the decisions in §5.
 
 ## 2 What each finished step delivers
 
@@ -293,9 +314,13 @@ Migrations are verified by applying them to an empty database, running `alembic 
 then downgrading and re-applying. The worker is verified by running it against a real queue: that
 is how the missing engine initialisation in step 4 was found.
 
-A check worth running by hand after any change to the seams, because no unit test covers the
-wiring itself — the worker must register every task, and the periodic list must match
-architecture §12:
+`tests/jobs/test_defer_seam.py` covers the wiring itself: that the API process can actually
+enqueue against a real connector, and that nothing is enqueued for a transaction that did not
+commit. It exists because the by-hand check below verifies the worker's registry and says nothing
+about whether anything can defer to it.
+
+A check worth running by hand after any change to the seams — the worker must register every task,
+and the periodic list must match architecture §12:
 
 ```bash
 cd backend && uv run python -c "
