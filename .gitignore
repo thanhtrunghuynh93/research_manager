@@ -17,6 +17,9 @@ node_modules/
 frontend/dist/
 frontend/playwright-report/
 frontend/test-results/
+# `tsc -b` incremental state. It changes on every typecheck and describes this machine's last
+# build, so tracking it makes a clean tree dirty for doing nothing.
+*.tsbuildinfo
 
 # Environment and secrets
 .env
