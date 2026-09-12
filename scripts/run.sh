@@ -23,6 +23,7 @@ MODE=real
 START_WEB=1
 DO_SEED=0
 DO_DOWN=0
+HOST_ADDR=""
 BOOTSTRAP_ARGS=()
 
 usage() {
@@ -33,6 +34,10 @@ Usage: scripts/run.sh [--mode real|mock] [options]
   --seed             load the demo dataset (mock mode only; it publishes a password)
   --bootstrap "Lab" prof@example.edu "Prof Name"
                      create the workspace and its professor, then print the invitation link
+  --host ADDR        the address you will reach this stack from, when that is not this
+                     machine — a LAN or Tailscale IP. Points RM_PUBLIC_URL and
+                     RM_S3_ENDPOINT at it, so invitation links open and attachment
+                     uploads resolve from the other machine rather than from localhost.
   --no-web           start the backend stack only, without the frontend dev server
   --down             stop this mode's stack and exit
   -h, --help         this
@@ -44,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --mode) MODE="${2:-}"; shift 2 ;;
     --seed) DO_SEED=1; shift ;;
     --bootstrap) BOOTSTRAP_ARGS=("${2:-}" "${3:-}" "${4:-}"); shift 4 ;;
+    --host) HOST_ADDR="${2:-}"; shift 2 ;;
     --no-web) START_WEB=0; shift ;;
     --down) DO_DOWN=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -68,7 +74,9 @@ fi
 COMPOSE=(docker compose -p "$PROJECT" -f infra/docker-compose.yml -f infra/docker-compose.dev.yml)
 OTHER_PROJECT=$([[ "$MODE" == real ]] && echo research-management-mock || echo research-management)
 
-APP_URL=http://localhost:8020
+APP_HOST="${HOST_ADDR:-localhost}"
+APP_URL="http://$APP_HOST:8020"
+# Always loopback: this is what the script itself polls, from this machine.
 API_URL=http://localhost:8021
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -170,6 +178,16 @@ fi
 
 cp -f "$ENV_SOURCE" infra/.env
 
+if [[ -n "$HOST_ADDR" ]]; then
+  # Both of these end up in a browser. RM_PUBLIC_URL is what invitation and recovery links are
+  # built from; RM_S3_ENDPOINT is what presigned upload URLs point at, and its default names the
+  # compose network's `minio`, which no browser can resolve. The api container reaches the host
+  # by this address too, so one value serves both sides.
+  sed -i "s|^RM_PUBLIC_URL=.*|RM_PUBLIC_URL=http://$HOST_ADDR:8020|" infra/.env
+  sed -i "s|^RM_S3_ENDPOINT=.*|RM_S3_ENDPOINT=http://$HOST_ADDR:9000|" infra/.env
+  ok "links and uploads will point at $HOST_ADDR"
+fi
+
 # ---------------------------------------------------------------- up, wait, migrate
 
 say "Starting the $MODE stack"
@@ -222,10 +240,10 @@ fi
 say "Ready — $MODE mode"
 cat <<EOF
   app            $APP_URL
-  api docs       $API_URL/api/docs
-  postgres       localhost:8022
-  mailpit        http://localhost:8025
-  minio console  http://localhost:8026
+  api docs       http://$APP_HOST:8021/api/docs
+  postgres       $APP_HOST:8022
+  mailpit        http://$APP_HOST:8025
+  minio console  http://$APP_HOST:8026
 
   first account  scripts/run.sh --mode $MODE --bootstrap "Your Lab" you@example.edu "Your Name"
   queue health   ${COMPOSE[*]} exec postgres psql -U rm -d rm \\
