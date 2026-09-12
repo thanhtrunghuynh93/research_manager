@@ -8,7 +8,7 @@ cannot be read is a gap in coverage, never a claim that no work happened (AC-04)
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from fnmatch import fnmatch
 from typing import Any
@@ -32,6 +32,7 @@ from app.evidence.connectors.base import (
     ConnectorError,
     Issue,
     PullRequest,
+    RateLimitedError,
     RepoRef,
     RepositoryConnector,
     Review,
@@ -80,11 +81,20 @@ MAX_DIFF_BYTES = 40_000  # architecture §8.5: diff excerpts are capped per even
 
 @dataclass
 class _Progress:
-    """What a sync achieved before it stopped, so a failure can still keep its ground."""
+    """What a sync achieved before it stopped, so a failure can still keep its ground.
+
+    `watermark` is the point the *next* run may safely resume from; `seen` is the newest moment
+    this run has read for each listing. The two are separate because GitHub pages newest-first: a
+    run that read page 1 has seen the newest commit but is complete only for the part of history
+    it actually walked. Promoting `seen` into `watermark` before the listing finished would make
+    the next run ask for everything after the newest item — nothing — and report success while
+    the older half of the history was never ingested (REPO-05, AC-04).
+    """
 
     ingested: int = 0
     pages: int = 0
     watermark: dict[str, Any] | None = None
+    seen: dict[str, str] = field(default_factory=dict)
 
 
 # ------------------------------------------------------------------ connection (REPO-01)
@@ -236,6 +246,14 @@ async def sync_repository(
         # A person has to fix this; retrying the same credential cannot (REPO-05).
         repository.connection_state = ConnectionState.UNAUTHORIZED
         return await _finish(session, run, SyncState.FAILED, progress, str(error))
+    except RateLimitedError as error:
+        # Still a partial run, as the docstring says — but the wait the provider asked for is
+        # kept rather than dropped, so `tasks.sync_one` can schedule the retry that the run's
+        # RETRY_TRANSIENT policy was never reached to perform.
+        state = SyncState.PARTIAL if progress.ingested or progress.pages else SyncState.FAILED
+        return await _finish(
+            session, run, state, progress, str(error), retry_after=error.retry_after_seconds
+        )
     except ConnectorError as error:
         state = SyncState.PARTIAL if progress.ingested or progress.pages else SyncState.FAILED
         return await _finish(session, run, state, progress, str(error))
@@ -251,12 +269,14 @@ async def _finish(
     state: SyncState,
     progress: _Progress,
     error: str | None,
+    retry_after: int | None = None,
 ) -> SyncRunOut:
     run.state = state
     run.watermark = progress.watermark or {}
     run.pages_done = progress.pages
     run.events_ingested = progress.ingested
     run.error_summary = error
+    run.retry_after_seconds = retry_after
     run.finished_at = now()
     await session.flush()
     if error:
@@ -285,6 +305,7 @@ async def _sync_commits(
                 await _ingest_check(session, repository, check, commit.sha)
                 progress.ingested += 1
         if page.cursor is None:
+            _complete(progress, "commits_since")
             return
         cursor = page.cursor
 
@@ -309,6 +330,7 @@ async def _sync_pull_requests(
                 await _ingest_review(session, repository, review)
                 progress.ingested += 1
         if page.cursor is None:
+            _complete(progress, "prs_since")
             return
         cursor = page.cursor
 
@@ -330,6 +352,7 @@ async def _sync_issues(
             progress.ingested += 1
             _advance(progress, "issues_since", issue.updated_at)
         if page.cursor is None:
+            _complete(progress, "issues_since")
             return
         cursor = page.cursor
 
@@ -340,9 +363,21 @@ def _watermark_time(watermark: dict[str, Any] | None, field: str) -> datetime | 
 
 
 def _advance(progress: _Progress, field: str, moment: datetime) -> None:
-    current = _watermark_time(progress.watermark, field)
+    """Note the newest moment read for this listing. Not yet a resume point: see `_complete`."""
+    raw = progress.seen.get(field)
+    current = datetime.fromisoformat(raw) if isinstance(raw, str) else None
     if current is None or moment > current:
-        progress.watermark = {**(progress.watermark or {}), field: moment.isoformat()}
+        progress.seen[field] = moment.isoformat()
+
+
+def _complete(progress: _Progress, field: str) -> None:
+    """This listing was read to its end, so what it saw is now safe to resume from."""
+    moment = progress.seen.get(field)
+    if moment is None:
+        return
+    existing = _watermark_time(progress.watermark, field)
+    if existing is None or datetime.fromisoformat(moment) > existing:
+        progress.watermark = {**(progress.watermark or {}), field: moment}
 
 
 # ------------------------------------------------------------------ normalisation (REPO-02)
@@ -990,28 +1025,53 @@ async def search_evidence_window(
 ) -> list[EvidenceHit]:
     """Everything in a window rather than the best matches for a query (ASSESS-01).
 
-    `merged_within` is reserved for repository work authored before the window and integrated
-    inside it; the caller flags those items rather than counting them as the week's work (REPO-06).
+    `merged_within` narrows the result to repository work authored before the window and merged
+    inside that range; the caller flags those items rather than counting them as the week's work
+    (REPO-06).
     """
     rows = await repo.chunks_in_window(
-        session, scope, project_id=project_id, since=since, until=until
+        session,
+        scope,
+        project_id=project_id,
+        since=since,
+        until=until,
+        merged_within=merged_within,
     )
-    return [
-        EvidenceHit(
-            chunk_id=chunk.id,
-            evidence_ref_id=chunk.evidence_ref_id,
-            text=chunk.text,
-            score=0.0,
-            source_kind=reference.source_kind,
-            source_id=reference.source_id,
-            source_version=reference.source_version,
-            locator=reference.locator,
-            project_id=chunk.project_id,
-            source_time=chunk.source_time,
-            visibility=chunk.visibility,
-        )
-        for chunk, reference in rows
-    ]
+    return [_window_hit(chunk, reference) for chunk, reference in rows]
+
+
+def _window_hit(chunk: Any, reference: Any) -> EvidenceHit:
+    return EvidenceHit(
+        chunk_id=chunk.id,
+        evidence_ref_id=chunk.evidence_ref_id,
+        text=chunk.text,
+        score=0.0,
+        source_kind=reference.source_kind,
+        source_id=reference.source_id,
+        source_version=reference.source_version,
+        locator=reference.locator,
+        project_id=chunk.project_id,
+        source_time=chunk.source_time,
+        visibility=chunk.visibility,
+    )
+
+
+async def evidence_for_sources(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    source_kind: EvidenceSourceKind,
+    source_ids: list[UUID],
+) -> list[EvidenceHit]:
+    """The evidence that came from named sources, addressed by identity rather than by time.
+
+    The snapshot's windows are right for work that happened during a week; a report entry belongs
+    to its week whenever it was sent (ASSESS-01).
+    """
+    rows = await repo.chunks_for_sources(
+        session, scope, source_kind=source_kind, source_ids=source_ids
+    )
+    return [_window_hit(chunk, reference) for chunk, reference in rows]
 
 
 async def chunks_for_reference(session: AsyncSession, evidence_ref_id: UUID) -> list[EvidenceChunk]:

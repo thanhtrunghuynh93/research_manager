@@ -17,6 +17,7 @@ from app.evidence.models import (
     DeveloperIdentity,
     EvidenceChunk,
     EvidenceReference,
+    EvidenceSourceKind,
     ProjectRepository,
     Repository,
     RepositoryEvent,
@@ -362,11 +363,18 @@ async def chunks_in_window(
     project_id: UUID,
     since: datetime,
     until: datetime,
+    merged_within: tuple[datetime, datetime] | None = None,
 ) -> list[tuple[EvidenceChunk, EvidenceReference]]:
-    """Everything the caller may see in a window, for the snapshot builder (ASSESS-01)."""
+    """Everything the caller may see in a window, for the snapshot builder (ASSESS-01).
+
+    `merged_within` narrows the result to repository work whose merge landed in that range, which
+    is how "authored before this week, integrated during it" is expressed (REPO-06). Without it
+    the caller's second, earlier window returns the whole preceding fortnight — every chunk of it
+    already assessed in the weeks it belonged to.
+    """
     from app.evidence.index.retrieval import visible_chunks
 
-    rows = await session.execute(
+    query = (
         select(EvidenceChunk, EvidenceReference)
         .join(EvidenceReference, EvidenceReference.id == EvidenceChunk.evidence_ref_id)
         .where(
@@ -374,6 +382,45 @@ async def chunks_in_window(
             EvidenceChunk.project_id == project_id,
             EvidenceChunk.source_time >= since,
             EvidenceChunk.source_time < until,
+        )
+    )
+    if merged_within is not None:
+        merged_from, merged_to = merged_within
+        query = query.where(
+            EvidenceReference.source_kind == EvidenceSourceKind.REPOSITORY_EVENT,
+            EvidenceReference.source_id.in_(
+                select(RepositoryEvent.id).where(
+                    RepositoryEvent.workspace_id == scope.workspace_id,
+                    RepositoryEvent.merged_at.is_not(None),
+                    RepositoryEvent.merged_at >= merged_from,
+                    RepositoryEvent.merged_at < merged_to,
+                )
+            ),
+        )
+
+    rows = await session.execute(query.order_by(EvidenceChunk.source_time, EvidenceChunk.chunk_no))
+    return [(chunk, reference) for chunk, reference in rows]
+
+
+async def chunks_for_sources(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    source_kind: EvidenceSourceKind,
+    source_ids: list[UUID],
+) -> list[tuple[EvidenceChunk, EvidenceReference]]:
+    """Everything the caller may see that came from these sources, whatever their timestamps."""
+    from app.evidence.index.retrieval import visible_chunks
+
+    if not source_ids:
+        return []
+    rows = await session.execute(
+        select(EvidenceChunk, EvidenceReference)
+        .join(EvidenceReference, EvidenceReference.id == EvidenceChunk.evidence_ref_id)
+        .where(
+            visible_chunks(scope),
+            EvidenceReference.source_kind == source_kind,
+            EvidenceReference.source_id.in_(source_ids),
         )
         .order_by(EvidenceChunk.source_time, EvidenceChunk.chunk_no)
     )

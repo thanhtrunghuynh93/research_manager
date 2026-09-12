@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import Scope
 from app.core.types import Role, Visibility
 from app.evidence import service as evidence_service
+from app.evidence.models import EvidenceSourceKind
 
 log = logging.getLogger(__name__)
 
@@ -69,13 +70,27 @@ async def collect(
     project_id: UUID,
     window_start: datetime,
     window_end: datetime,
+    entry_ids: list[UUID] | None = None,
 ) -> SnapshotDraft:
-    """Gather everything in the window the student may see, and note what is missing."""
+    """Gather everything in the window the student may see, and note what is missing.
+
+    `entry_ids` names this week's report entries. They are collected by identity rather than by
+    timestamp, because a report belongs to the week it is about and not to the week it was sent:
+    a late submission has a `submitted_at` past the window's end, and a window alone would leave
+    the student's own account of the work out of the assessment of it.
+    """
     draft = SnapshotDraft()
 
     hits = await evidence_service.search_evidence_window(
         session, scope, project_id=project_id, since=window_start, until=window_end
     )
+    if entry_ids:
+        hits = hits + await evidence_service.evidence_for_sources(
+            session,
+            scope,
+            source_kind=EvidenceSourceKind.REPORT_ENTRY,
+            source_ids=entry_ids,
+        )
     for hit in hits:
         draft.items.append(
             SnapshotItem(

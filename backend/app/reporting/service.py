@@ -14,6 +14,7 @@ from typing import Any
 from uuid import UUID
 
 import orjson
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
@@ -133,7 +134,10 @@ async def ensure_periods(
     while cursor <= horizon:
         config = await repository.calendar_for(session, scope.workspace_id, cursor) or latest
         dates = calendar.period_dates(
-            cursor, meeting_weekday=config.meeting_weekday, timezone=config.timezone
+            cursor,
+            meeting_weekday=config.meeting_weekday,
+            timezone=config.timezone,
+            grace_minutes=config.grace_minutes,
         )
         session.add(
             ReportingPeriod(
@@ -369,7 +373,9 @@ async def submit_report(
         author_id=scope.user_id,
         submitted_at=at,
         idempotency_key=idempotency_key,
-        timing_status=_timing_status(period, obligations, at),
+        timing_status=_timing_status(
+            period, obligations, at, grace_minutes=await grace_minutes_for(session, period)
+        ),
     )
     session.add(version)
     await session.flush()
@@ -477,6 +483,7 @@ async def request_revision(
         events.RevisionRequested(
             workspace_id=scope.workspace_id,
             report_id=report.id,
+            request_id=request.id,
             period_id=report.period_id,
             student_id=report.student_id,
             project_id=project_id,
@@ -547,9 +554,15 @@ async def periods_awaiting_reminder(
 
 
 async def periods_with_deadline_between(
-    session: AsyncSession, *, start: datetime, end: datetime
+    session: AsyncSession,
+    *,
+    start: datetime,
+    end: datetime,
+    workspace_id: UUID | None = None,
 ) -> list[PeriodOut]:
-    rows = await repository.periods_with_deadline_between(session, start=start, end=end)
+    rows = await repository.periods_with_deadline_between(
+        session, start=start, end=end, workspace_id=workspace_id
+    )
     return [PeriodOut.model_validate(row) for row in rows]
 
 
@@ -774,6 +787,43 @@ async def entries_in_range(
     ]
 
 
+async def current_version_id_for_job(
+    session: AsyncSession, *, student_id: UUID, period_id: UUID
+) -> UUID | None:
+    """Job-level read: the version a re-run should assess, or None if nothing was submitted."""
+    report = (
+        await session.execute(
+            select(WeeklyReport.current_version_id).where(
+                WeeklyReport.student_id == student_id, WeeklyReport.period_id == period_id
+            )
+        )
+    ).scalar_one_or_none()
+    return report
+
+
+async def entry_ids_for_period(
+    session: AsyncSession, *, student_id: UUID, project_id: UUID, period_id: UUID
+) -> list[UUID]:
+    """Job-level read: every version's entry for one student, project and week (ASSESS-01).
+
+    A report entry belongs to a period by identity, not by when it was sent. The snapshot is built
+    from a time window, which is right for repository work and wrong for this: a report submitted
+    after the deadline has a `submitted_at` outside its own week, so a window alone would leave
+    the student's own account of their work out of the assessment of it.
+    """
+    rows = await session.execute(
+        select(ProjectReportEntry.id)
+        .join(ReportVersion, ReportVersion.id == ProjectReportEntry.report_version_id)
+        .join(WeeklyReport, WeeklyReport.id == ReportVersion.report_id)
+        .where(
+            WeeklyReport.student_id == student_id,
+            WeeklyReport.period_id == period_id,
+            ProjectReportEntry.project_id == project_id,
+        )
+    )
+    return list(rows.scalars().all())
+
+
 async def entries_for_indexing(
     session: AsyncSession, *, report_version_id: UUID
 ) -> list[EntryForIndexing]:
@@ -846,9 +896,19 @@ def _check_package_is_complete(
 
 
 def _timing_status(
-    period: ReportingPeriod, obligations: list[ReportingObligation], at: datetime
+    period: ReportingPeriod,
+    obligations: list[ReportingObligation],
+    at: datetime,
+    *,
+    grace_minutes: int = 0,
 ) -> TimingStatus:
-    """REP-05/REP-06: the actual timestamp is kept either way; this only labels it."""
+    """REP-05/REP-06: the actual timestamp is kept either way; this only labels it.
+
+    The grace comes from the period's own calendar configuration. It was hardcoded to zero here,
+    which is `effective_deadline`'s only production call site, so a professor who configured
+    thirty minutes of grace got none: a submission eleven minutes past the deadline was stamped
+    LATE, and the missed-deadline notification had already gone out nine minutes before that.
+    """
     if obligations and all(o.state is ObligationState.EXCUSED for o in obligations):
         return TimingStatus.EXCUSED
     extension = max(
@@ -856,9 +916,15 @@ def _timing_status(
         default=None,
     )
     deadline = calendar.effective_deadline(
-        period.deadline_utc, grace_minutes=0, extension_until_utc=extension
+        period.deadline_utc, grace_minutes=grace_minutes, extension_until_utc=extension
     )
     return TimingStatus.ON_TIME if at <= deadline else TimingStatus.LATE
+
+
+async def grace_minutes_for(session: AsyncSession, period: ReportingPeriod) -> int:
+    """The grace the professor configured for the calendar this period was cut from (REP-01)."""
+    config = await repository.calendar_for(session, period.workspace_id, period.local_start)
+    return 0 if config is None else config.grace_minutes
 
 
 async def _next_version_no(session: AsyncSession, report: WeeklyReport) -> int:
