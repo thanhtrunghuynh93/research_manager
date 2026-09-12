@@ -165,19 +165,15 @@ async def periods_awaiting_reminder(
 
 
 async def periods_with_deadline_between(
-    session: AsyncSession, *, start: datetime, end: datetime
+    session: AsyncSession, *, start: datetime, end: datetime, workspace_id: UUID | None = None
 ) -> list[ReportingPeriod]:
-    return list(
-        (
-            await session.execute(
-                select(ReportingPeriod).where(
-                    ReportingPeriod.deadline_utc > start, ReportingPeriod.deadline_utc <= end
-                )
-            )
-        )
-        .scalars()
-        .all()
+    """Job-level read across workspaces; `workspace_id` narrows it to one."""
+    query = select(ReportingPeriod).where(
+        ReportingPeriod.deadline_utc > start, ReportingPeriod.deadline_utc <= end
     )
+    if workspace_id is not None:
+        query = query.where(ReportingPeriod.workspace_id == workspace_id)
+    return list((await session.execute(query)).scalars().all())
 
 
 async def required_obligations_at(

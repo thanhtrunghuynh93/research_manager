@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
 from app.core.errors import ForbiddenError, NotFoundError, ValidationError
+from app.core.types import Role
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.notifications import service
@@ -213,3 +214,94 @@ async def test_only_the_professor_configures_reminder_offsets(
 
     with pytest.raises(ForbiddenError):
         await service.set_reminder_offsets(db, scope, offsets_hours=[48])
+
+
+async def test_a_reminder_rule_does_not_reach_another_workspace(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """REP-07: the offsets are one professor's decision, about their own students.
+
+    Both reads in the dispatcher are job-level and unscoped, so matching them by time alone let
+    workspace A's 48-hour rule notify workspace B's students — including a workspace whose
+    professor had deliberately configured no reminders at all.
+    """
+    from tests.factories import make_user, make_workspace
+
+    period, _ = await _period_and_project(db, prof_scope, student_a)
+    await service.set_reminder_offsets(db, prof_scope, offsets_hours=[48])
+
+    other = await make_workspace(db, name="Another Lab")
+    other_prof = await make_user(db, other, role=Role.PROF, email="other-prof@other.edu")
+    other_student = await make_user(db, other, email="other-student@other.edu")
+    other_scope = await identity_service.scope_for(db, other_prof)
+    await _period_and_project(db, other_scope, other_student)
+    # This professor set no offsets, so their students should hear nothing before the deadline.
+
+    raised = await service.dispatch_due_reminders(db, at=_hours_before(period.deadline_utc, 47))
+
+    assert [n.kind for n in raised] == ["reminder:48h"]
+    assert {n.recipient_id for n in raised} == {student_a.id}
+
+
+async def test_a_second_revision_request_in_a_week_still_reaches_the_student(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """REP-05/UI-07: a revision request is one kind a student is not allowed to mute.
+
+    The unique index was (recipient, period, kind), so the second request of a week — another
+    project, or a second round on the same one — collided with the first and was dropped without
+    a trace.
+    """
+    period, first_project = await _period_and_project(db, prof_scope, student_a)
+    second_project = await projects_service.create_project(
+        db, prof_scope, title="Second study", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, second_project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, second_project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    await reporting_service.ensure_obligations(db, prof_scope, period.id)
+
+    scope = await identity_service.scope_for(db, student_a)
+    submitted = await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Did the work.",
+                "results": "It worked.",
+            }
+            for project in (first_project, second_project)
+        ],
+    )
+    report_id = (await reporting_service.get_report(db, scope, period_id=period.id)).id
+    assert submitted.version_no == 1
+
+    await reporting_service.request_revision(
+        db,
+        prof_scope,
+        report_id=report_id,
+        project_id=first_project.id,
+        reason="Add the ablation numbers.",
+    )
+    await reporting_service.request_revision(
+        db,
+        prof_scope,
+        report_id=report_id,
+        project_id=second_project.id,
+        reason="The plot axes are unlabelled.",
+    )
+
+    sent = [
+        n
+        for n in await service.list_notifications(db, scope)
+        if n.kind == service.REVISION_REQUESTED
+    ]
+    assert len(sent) == 2
+    assert {n.payload["project_id"] for n in sent} == {
+        str(first_project.id),
+        str(second_project.id),
+    }

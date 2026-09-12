@@ -51,8 +51,15 @@ class ArtifactExtracted:
 
 @dataclass(frozen=True, slots=True)
 class RevisionRequested:
+    """REP-05: one request, about one project entry. A week can hold several.
+
+    `request_id` identifies this request rather than the report, so a second request in the same
+    week is a second thing to tell the student about and a redelivered job is still one.
+    """
+
     workspace_id: UUID
     report_id: UUID
+    request_id: UUID
     period_id: UUID
     student_id: UUID
     project_id: UUID | None

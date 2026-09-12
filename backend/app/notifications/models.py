@@ -55,12 +55,17 @@ class Notification(UUIDPrimaryKeyMixin, Base):
             ["users.workspace_id", "users.id"],
             ondelete="CASCADE",
         ),
-        # One per recipient, period, and kind — the guard that makes a retried job a no-op.
+        # One per recipient, period, kind and subject — the guard that makes a retried job a
+        # no-op. The subject is part of it because a week can hold more than one of some kinds: a
+        # second revision request, on another project or after an insufficient fix, is a second
+        # thing to say. Without it that message collided with the first and was dropped, for a
+        # kind students are deliberately not allowed to mute (REP-05, UI-07).
         Index(
             "uq_notification",
             "recipient_id",
             "period_id",
             "kind",
+            "subject_id",
             unique=True,
             postgresql_where=text("period_id IS NOT NULL"),
         ),

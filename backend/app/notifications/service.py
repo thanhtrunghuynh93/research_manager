@@ -190,6 +190,10 @@ async def dispatch_due_reminders(
 
     The window opens at `deadline - offset` and closes at the deadline; the unique index keeps one
     reminder per recipient, period, and offset however often the scan runs.
+
+    Each rule applies to its own workspace only. Both reads here are job-level and unscoped, so
+    matching them by time alone let one professor's offsets reach another professor's students —
+    including a workspace that had deliberately configured none (REP-07).
     """
     instant = at or now()
     raised: list[NotificationOut] = []
@@ -197,7 +201,7 @@ async def dispatch_due_reminders(
     for rule in await repository.all_reminder_rules(session):
         offset = timedelta(minutes=rule.offset_minutes)
         periods = await reporting_service.periods_with_deadline_between(
-            session, start=instant, end=instant + offset
+            session, start=instant, end=instant + offset, workspace_id=rule.workspace_id
         )
         for period in periods:
             kind = reminder_kind(rule.offset_minutes)
@@ -206,7 +210,7 @@ async def dispatch_due_reminders(
             ).items():
                 created = await notify(
                     session,
-                    workspace_id=await _workspace_of(session, student_id),
+                    workspace_id=rule.workspace_id,
                     recipient_id=student_id,
                     kind=kind,
                     subject_table="reporting_periods",
@@ -442,16 +446,22 @@ def register_subscriptions() -> None:
 
 
 async def _on_revision_requested(event: Any, session: AsyncSession) -> None:
-    """REP-07/UI-07: the student is told which entry to revise, and cannot mute it."""
+    """REP-07/UI-07: the student is told which entry to revise, and cannot mute it.
+
+    The subject is the request, not the report. Under `(recipient, period, kind)` alone the second
+    revision request of a week — a different project, or a second round on the same one — collided
+    with the first and was silently dropped, for the one kind a student is not allowed to mute.
+    """
     await notify(
         session,
         workspace_id=event.workspace_id,
         recipient_id=event.student_id,
         kind=REVISION_REQUESTED,
-        subject_table="weekly_reports",
-        subject_id=event.report_id,
+        subject_table="revision_requests",
+        subject_id=event.request_id,
         period_id=event.period_id,
         payload={
+            "report_id": str(event.report_id),
             "project_id": str(event.project_id) if event.project_id else None,
             "reason": event.reason,
         },
