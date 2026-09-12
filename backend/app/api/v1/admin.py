@@ -122,10 +122,16 @@ async def retry_assessment(
     await projects_service.get_project(session, scope, project_id)
     await reporting_service.get_period(session, scope, period_id)
 
+    # Without this the re-run assessed an empty string, recorded "no report was submitted for this
+    # week", forced LOW confidence, and — because the AC-17 dedupe only runs when there is an entry
+    # — minted a fresh version on every click, contradicting this docstring (AC-13).
     return await assessment_service.run_pipeline(
         session,
         student_id=student_id,
         project_id=project_id,
         period_id=period_id,
+        report_version_id=await reporting_service.current_version_id_for_job(
+            session, student_id=student_id, period_id=period_id
+        ),
         caller_scope=scope,
     )

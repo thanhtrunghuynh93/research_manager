@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.fake import FakeGateway
 from app.assessment import models, service
 from app.core.authz import Scope
-from app.core.errors import ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -267,3 +267,70 @@ async def test_a_trend_labels_a_rubric_change_rather_than_comparing_across_it(
     assert len(series) == 1
     assert series[0].rubric_version_id == assessment.rubric_version_id
     assert series[0].progress_index == assessment.progress_index
+
+
+# ---------------------------------------------------------------- what may still be approved
+#
+# A draft in an open tab outlives the thing it describes. Approval guarded only "already
+# approved", so a superseded or withdrawn review could be published from one.
+
+
+async def test_a_superseded_assessment_cannot_be_approved(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """Both versions would then be published, and both would appear in the student's trend."""
+    period, project, first = await _assessed(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    revised = await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Implemented the loader, reproduced it, added the ablation.",
+                "results": "Within one point, and the ablation isolates the gain.",
+            }
+        ],
+    )
+    second = await service.run_pipeline(
+        db,
+        student_id=student_a.id,
+        project_id=project.id,
+        period_id=period.id,
+        report_version_id=revised.id,
+        gateway=FakeGateway(),
+    )
+    assert second is not None
+
+    stale = await service.current_review(db, prof_scope, first.id)
+    assert stale is not None and stale.state is models.ReviewState.SUPERSEDED
+
+    with pytest.raises(ConflictError, match="newer assessment"):
+        await service.approve(db, prof_scope, first.id)
+
+
+async def test_a_withdrawn_assessment_is_not_re_approved(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    period, project, assessment = await _assessed(db, prof_scope, student_a)
+    await service.approve(db, prof_scope, assessment.id)
+    await service.withdraw(db, prof_scope, assessment.id)
+
+    with pytest.raises(ConflictError, match="withdrawn"):
+        await service.approve(db, prof_scope, assessment.id)
+
+
+async def test_withdrawing_clears_the_publication_time(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """It is not published any more, so it does not have a time at which it is published."""
+    _period, _project, assessment = await _assessed(db, prof_scope, student_a)
+    await service.approve(db, prof_scope, assessment.id)
+
+    await service.withdraw(db, prof_scope, assessment.id)
+
+    withdrawn = await service.get_assessment(db, prof_scope, assessment.id)
+    assert withdrawn.published_at is None
