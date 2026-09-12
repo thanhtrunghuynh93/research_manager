@@ -31,6 +31,8 @@ export function useLogin() {
     mutationFn: (credentials: { email: string; password: string }) =>
       api.post<User>("/api/v1/auth/login", credentials),
     onSuccess: (user) => {
+      // Whatever is cached belongs to whoever was here before; this account has read none of it.
+      queryClient.removeQueries();
       queryClient.setQueryData(sessionKey, user);
     },
   });
@@ -41,8 +43,11 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => api.post<void>("/api/v1/auth/logout"),
     onSuccess: () => {
+      // Removed, not invalidated: invalidation marks cached data stale but leaves it readable, so
+      // on a shared machine the next person to sign in saw the previous user's overview,
+      // projects and notifications until each refetch landed (AUTH-03).
+      queryClient.removeQueries();
       queryClient.setQueryData(sessionKey, null);
-      void queryClient.invalidateQueries();
     },
   });
 }
