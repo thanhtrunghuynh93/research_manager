@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import secrets
+from datetime import datetime, timedelta
 from typing import Literal
 
 import httpx
@@ -11,12 +13,28 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
 from app.core import db
+from app.core.clock import now
 from app.core.config import Settings
+from app.core.errors import UnauthenticatedError
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
 
 CheckState = Literal["ok", "fail", "skipped"]
+
+# `?fresh=1` runs the full observability query set. One operator watching a stalled worker is the
+# use; a scrape loop against it is not, so it is rate-limited rather than left to the caller.
+FRESH_MIN_INTERVAL = timedelta(seconds=30)
+_last_fresh: datetime | None = None
+
+
+def _refresh_allowed() -> bool:
+    global _last_fresh
+    at = now()
+    if _last_fresh is not None and at - _last_fresh < FRESH_MIN_INTERVAL:
+        return False
+    _last_fresh = at
+    return True
 
 
 class Readiness(BaseModel):
@@ -60,15 +78,44 @@ async def readyz(request: Request, response: Response) -> Readiness:
     return Readiness(status="ready" if ready else "degraded", checks=checks)
 
 
+def _may_scrape(request: Request, settings: Settings) -> bool:
+    """Whether this caller may read the gauges.
+
+    `/metrics` sits under `/api`, which the reverse proxy publishes wholesale, so "only Prometheus
+    can reach it" was never true. The gauges describe every workspace's queue and sync health, and
+    `?fresh=1` lets an anonymous caller turn each request into the full query set.
+
+    A deployment without a token configured is a development or pilot one, and is left open so
+    nobody has to invent a secret to run the stack locally — except in prod, where a missing token
+    is a misconfiguration and the safe reading of it is "nobody".
+    """
+    configured = settings.metrics_token.get_secret_value()
+    if not configured:
+        if settings.env == "prod":
+            log.error("RM_METRICS_TOKEN is not set; refusing to serve /metrics")
+            return False
+        return True
+
+    header = request.headers.get("authorization", "")
+    scheme, _, presented = header.partition(" ")
+    if scheme.lower() != "bearer":
+        return False
+    return secrets.compare_digest(presented.strip(), configured)
+
+
 @router.get("/metrics", summary="Prometheus metrics", include_in_schema=False)
-async def metrics(fresh: bool = False) -> Response:
+async def metrics(request: Request, fresh: bool = False) -> Response:
     """Architecture §12: queue depth, sync staleness, model errors, citation and access failures.
 
     The gauges are refreshed by the worker's `queue_health` task every five minutes, so a scrape
     is a read of memory and cannot become load on the database. `?fresh=1` reads them now, for the
     case where an operator is looking at a system whose worker is the thing that has stopped.
     """
-    if fresh:
+    settings: Settings = request.app.state.settings
+    if not _may_scrape(request, settings):
+        raise UnauthenticatedError("this endpoint requires a metrics token")
+
+    if fresh and _refresh_allowed():
         from app import observability
 
         try:
