@@ -104,3 +104,68 @@ async def test_deleting_removes_the_object_and_is_safe_to_repeat() -> None:
     await store.delete("a/b/c")
 
     assert await store.exists("a/b/c") is False
+
+
+# ------------------------------------------------------------------ the two endpoints (REP-04)
+
+
+def _store(endpoint: str, public: str = ""):
+    from pydantic import SecretStr
+
+    from app.core.storage import S3ObjectStore
+
+    class _Settings:
+        s3_bucket = "rm-dev"
+        s3_endpoint = endpoint
+        s3_public_endpoint = public
+        s3_access_key = "key"
+        s3_secret_key = SecretStr("secret")
+
+    return S3ObjectStore(_Settings())
+
+
+async def test_a_presigned_url_names_the_host_the_browser_can_reach() -> None:
+    """The application and the browser do not share a network.
+
+    Signed for `minio:9000`, every upload URL is unusable the moment it leaves the container: no
+    browser resolves a compose hostname. The store reaches it by that name and the browser by
+    another, so the URL is signed for the second.
+    """
+    store = _store("http://minio:9000", "https://objects.example.edu")
+
+    put = await store.presigned_put("ws/a/1/abc.pptx", content_type="text/plain")
+    get = await store.presigned_get("ws/a/1/abc.pptx", filename="slides.pptx")
+
+    assert put.url.startswith("https://objects.example.edu/rm-dev/")
+    assert get.url.startswith("https://objects.example.edu/rm-dev/")
+    assert "minio:9000" not in put.url
+
+
+async def test_the_public_endpoint_defaults_to_the_one_the_server_uses() -> None:
+    """Outside compose, and behind a single origin, the two are the same host."""
+    store = _store("http://localhost:9000")
+
+    put = await store.presigned_put("ws/a/1/abc.md", content_type="text/markdown")
+
+    assert put.url.startswith("http://localhost:9000/rm-dev/")
+
+
+async def test_the_bucket_stays_in_the_path_rather_than_the_hostname() -> None:
+    """Virtual-host addressing would need a wildcard certificate and record for *.objects."""
+    store = _store("http://minio:9000", "https://objects.example.edu")
+
+    put = await store.presigned_put("ws/a/1/abc.md", content_type="text/markdown")
+
+    assert "//objects.example.edu/rm-dev/" in put.url
+    assert "rm-dev.objects" not in put.url
+
+
+async def test_a_download_is_always_an_attachment_even_with_no_filename() -> None:
+    """An uploaded .html fetched inline would run its own script in the storage origin."""
+    store = _store("http://minio:9000", "https://objects.example.edu")
+
+    named = await store.presigned_get("ws/a/1/abc.html", filename='we"ird.html')
+    anonymous = await store.presigned_get("ws/a/1/abc.html")
+
+    assert "attachment" in named.url.lower()
+    assert "attachment" in anonymous.url.lower()

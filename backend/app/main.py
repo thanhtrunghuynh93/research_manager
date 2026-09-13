@@ -48,7 +48,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The provider is installed here rather than at import, so a test or a CLI command that
         # never starts the app never registers one (architecture §10).
         ai_bootstrap.install(settings)
-        storage.register_store(storage.build_store(settings))
+        store = storage.register_store(storage.build_store(settings))
+        # A missing bucket is not visible until the first upload fails, by which point a student
+        # has already picked a file and waited for it (REP-04).
+        await store.ensure_bucket()
         # Without this every `defer_async` in the API process raises `AppNotOpen`, so a submitted
         # report would enqueue no assessment and a webhook would enqueue no sync (app.core.jobs).
         with ExitStack() as queue:

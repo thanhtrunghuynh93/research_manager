@@ -7,7 +7,6 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Literal
 
-import httpx
 from fastapi import APIRouter, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
@@ -16,6 +15,7 @@ from app.core import db
 from app.core.clock import now
 from app.core.config import Settings
 from app.core.errors import UnauthenticatedError
+from app.core.storage import current_store
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
@@ -56,12 +56,14 @@ async def _check_database() -> CheckState:
 
 
 async def _check_object_storage(settings: Settings) -> CheckState:
-    url = settings.s3_endpoint.rstrip("/") + "/minio/health/live"
+    """Reachable *and* holding the bucket.
+
+    A liveness ping alone answered "ok" for a store with no bucket in it, which is the one failure
+    that stops every upload (REP-04).
+    """
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            response = await client.get(url)
-        return "ok" if response.status_code == 200 else "fail"
-    except httpx.HTTPError as exc:
+        return "ok" if await current_store().bucket_ready() else "fail"
+    except Exception as exc:  # noqa: BLE001 - readiness must never raise
         log.warning("object storage readiness check failed: %s", exc)
         return "fail"
 

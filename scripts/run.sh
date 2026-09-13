@@ -116,6 +116,15 @@ fi
 # Read it without sourcing: a value containing a space or a $ must not be executed.
 setting() { grep -E "^$1=" "$ENV_SOURCE" | tail -1 | cut -d= -f2- || true; }
 
+# An env file made before the object store had a browser-facing address of its own. Left alone,
+# presigned URLs would name the compose hostname, which no browser resolves, and every upload
+# would fail at the moment the file is handed over. Added rather than warned about, because the
+# value is not a decision: it is where this machine publishes MinIO.
+if ! grep -qE "^RM_S3_PUBLIC_ENDPOINT=" "$ENV_SOURCE"; then
+  printf '\n# Where the browser reaches MinIO (added automatically; see .env.example).\nRM_S3_PUBLIC_ENDPOINT=http://localhost:9000\n' >> "$ENV_SOURCE"
+  ok "added RM_S3_PUBLIC_ENDPOINT to $ENV_SOURCE"
+fi
+
 # ---------------------------------------------------------------- refuse to start wrong
 
 say "Checking $MODE-mode configuration ($ENV_SOURCE)"
@@ -180,11 +189,11 @@ cp -f "$ENV_SOURCE" infra/.env
 
 if [[ -n "$HOST_ADDR" ]]; then
   # Both of these end up in a browser. RM_PUBLIC_URL is what invitation and recovery links are
-  # built from; RM_S3_ENDPOINT is what presigned upload URLs point at, and its default names the
-  # compose network's `minio`, which no browser can resolve. The api container reaches the host
-  # by this address too, so one value serves both sides.
+  # built from; RM_S3_PUBLIC_ENDPOINT is what presigned upload URLs point at. Only the browser-
+  # facing values move: RM_S3_ENDPOINT stays on the compose network, which is how the api reaches
+  # the store, and is not something a browser could resolve anyway.
   sed -i "s|^RM_PUBLIC_URL=.*|RM_PUBLIC_URL=http://$HOST_ADDR:8020|" infra/.env
-  sed -i "s|^RM_S3_ENDPOINT=.*|RM_S3_ENDPOINT=http://$HOST_ADDR:9000|" infra/.env
+  sed -i "s|^RM_S3_PUBLIC_ENDPOINT=.*|RM_S3_PUBLIC_ENDPOINT=http://$HOST_ADDR:9000|" infra/.env
   ok "links and uploads will point at $HOST_ADDR"
 fi
 

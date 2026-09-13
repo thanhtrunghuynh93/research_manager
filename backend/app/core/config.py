@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     secret_key: SecretStr = SecretStr("dev-only-change-me")
 
     s3_endpoint: str = "http://localhost:9000"
+    # Where the *browser* reaches object storage. The application and the browser do not share a
+    # network: inside compose the store is `minio:9000`, which no browser can resolve, and a
+    # presigned URL built for that host is unusable the moment it leaves the container. Empty
+    # means the two are the same host, which is true outside compose and in production behind one
+    # origin. It cannot be derived by rewriting the URL: SigV4 signs the Host header.
+    s3_public_endpoint: str = ""
     s3_bucket: str = "rm-dev"
     s3_access_key: str = ""
     s3_secret_key: SecretStr = SecretStr("")

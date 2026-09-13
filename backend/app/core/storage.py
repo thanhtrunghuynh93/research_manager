@@ -106,6 +106,17 @@ class ObjectStore(Protocol):
 
     async def delete(self, key: str) -> None: ...
 
+    async def bucket_ready(self) -> bool: ...
+
+    async def ensure_bucket(self) -> None: ...
+
+
+def _attachment(filename: str | None) -> str:
+    if not filename:
+        return "attachment"
+    quoted = filename.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "").replace("\n", "")
+    return f'attachment; filename="{quoted}"'
+
 
 def extension_of(filename: str) -> str:
     _, _, suffix = filename.rpartition(".")
@@ -192,6 +203,12 @@ class InMemoryObjectStore:
     ) -> PresignedUrl:
         return PresignedUrl(url=f"{self.base_url}/{key}", expires_in=expires_in)
 
+    async def bucket_ready(self) -> bool:
+        return True
+
+    async def ensure_bucket(self) -> None:
+        return None
+
     async def head(self, key: str) -> ObjectInfo | None:
         stored = self._objects.get(key)
         if stored is None:
@@ -225,19 +242,37 @@ class S3ObjectStore:
         import boto3
 
         self._bucket = settings.s3_bucket
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=settings.s3_endpoint,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key.get_secret_value(),
-            region_name="us-east-1",
-        )
+
+        from botocore.config import Config
+
+        # Path addressing, stated rather than inferred. Left on "auto", botocore may put a
+        # DNS-compliant bucket name in front of the host — `rm-dev.objects.example.edu` — which
+        # needs a wildcard certificate and a wildcard DNS record that nothing here provisions.
+        # It resolves to path style today for both endpoints; this keeps it that way.
+        config = Config(s3={"addressing_style": "path"})
+
+        def client(endpoint: str) -> Any:
+            return boto3.client(
+                "s3",
+                endpoint_url=endpoint,
+                aws_access_key_id=settings.s3_access_key,
+                aws_secret_access_key=settings.s3_secret_key.get_secret_value(),
+                region_name="us-east-1",
+                config=config,
+            )
+
+        self._client = client(settings.s3_endpoint)
+        # Presigned URLs are signed for the host the browser will send them to, which is not the
+        # host this process talks to. A second client rather than a rewritten URL, because the
+        # signature covers Host: editing the string produces a link the store rejects.
+        public = getattr(settings, "s3_public_endpoint", "") or settings.s3_endpoint
+        self._signer = self._client if public == settings.s3_endpoint else client(public)
 
     async def presigned_put(
         self, key: str, *, content_type: str, expires_in: int = DEFAULT_PUT_TTL
     ) -> PresignedUrl:
         url = await asyncio.to_thread(
-            self._client.generate_presigned_url,
+            self._signer.generate_presigned_url,
             "put_object",
             Params={"Bucket": self._bucket, "Key": key, "ContentType": content_type},
             ExpiresIn=expires_in,
@@ -248,10 +283,14 @@ class S3ObjectStore:
         self, key: str, *, expires_in: int = DEFAULT_GET_TTL, filename: str | None = None
     ) -> PresignedUrl:
         params: dict[str, Any] = {"Bucket": self._bucket, "Key": key}
-        if filename:
-            params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
+        # Always an attachment, named or not. An uploaded .html fetched inline would run its own
+        # script in the storage origin, next to every other artifact in the bucket — so the
+        # disposition is set here rather than left to each caller to remember (requirements §11
+        # "Security"). A quote in the filename would otherwise close the parameter and start
+        # another, so it is escaped the way RFC 6266 asks.
+        params["ResponseContentDisposition"] = _attachment(filename)
         url = await asyncio.to_thread(
-            self._client.generate_presigned_url,
+            self._signer.generate_presigned_url,
             "get_object",
             Params=params,
             ExpiresIn=expires_in,
@@ -299,6 +338,34 @@ class S3ObjectStore:
 
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=key)
+
+    async def bucket_ready(self) -> bool:
+        """Whether the bucket is actually there.
+
+        Readiness used to ping the store's own liveness endpoint, which answers happily while the
+        bucket is missing — so the status page read `object_storage ok` and every upload came back
+        `NoSuchBucket`. A store that cannot store anything is not ready.
+        """
+        try:
+            await asyncio.to_thread(self._client.head_bucket, Bucket=self._bucket)
+        except Exception:  # noqa: BLE001 - absent or unreachable are both "not ready"
+            return False
+        return True
+
+    async def ensure_bucket(self) -> None:
+        """Create the bucket if it is missing. Idempotent, and never fatal.
+
+        A deployment whose credentials may not create buckets is a normal arrangement, not a
+        misconfiguration to crash on: the bucket is made by whoever provisions the account, and
+        readiness reports the truth either way.
+        """
+        if await self.bucket_ready():
+            return
+        try:
+            await asyncio.to_thread(self._client.create_bucket, Bucket=self._bucket)
+            log.info("created object storage bucket %s", self._bucket)
+        except Exception as error:  # noqa: BLE001
+            log.warning("could not create bucket %s: %s", self._bucket, error)
 
 
 _store: ObjectStore | None = None
