@@ -254,6 +254,10 @@
     "noApproved": "No approved assessment yet.",
     "assessments": "Assessments",
     "noAssessments": "No assessment has been produced yet.",
-    "week": "Week {{period}}"
+    "week": "Week {{period}}",
+    "materials": "Submitted materials",
+    "noMaterials": "This student has not attached anything yet.",
+    "materialsNote": "Every file and link this student attached to a weekly package.",
+    "label": "Student {{id}}"
   }
 }

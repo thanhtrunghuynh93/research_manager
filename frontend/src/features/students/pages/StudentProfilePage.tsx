@@ -13,6 +13,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { Badge, ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
 import type { Assessment } from "@/features/review/types";
+import { openArtifact, useArtifacts } from "@/features/report/queries";
 import { formatInstant } from "@/lib/dates";
 
 type TrendPoint = {
@@ -40,13 +41,15 @@ export function StudentProfilePage() {
   return (
     <section className="animate-rise-in">
       <header>
-        <p className="eyebrow mb-1.5">Student {id?.slice(0, 8)}</p>
+        <p className="eyebrow mb-1.5">{t("student.label", { id: id?.slice(0, 8) ?? "" })}</p>
         <h1 className="page-title">{t("student.title")}</h1>
       </header>
 
       {projectIds.map((projectId) => (
         <Trajectory key={projectId} studentId={id!} projectId={projectId} />
       ))}
+
+      <Materials studentId={id!} />
 
       <h2 className="section-title mt-8">{t("student.assessments")}</h2>
       <ul className="panel mt-2.5" data-testid="assessments">
@@ -124,5 +127,56 @@ function Trajectory({ studentId, projectId }: { studentId: string; projectId: st
         )}
       </ol>
     </div>
+  );
+}
+
+/**
+ * UI-04: what this student actually handed in.
+ *
+ * The assessments above are about the work; this is the work. A professor reading a week needs the
+ * deck or the document itself, not only the sentence someone wrote about it — and until there was
+ * a way to list attachments, the only place an artifact id ever appeared was the response to the
+ * upload that created it, so there was no route back to the file at all (REP-04, AC-02).
+ */
+function Materials({ studentId }: { studentId: string }) {
+  const { t } = useTranslation();
+  const artifacts = useArtifacts({ studentId });
+
+  return (
+    <>
+      <h2 className="section-title mt-8">{t("student.materials")}</h2>
+      <ul className="panel mt-2.5" data-testid="materials">
+        {artifacts.data?.map((artifact) => (
+          <li key={artifact.artifact_id} className="row items-start">
+            <span className="min-w-0">
+              <span className="font-mono text-[12.5px]">{artifact.filename}</span>
+              {artifact.supported_claim ? (
+                <span className="mt-1 block text-[13px] text-muted-foreground">
+                  {artifact.supported_claim}
+                </span>
+              ) : null}
+            </span>
+            <span className="flex shrink-0 items-center gap-2.5">
+              <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+                {t(`report.attachments.state.${artifact.extraction_state}`, {
+                  defaultValue: artifact.extraction_state,
+                })}
+              </span>
+              <button
+                type="button"
+                onClick={() => void openArtifact(artifact.artifact_id)}
+                className="btn-quiet"
+              >
+                {t("report.attachments.download")}
+              </button>
+            </span>
+          </li>
+        ))}
+        {artifacts.data?.length === 0 && (
+          <li className="px-4 py-2.5 text-sm text-muted-foreground">{t("student.noMaterials")}</li>
+        )}
+      </ul>
+      <p className="stamp mt-2">{t("student.materialsNote")}</p>
+    </>
   );
 }
