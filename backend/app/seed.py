@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.fake import FakeGateway
 from app.assessment import service as assessment_service
 from app.core.db import run_in_session
+from app.core.errors import ConflictError
 from app.core.types import Role, Visibility
 from app.evidence import service as evidence_service
 from app.evidence.connectors.base import Actor, CommitMeta, PullRequest
@@ -43,6 +44,18 @@ from app.reporting import service as reporting_service
 log = logging.getLogger(__name__)
 
 cli = typer.Typer(no_args_is_help=True, help="Load datasets for development and demos")
+
+
+class AlreadySeededError(ConflictError):
+    """This database already holds the demo dataset.
+
+    A subclass rather than a flag so `load_demo` keeps its documented contract — a second run is
+    refused, not duplicated — while the command line can tell the one refusal it expects apart
+    from a conflict that means something is actually wrong.
+    """
+
+    title = "Demo dataset already loaded"
+
 
 PASSWORD = "demo-password-change-me"  # noqa: S105 - a development dataset, never a deployment
 PROF_EMAIL = "prof@example.edu"
@@ -95,8 +108,17 @@ class Seeded:
 
 @cli.command("demo")
 def demo() -> None:
-    """Load the demo dataset. Refuses to run twice against the same workspace."""
-    result = run_in_session(load_demo)
+    """Load the demo dataset. Loading it a second time leaves the existing one alone."""
+    try:
+        result = run_in_session(load_demo)
+    except AlreadySeededError:
+        # The documented way to start is `scripts/run_mock.sh --seed`, so this runs whenever
+        # anyone restarts against a volume that already has the data — the ordinary case, not a
+        # fault. It used to escape as a traceback, and because run.sh runs under `set -e` that
+        # aborted the whole startup: no ready banner, no frontend, just a stack trace.
+        typer.echo("The demo dataset is already loaded; leaving it as it is.")
+        typer.echo(f"  sign in as {PROF_EMAIL} with the password {PASSWORD!r}")
+        return
     typer.echo(f"workspace {result.workspace_id}")
     typer.echo(f"  {len(result.student_ids)} students, {len(result.project_ids)} projects")
     typer.echo(f"  {len(result.period_ids)} reporting periods, {result.reports} reports submitted")
@@ -126,12 +148,19 @@ async def load_demo(session: AsyncSession) -> Seeded:
 
 
 async def _workspace(session: AsyncSession) -> tuple[Any, User]:
-    bootstrapped = await identity_service.bootstrap_workspace(
-        session,
-        name="Demo Research Lab",
-        prof_email=PROF_EMAIL,
-        prof_display_name="Professor Demo",
-    )
+    try:
+        bootstrapped = await identity_service.bootstrap_workspace(
+            session,
+            name="Demo Research Lab",
+            prof_email=PROF_EMAIL,
+            prof_display_name="Professor Demo",
+        )
+    except ConflictError as conflict:
+        # bootstrap_workspace conflicts for exactly one reason: the professor's address is taken,
+        # which here means the dataset is already in this database.
+        raise AlreadySeededError(
+            f"the demo dataset is already loaded ({PROF_EMAIL} exists)"
+        ) from conflict
     await identity_service.accept_invitation(session, token=bootstrapped.token, password=PASSWORD)
     professor = await session.get(User, bootstrapped.user.id)
     assert professor is not None
