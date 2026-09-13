@@ -43,11 +43,13 @@ function renderPage(overview: Record<string, unknown> = EMPTY) {
   );
 }
 
-test("shows the deadline as 23:59 in the workspace timezone", async () => {
+test("names the period the professor is looking at, without the deadline", async () => {
   renderPage();
 
-  expect(await screen.findByTestId("deadline")).toHaveTextContent("23:59");
-  expect(screen.getByTestId("deadline")).toHaveTextContent("Sep 20, 2026");
+  // The week is what orients the professor here; the deadline is the student's to meet, and it
+  // is still shown on their own screen and in the weekly editor (REP-01 is covered there).
+  expect(await screen.findByText(/Sep 14, 2026 – Sep 20, 2026/)).toBeInTheDocument();
+  expect(screen.queryByTestId("deadline")).not.toBeInTheDocument();
 });
 
 test("keeps every section on screen when there is nothing to do", async () => {

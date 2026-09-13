@@ -45,14 +45,6 @@ export function OverviewPage() {
             <p className="mt-2 text-sm text-muted-foreground">{t("me.noPeriod")}</p>
           )}
         </div>
-        {period && (
-          <div className="text-right">
-            <p className="eyebrow mb-1">{t("me.dueBy")}</p>
-            <p className="font-display text-[1.375rem]" data-testid="deadline">
-              {formatInstant(period.deadline_utc)}
-            </p>
-          </div>
-        )}
       </header>
 
       {data.ai_budget.analysis_delayed && (
