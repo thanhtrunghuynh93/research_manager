@@ -25,7 +25,7 @@ export function CitationLink({ citation }: { citation: Citation }) {
 
   if (citation.available === false) {
     return (
-      <span className="text-xs text-muted-foreground line-through" data-testid="citation-gone">
+      <span className="font-mono text-xs text-faint line-through" data-testid="citation-gone">
         {label} — {t("evidence.noLongerAvailable")}
       </span>
     );
@@ -33,7 +33,7 @@ export function CitationLink({ citation }: { citation: Citation }) {
 
   if (citation.source_kind === "supervision_note") {
     return (
-      <span className="text-xs text-muted-foreground" data-testid="citation-private">
+      <span className="font-mono text-xs text-faint" data-testid="citation-private">
         🔒 {t("evidence.privateNote")}
       </span>
     );
@@ -41,14 +41,14 @@ export function CitationLink({ citation }: { citation: Citation }) {
 
   if (!citation.locator) {
     return (
-      <span className="text-xs text-muted-foreground" data-testid="citation-plain">
+      <span className="font-mono text-xs text-faint" data-testid="citation-plain">
         {label}
       </span>
     );
   }
 
   return (
-    <Link to={citation.locator} className="text-xs underline" data-testid="citation-link">
+    <Link to={citation.locator} className="font-mono text-xs underline" data-testid="citation-link">
       {label}
       {citation.source_version ? ` @${citation.source_version.slice(0, 8)}` : ""}
     </Link>
@@ -58,10 +58,10 @@ export function CitationLink({ citation }: { citation: Citation }) {
 export function CitationList({ citations }: { citations: Citation[] }) {
   const { t } = useTranslation();
   if (citations.length === 0) {
-    return <p className="text-xs text-muted-foreground">{t("evidence.noCitations")}</p>;
+    return <p className="stamp">{t("evidence.noCitations")}</p>;
   }
   return (
-    <ul className="flex flex-wrap gap-x-3 gap-y-1">
+    <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
       {citations.map((citation) => (
         <li key={`${citation.source_kind}:${citation.source_id}`}>
           <CitationLink citation={citation} />

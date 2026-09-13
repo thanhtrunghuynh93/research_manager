@@ -4,16 +4,18 @@
  * Each of these exists because the same pixel-space would otherwise be filled by a number that
  * looks more certain than it is: a confidence level without its reasons, a rating whose evidence
  * has gone, a repository that is quiet because nobody synced it rather than because nobody worked.
+ *
+ * They are set in mono and upper case because they are the system speaking, not the author.
  */
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 
 const TONES = {
-  neutral: "bg-muted text-muted-foreground",
-  good: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
-  warn: "bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100",
-  bad: "bg-rose-50 text-rose-900 dark:bg-rose-950 dark:text-rose-100",
+  neutral: "chip-neutral",
+  good: "chip-good",
+  warn: "chip-warn",
+  bad: "chip-bad",
 } as const;
 
 type Tone = keyof typeof TONES;
@@ -22,6 +24,7 @@ export function Badge({
   tone = "neutral",
   children,
   title,
+  className,
   ...rest
 }: {
   tone?: Tone;
@@ -29,14 +32,7 @@ export function Badge({
   title?: string;
 } & React.HTMLAttributes<HTMLSpanElement>) {
   return (
-    <span
-      title={title}
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        TONES[tone],
-      )}
-      {...rest}
-    >
+    <span title={title} className={cn("chip uppercase", TONES[tone], className)} {...rest}>
       {children}
     </span>
   );
@@ -53,7 +49,12 @@ export function ConfidenceBadge({
   const { t } = useTranslation();
   const tone: Tone = confidence === "high" ? "good" : confidence === "medium" ? "warn" : "bad";
   return (
-    <Badge tone={tone} title={reasons.join("\n")} data-testid="confidence-badge">
+    <Badge
+      tone={tone}
+      title={reasons.join("\n")}
+      data-testid="confidence-badge"
+      className={reasons.length > 0 ? "cursor-help" : undefined}
+    >
       {t(`assessment.confidence.${confidence}`, { defaultValue: confidence })}
       {reasons.length > 0 ? ` · ${reasons.length}` : ""}
     </Badge>
@@ -81,21 +82,39 @@ export function FreshnessBadge({
 
 /**
  * ASSESS-04: an index that must not be shown reads as "Not rated", never as a zero and never as a
- * blank cell that the reader will fill in themselves.
+ * blank cell that the reader will fill in themselves. When it is shown it is set as a figure, with
+ * its denominator attached, so it cannot be mistaken for a percentage or a grade.
+ *
+ * `size="figure"` is for the one place the index is the subject of the screen (UI-05); everywhere
+ * else it sits inline in a row and must not shout over its neighbours.
  */
-export function ProgressIndex({ value }: { value: number | null | undefined }) {
+export function ProgressIndex({
+  value,
+  size = "inline",
+}: {
+  value: number | null | undefined;
+  size?: "inline" | "figure";
+}) {
   const { t } = useTranslation();
   if (value === null || value === undefined) {
     return (
-      <span className="text-sm text-muted-foreground" data-testid="progress-index">
+      <span
+        className={
+          size === "figure" ? "text-sm text-muted-foreground" : "text-sm text-muted-foreground"
+        }
+        data-testid="progress-index"
+      >
         {t("assessment.notRated")}
       </span>
     );
   }
   return (
-    <span className="text-sm font-semibold" data-testid="progress-index">
+    <span
+      className={cn("font-display leading-none", size === "figure" ? "text-[2.125rem]" : "text-lg")}
+      data-testid="progress-index"
+    >
       {value}
-      <span className="text-muted-foreground">/100</span>
+      <span className="figure-unit">/100</span>
     </span>
   );
 }

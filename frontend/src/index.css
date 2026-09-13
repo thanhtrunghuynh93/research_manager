@@ -2,27 +2,196 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * The ledger theme. Every colour is a token here and nowhere else, so the dark variant is the
+ * same stylesheet with a different `:root`, and a screen cannot quietly invent a colour.
+ *
+ * Type has three jobs and three families: Newsreader for headings and figures the reader is meant
+ * to weigh, IBM Plex Sans for the interface, IBM Plex Mono for anything the system asserts —
+ * timestamps, identifiers, versions, rubric ids, sync states. Provenance is set in the typeface
+ * that looks like a machine wrote it, because a machine did.
+ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --border: 214 32% 91%;
-    --primary: 222 47% 11%;
-    --primary-foreground: 210 40% 98%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --radius: 0.5rem;
+    --background: 41 27% 93%;
+    --surface: 43 100% 98%;
+    --raised: 40 32% 95%;
+    --foreground: 34 19% 7%;
+    --ink-2: 39 14% 20%;
+    --muted: 38 29% 89%;
+    --muted-foreground: 35 11% 38%;
+    --faint: 38 9% 49%;
+    --border: 36 24% 79%;
+    --border-strong: 35 22% 73%;
+    --divider: 38 29% 89%;
+    --track: 38 29% 86%;
+    --paper-dot: 39 25% 85%;
+
+    --accent: 214 51% 25%;
+    --accent-soft: 212 29% 93%;
+    --accent-line: 212 25% 81%;
+
+    --good: 148 33% 27%;
+    --good-soft: 111 22% 92%;
+    --good-line: 113 20% 78%;
+
+    --warn: 39 100% 27%;
+    --warn-strong: 40 89% 19%;
+    --warn-soft: 42 77% 93%;
+    --warn-line: 40 60% 71%;
+    --warn-rule: 43 79% 41%;
+
+    --bad: 3 49% 32%;
+    --bad-soft: 8 60% 93%;
+    --bad-line: 9 38% 78%;
+
+    --primary: 34 19% 7%;
+    --primary-foreground: 43 100% 98%;
+    --radius: 4px;
   }
+
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --border: 217 33% 17%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 11%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --background: 30 8% 7%;
+    --surface: 35 12% 10%;
+    --raised: 30 12% 11%;
+    --foreground: 38 32% 91%;
+    --ink-2: 39 21% 80%;
+    --muted: 30 9% 14%;
+    --muted-foreground: 37 13% 60%;
+    --faint: 37 9% 50%;
+    --border: 38 14% 17%;
+    --border-strong: 37 14% 21%;
+    --divider: 30 9% 14%;
+    --track: 33 11% 15%;
+    --paper-dot: 35 15% 13%;
+
+    --accent: 214 47% 74%;
+    --accent-soft: 217 28% 16%;
+    --accent-line: 215 28% 28%;
+
+    --good: 149 35% 62%;
+    --good-soft: 155 24% 12%;
+    --good-line: 143 22% 22%;
+
+    --warn: 38 66% 63%;
+    --warn-strong: 38 63% 74%;
+    --warn-soft: 42 33% 12%;
+    --warn-line: 41 42% 20%;
+    --warn-rule: 45 68% 47%;
+
+    --bad: 6 60% 72%;
+    --bad-soft: 7 26% 13%;
+    --bad-line: 10 27% 23%;
+
+    --primary: 38 32% 91%;
+    --primary-foreground: 30 8% 7%;
   }
+
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
+    /* The ruled-paper ground. One pixel of texture is the whole difference between a document
+       and a dialog box. */
+    background-image: radial-gradient(hsl(var(--paper-dot)) 0.5px, transparent 0.5px);
+    background-size: 18px 18px;
+  }
+
+  a {
+    @apply text-accent underline-offset-2;
+  }
+  a:hover {
+    @apply text-foreground;
+  }
+}
+
+@layer components {
+  /* Labels for things the reader scans rather than reads. */
+  .eyebrow {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-faint;
+  }
+  /* Provenance: when a figure was true, which version it came from, what produced it. */
+  .stamp {
+    @apply font-mono text-[11px] leading-relaxed text-faint;
+  }
+  .figure {
+    @apply font-display text-[2.125rem] font-normal leading-none;
+  }
+  .figure-unit {
+    @apply font-mono text-xs text-faint;
+  }
+
+  .page-title {
+    @apply font-display text-[2.5rem] font-normal leading-[1.05] tracking-[-0.015em];
+  }
+  .section-title {
+    @apply font-display text-xl font-medium;
+  }
+
+  .panel {
+    @apply rounded-lg border border-border bg-surface;
+  }
+  .panel > * + * {
+    @apply border-t border-divider;
+  }
+  .row {
+    @apply flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm;
+  }
+  .card {
+    @apply rounded border border-border bg-surface p-4;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[11px] font-medium leading-none;
+  }
+  .chip-neutral {
+    @apply border-border bg-surface text-muted-foreground;
+  }
+  .chip-accent {
+    @apply border-accent-line bg-accent-soft text-accent;
+  }
+  .chip-good {
+    @apply border-good-line bg-good-soft text-good;
+  }
+  .chip-warn {
+    @apply border-warn-line bg-warn-soft text-warn;
+  }
+  .chip-bad {
+    @apply border-bad-line bg-bad-soft text-bad;
+  }
+
+  .field-label {
+    @apply block font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-faint;
+  }
+  .input {
+    @apply mt-2 w-full rounded border border-border-strong bg-surface px-3 py-2.5 text-sm;
+  }
+  .textarea {
+    @apply mt-2 w-full resize-y rounded border border-border-strong bg-surface px-3 py-2.5 font-mono text-[13px] leading-relaxed;
+  }
+  .select {
+    @apply rounded border border-border-strong bg-raised px-2 py-1 font-mono text-[13px];
+  }
+
+  .btn-primary {
+    @apply rounded border border-foreground bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-colors hover:border-accent hover:bg-accent disabled:opacity-60;
+  }
+  .btn-ghost {
+    @apply rounded border border-border bg-surface px-3.5 py-2 text-sm transition-colors hover:border-foreground disabled:opacity-50;
+  }
+  .btn-quiet {
+    @apply text-xs text-accent underline underline-offset-2;
+  }
+
+  /* A caution that states a reason. Never used for decoration. */
+  .notice-warn {
+    @apply rounded border border-warn-line border-l-[3px] bg-warn-soft px-4 py-3 text-sm;
+    border-left-color: hsl(var(--warn-rule));
+    color: hsl(var(--warn-strong));
+  }
+
+  .meter {
+    @apply h-1.5 w-full overflow-hidden rounded-full bg-track;
+  }
+  .meter-fill {
+    @apply block h-full bg-accent;
   }
 }

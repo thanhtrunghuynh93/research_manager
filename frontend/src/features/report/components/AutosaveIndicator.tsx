@@ -22,7 +22,13 @@ export function AutosaveIndicator({
   return (
     <span
       data-testid="autosave-indicator"
-      className={state === "error" ? "text-sm text-red-600" : "text-sm text-muted-foreground"}
+      className={
+        state === "error"
+          ? "font-mono text-[13px] text-bad"
+          : state === "saving"
+            ? "font-mono text-[13px] text-warn"
+            : "font-mono text-[13px] text-muted-foreground"
+      }
     >
       {text}
     </span>

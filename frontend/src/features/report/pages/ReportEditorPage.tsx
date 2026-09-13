@@ -68,9 +68,9 @@ export function ReportEditorPage() {
   const autosave = useAutosave(drafts, (value) => saveDraft.mutateAsync({ entries: value }));
 
   if (periods.isPending || obligations.isPending || projects.isPending || drafts === null) {
-    return <p className="text-muted-foreground">{t("common.loading")}</p>;
+    return <p className="stamp">{t("common.loading")}</p>;
   }
-  if (!period) return <p className="text-muted-foreground">{t("me.noPeriod")}</p>;
+  if (!period) return <p className="text-sm text-muted-foreground">{t("me.noPeriod")}</p>;
 
   const problem = submit.error instanceof ApiError ? submit.error.problem.detail : null;
 
@@ -99,18 +99,20 @@ export function ReportEditorPage() {
   }
 
   return (
-    <section className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">{t("report.title")}</h1>
-        <p className="text-sm text-muted-foreground">
-          {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
-        </p>
-        <p className="text-sm" data-testid="deadline">
+    <section className="max-w-3xl animate-rise-in">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4">
+        <div>
+          <p className="eyebrow mb-1.5">
+            {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
+          </p>
+          <h1 className="page-title">{t("report.title")}</h1>
+        </div>
+        <p className="font-mono text-[12.5px] text-muted-foreground" data-testid="deadline">
           {t("me.dueBy")} {formatInstant(period.deadline_utc)}
         </p>
       </header>
 
-      <div role="tablist" aria-label={t("report.tabs")} className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label={t("report.tabs")} className="mt-5 flex flex-wrap gap-1.5">
         {required.map((obligation) => (
           <button
             key={obligation.id}
@@ -120,8 +122,8 @@ export function ReportEditorPage() {
             onClick={() => setActive(obligation.project_id)}
             className={
               active === obligation.project_id
-                ? "rounded-md border border-border bg-muted px-3 py-1.5 text-sm font-medium"
-                : "rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground"
+                ? "rounded border border-foreground bg-muted px-3.5 py-2 text-[13px] font-medium"
+                : "rounded border border-border bg-surface px-3.5 py-2 text-[13px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
             }
           >
             {titleOf(obligation.project_id)}
@@ -131,6 +133,9 @@ export function ReportEditorPage() {
 
       {active && drafts[active] && (
         <>
+          <p className="stamp mt-3.5">
+            Entry stage: {stageOf(active)} · one submission covers every required entry
+          </p>
           <EntryForm
             entry={drafts[active]}
             onChange={(entry) => setDrafts({ ...drafts, [entry.project_id]: entry })}
@@ -151,23 +156,23 @@ export function ReportEditorPage() {
       )}
 
       {problem && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="mt-5 text-sm text-bad">
           {problem}
         </p>
       )}
       {submit.isSuccess && (
-        <p className="text-sm text-green-700">
+        <p className="mt-5 font-mono text-[12.5px] text-good">
           {t("report.submitted", { version: submit.data.version_no })}
         </p>
       )}
 
-      <div className="flex items-center justify-between border-t border-border pt-4">
+      <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">
         <AutosaveIndicator state={autosave.state} savedAt={autosave.savedAt} />
         <button
           type="button"
           onClick={() => void onSubmit()}
           disabled={submitting || submit.isPending}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-60"
+          className="btn-primary"
         >
           {t("report.submit")}
         </button>

@@ -5,6 +5,9 @@
  * a rating while the evidence is on another screen will approve the rating. Two things this page
  * refuses to make easy: approving a changed rating without a reason (ASSESS-08), and reading an
  * index as a grade — it sits beside its components and its confidence, never alone.
+ *
+ * The panes are numbered in the eyebrow because the order is the argument: claim, then evidence,
+ * then judgement.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,6 +17,14 @@ import { Badge, ConfidenceBadge, ProgressIndex } from "@/components/evidence/Bad
 import { useApprove, useAssessment, useAssessmentEvidence } from "@/features/review/queries";
 import { DIMENSIONS, ratingOf } from "@/features/review/types";
 import { formatInstant } from "@/lib/dates";
+
+/** Claim status earns a coloured edge on the card — the reader scans the edges first. */
+const CLAIM_EDGE: Record<string, string> = {
+  supported: "border-l-good",
+  partially_supported: "border-l-warn-rule",
+  unsupported: "border-l-bad",
+  unverifiable: "border-l-bad",
+};
 
 export function ReviewPage() {
   const { t } = useTranslation();
@@ -25,8 +36,9 @@ export function ReviewPage() {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [rationale, setRationale] = useState("");
 
-  if (assessment.isPending) return <p className="text-muted-foreground">{t("common.loading")}</p>;
-  if (assessment.isError) return <p className="text-muted-foreground">{t("review.unavailable")}</p>;
+  if (assessment.isPending) return <p className="stamp">{t("common.loading")}</p>;
+  if (assessment.isError)
+    return <p className="text-sm text-muted-foreground">{t("review.unavailable")}</p>;
 
   const data = assessment.data;
   const changed = Object.keys(overrides).length > 0;
@@ -51,31 +63,54 @@ export function ReviewPage() {
   };
 
   return (
-    <section className="space-y-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">{t("review.title")}</h1>
-        <Badge>{t("review.version", { n: data.version_no })}</Badge>
-        <ConfidenceBadge
-          confidence={data.confidence}
-          reasons={(data.confidence_reasons ?? []).map(String)}
-        />
-        <ProgressIndex value={data.progress_index} />
-        {data.review_state ? (
-          <Badge tone={data.review_state === "approved" ? "good" : "neutral"}>
-            {t(`review.state.${data.review_state}`, { defaultValue: data.review_state })}
-          </Badge>
-        ) : null}
+    <section className="animate-rise-in">
+      <header className="border-b border-border pb-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <h1 className="page-title">{t("review.title")}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>{t("review.version", { n: data.version_no })}</Badge>
+            <ConfidenceBadge
+              confidence={data.confidence}
+              reasons={(data.confidence_reasons ?? []).map(String)}
+            />
+            {data.review_state ? (
+              <Badge tone={data.review_state === "approved" ? "good" : "neutral"}>
+                {t(`review.state.${data.review_state}`, { defaultValue: data.review_state })}
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+        {/* The index never stands on its own line: it sits on its scale, with the caveat attached. */}
+        <div className="mt-4 flex items-end gap-4">
+          <ProgressIndex value={data.progress_index} size="figure" />
+          <div className="max-w-sm flex-1 pb-1.5">
+            <span className="meter">
+              <span
+                className="meter-fill"
+                style={{ width: `${Math.max(0, Math.min(100, data.progress_index ?? 0))}%` }}
+              />
+            </span>
+            <p className="stamp mt-1.5">
+              Progress index — read beside its components and its confidence, never alone.
+            </p>
+          </div>
+        </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="mt-7 grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
         {/* Pane one: what the student claimed, and how each claim fared. */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium">{t("review.claims")}</h2>
-          <ul className="space-y-2" data-testid="claims">
+        <div>
+          <p className="eyebrow mb-2.5">1 · {t("review.claims")}</p>
+          <ul className="grid gap-2.5" data-testid="claims">
             {((narrative.discrepancies ?? []) as Record<string, unknown>[]).map((item, index) => (
-              <li key={index} className="rounded-md border border-border p-3 text-sm">
-                <p>{String(item.claim ?? "")}</p>
-                <Badge tone={item.status === "supported" ? "good" : "warn"}>
+              <li
+                key={index}
+                className={`card border-l-[3px] ${
+                  CLAIM_EDGE[String(item.status)] ?? "border-l-border-strong"
+                }`}
+              >
+                <p className="text-[13.5px] leading-relaxed">{String(item.claim ?? "")}</p>
+                <Badge tone={item.status === "supported" ? "good" : "warn"} className="mt-2.5">
                   {t(`review.claimStatus.${String(item.status)}`, {
                     defaultValue: String(item.status),
                   })}
@@ -89,16 +124,13 @@ export function ReviewPage() {
         </div>
 
         {/* Pane two: the snapshot, which is the entire basis of the draft. */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium">{t("review.evidence")}</h2>
-          <ul className="space-y-2" data-testid="evidence">
+        <div>
+          <p className="eyebrow mb-2.5">2 · {t("review.evidence")}</p>
+          <ul className="grid gap-2.5" data-testid="evidence">
             {evidence.data?.map((item) => (
-              <li
-                key={item.evidence_ref_id}
-                className="rounded-md border border-border p-3 text-xs"
-              >
-                <p className="line-clamp-4">{item.text}</p>
-                <p className="mt-1 text-muted-foreground">
+              <li key={item.evidence_ref_id} className="card">
+                <p className="line-clamp-4 text-[12.5px] leading-relaxed text-ink2">{item.text}</p>
+                <p className="stamp mt-2.5">
                   {item.locator}
                   {item.integration_of_earlier_work ? ` · ${t("review.integrated")}` : ""}
                 </p>
@@ -111,16 +143,16 @@ export function ReviewPage() {
         </div>
 
         {/* Pane three: the draft, and the decision. */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium">{t("review.draft")}</h2>
-          <ul className="space-y-3" data-testid="ratings">
+        <div>
+          <p className="eyebrow mb-2.5">3 · {t("review.draft")}</p>
+          <ul className="grid gap-2.5" data-testid="ratings">
             {DIMENSIONS.map((dimension) => {
               const rating = ratingOf(data, dimension);
               const current = overrides[dimension] ?? String(rating?.rating ?? "unknown");
               return (
-                <li key={dimension} className="space-y-1 rounded-md border border-border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">
+                <li key={dimension} className="card">
+                  <div className="flex items-center justify-between gap-2.5">
+                    <span className="text-[13px] font-medium">
                       {t(`assessment.dimension.${dimension}`)}
                     </span>
                     <select
@@ -132,7 +164,7 @@ export function ReviewPage() {
                           [dimension]: event.target.value,
                         }))
                       }
-                      className="rounded border border-border px-2 py-1 text-sm"
+                      className="select"
                     >
                       {["0", "1", "2", "3", "4", "unknown"].map((value) => (
                         <option key={value} value={value}>
@@ -141,9 +173,11 @@ export function ReviewPage() {
                       ))}
                     </select>
                   </div>
-                  <p className="text-xs text-muted-foreground">{rating?.rationale}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    {rating?.rationale}
+                  </p>
                   {(rating?.validation_notes ?? []).map((note, index) => (
-                    <p key={index} className="text-xs text-amber-700 dark:text-amber-300">
+                    <p key={index} className="mt-1.5 text-[11.5px] leading-relaxed text-warn">
                       {note}
                     </p>
                   ))}
@@ -152,40 +186,39 @@ export function ReviewPage() {
             })}
           </ul>
 
-          <label className="block space-y-1">
-            <span className="text-sm font-medium">{t("review.rationale")}</span>
-            <textarea
-              value={rationale}
-              onChange={(event) => setRationale(event.target.value)}
-              rows={3}
-              className="w-full rounded-md border border-border p-2 text-sm"
-              placeholder={t("review.rationalePlaceholder")}
-            />
-          </label>
-          {blocked && (
-            <p
-              className="text-xs text-rose-700 dark:text-rose-300"
-              data-testid="rationale-required"
-            >
-              {t("review.rationaleRequired")}
-            </p>
-          )}
+          <div className="card mt-3.5">
+            <label className="block">
+              <span className="field-label">{t("review.rationale")}</span>
+              <textarea
+                value={rationale}
+                onChange={(event) => setRationale(event.target.value)}
+                rows={3}
+                className="textarea font-sans text-[13px]"
+                placeholder={t("review.rationalePlaceholder")}
+              />
+            </label>
+            {blocked && (
+              <p className="mt-2 text-xs text-bad" data-testid="rationale-required">
+                {t("review.rationaleRequired")}
+              </p>
+            )}
 
-          <button
-            type="button"
-            onClick={submit}
-            disabled={blocked || approve.isPending}
-            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-          >
-            {changed ? t("review.approveWithOverride") : t("review.approve")}
-          </button>
-          {approve.isSuccess && (
-            <p className="text-xs text-muted-foreground" data-testid="published">
-              {t("review.published", {
-                when: formatInstant(approve.data.published_at ?? new Date().toISOString()),
-              })}
-            </p>
-          )}
+            <button
+              type="button"
+              onClick={submit}
+              disabled={blocked || approve.isPending}
+              className="btn-primary mt-3 w-full"
+            >
+              {changed ? t("review.approveWithOverride") : t("review.approve")}
+            </button>
+            {approve.isSuccess && (
+              <p className="mt-2.5 font-mono text-[11.5px] text-good" data-testid="published">
+                {t("review.published", {
+                  when: formatInstant(approve.data.published_at ?? new Date().toISOString()),
+                })}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </section>

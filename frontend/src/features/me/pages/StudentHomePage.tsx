@@ -19,53 +19,61 @@ export function StudentHomePage() {
   const projects = useProjects();
   const report = useReport(period?.id);
 
-  if (periods.isPending) return <p className="text-muted-foreground">{t("common.loading")}</p>;
-  if (!period) return <p className="text-muted-foreground">{t("me.noPeriod")}</p>;
+  if (periods.isPending) return <p className="stamp">{t("common.loading")}</p>;
+  if (!period) return <p className="text-sm text-muted-foreground">{t("me.noPeriod")}</p>;
 
   const titleOf = (projectId: string) =>
     projects.data?.items.find((project) => project.id === projectId)?.title ?? projectId;
 
   return (
-    <section className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">{t("me.title")}</h1>
-        <p className="text-sm text-muted-foreground">
+    <section className="max-w-2xl animate-rise-in">
+      <header>
+        <p className="eyebrow mb-1.5">
           {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
         </p>
-        <p className="text-sm" data-testid="next-deadline">
-          {t("me.dueBy")} {formatInstant(period.deadline_utc)}
-        </p>
+        <h1 className="page-title">{t("me.title")}</h1>
       </header>
 
-      <div className="flex items-center gap-3">
-        <span className="text-sm" data-testid="report-state">
-          {t(`report.state.${report.data?.workflow_state ?? "not_started"}`)}
-        </span>
-        <Link
-          to={`/report/${period.id}`}
-          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium"
-        >
+      {/* The deadline is the point of this screen, so it is set as a figure rather than a caption. */}
+      <div className="panel mt-6 flex flex-wrap items-center justify-between gap-5 p-5">
+        <div>
+          <p className="eyebrow">{t("me.dueBy")}</p>
+          <p
+            className="mt-1.5 font-display text-[1.625rem] leading-none"
+            data-testid="next-deadline"
+          >
+            {formatInstant(period.deadline_utc)}
+          </p>
+          <p className="mt-2 font-mono text-xs text-muted-foreground" data-testid="report-state">
+            {t(`report.state.${report.data?.workflow_state ?? "not_started"}`)}
+          </p>
+        </div>
+        <Link to={`/report/${period.id}`} className="btn-primary no-underline">
           {report.data ? t("me.openWeek") : t("me.startWeek")}
         </Link>
       </div>
 
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium">{t("me.obligations")}</h2>
-        <ul className="divide-y divide-border rounded-lg border border-border">
-          {obligations.data?.map((obligation) => (
-            <li key={obligation.id} className="flex items-center justify-between px-4 py-2 text-sm">
-              <span>{titleOf(obligation.project_id)}</span>
-              <span className={obligation.state === "excused" ? "text-muted-foreground" : ""}>
-                {t(`report.obligation.${obligation.state}`)}
-                {obligation.excuse_reason ? ` — ${obligation.excuse_reason}` : ""}
-              </span>
-            </li>
-          ))}
-          {obligations.data?.length === 0 && (
-            <li className="px-4 py-2 text-sm text-muted-foreground">{t("me.nothingOwed")}</li>
-          )}
-        </ul>
-      </div>
+      <h2 className="section-title mt-8">{t("me.obligations")}</h2>
+      <ul className="panel mt-2.5">
+        {obligations.data?.map((obligation) => (
+          <li key={obligation.id} className="row">
+            <span>{titleOf(obligation.project_id)}</span>
+            <span
+              className={
+                obligation.state === "excused"
+                  ? "font-mono text-[11.5px] text-faint"
+                  : "font-mono text-[11px] uppercase tracking-[0.06em] text-warn"
+              }
+            >
+              {t(`report.obligation.${obligation.state}`)}
+              {obligation.excuse_reason ? ` — ${obligation.excuse_reason}` : ""}
+            </span>
+          </li>
+        ))}
+        {obligations.data?.length === 0 && (
+          <li className="px-4 py-2.5 text-sm text-muted-foreground">{t("me.nothingOwed")}</li>
+        )}
+      </ul>
     </section>
   );
 }

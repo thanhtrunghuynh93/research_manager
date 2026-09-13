@@ -13,7 +13,7 @@ export function RequireAuth({ role }: { role?: Role }) {
   const { t } = useTranslation();
   const session = useSession();
 
-  if (session.isPending) return <p className="text-muted-foreground">{t("common.loading")}</p>;
+  if (session.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (!session.data) return <Navigate to="/login" replace />;
   // To their own home, not a fixed one: a student-only page sending a professor to `/me` would
   // bounce them straight back here.

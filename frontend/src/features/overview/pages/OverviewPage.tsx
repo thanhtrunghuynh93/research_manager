@@ -17,8 +17,9 @@ export function OverviewPage() {
   const { t } = useTranslation();
   const overview = useOverview();
 
-  if (overview.isPending) return <p className="text-muted-foreground">{t("common.loading")}</p>;
-  if (overview.isError) return <p className="text-muted-foreground">{t("overview.unavailable")}</p>;
+  if (overview.isPending) return <p className="stamp">{t("common.loading")}</p>;
+  if (overview.isError)
+    return <p className="text-sm text-muted-foreground">{t("overview.unavailable")}</p>;
 
   const raw = overview.data;
   const data = {
@@ -31,67 +32,70 @@ export function OverviewPage() {
   const period = data.current_period;
 
   return (
-    <section className="space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">{t("overview.title")}</h1>
-        {period ? (
-          <>
-            <p className="text-sm text-muted-foreground">
+    <section className="animate-rise-in">
+      <header className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-5">
+        <div>
+          <p className="eyebrow mb-1.5">Current period</p>
+          <h1 className="page-title">{t("overview.title")}</h1>
+          {period ? (
+            <p className="mt-2 font-mono text-[13px] text-muted-foreground">
               {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
             </p>
-            <p className="text-sm" data-testid="deadline">
-              {t("me.dueBy")} {formatInstant(period.deadline_utc)}
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">{t("me.noPeriod")}</p>
+          )}
+        </div>
+        {period && (
+          <div className="text-right">
+            <p className="eyebrow mb-1">{t("me.dueBy")}</p>
+            <p className="font-display text-[1.375rem]" data-testid="deadline">
+              {formatInstant(period.deadline_utc)}
             </p>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t("me.noPeriod")}</p>
+          </div>
         )}
       </header>
 
       {data.ai_budget.analysis_delayed && (
-        <p
-          className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:bg-amber-950"
-          data-testid="budget-warning"
-        >
-          {data.ai_budget.reason}
+        <p className="notice-warn mt-6 flex gap-3" data-testid="budget-warning">
+          <span className="font-mono text-[10px] uppercase leading-relaxed tracking-[0.12em]">
+            budget
+          </span>
+          <span>{data.ai_budget.reason}</span>
         </p>
       )}
 
-      <Section
-        title={t("overview.outstanding")}
-        empty={t("overview.nothingOutstanding")}
-        count={data.outstanding.count}
-        note={`${data.outstanding.note} ${t("overview.asOf", {
-          when: formatInstant(data.outstanding.as_of),
-        })}`}
-      >
-        <ul className="divide-y divide-border">
+      <div className="mt-8 grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
+        <Section
+          title={t("overview.outstanding")}
+          empty={t("overview.nothingOutstanding")}
+          count={data.outstanding.count}
+          note={`${data.outstanding.note} ${t("overview.asOf", {
+            when: formatInstant(data.outstanding.as_of),
+          })}`}
+        >
           {data.outstanding.entries.map((entry, index) => (
             <li
               key={`${String(entry.student_id)}:${String(entry.project_id)}:${index}`}
-              className="flex items-center justify-between px-4 py-2 text-sm"
+              className="row"
             >
-              <Link to={`/students/${String(entry.student_id)}`} className="underline">
+              <Link to={`/students/${String(entry.student_id)}`} className="font-mono text-[13px]">
                 {String(entry.student_id).slice(0, 8)}
               </Link>
-              <span className="text-muted-foreground">{String(entry.project_title ?? "")}</span>
+              <span className="text-right text-[13px] text-muted-foreground">
+                {String(entry.project_title ?? "")}
+              </span>
             </li>
           ))}
-        </ul>
-      </Section>
+        </Section>
 
-      <Section
-        title={t("overview.reviewQueue")}
-        empty={t("overview.nothingToReview")}
-        count={data.review_queue.length}
-      >
-        <ul className="divide-y divide-border">
+        <Section
+          title={t("overview.reviewQueue")}
+          empty={t("overview.nothingToReview")}
+          count={data.review_queue.length}
+        >
           {data.review_queue.map((draft, index) => (
-            <li
-              key={`${String(draft.assessment_id)}:${index}`}
-              className="flex items-center justify-between gap-3 px-4 py-2 text-sm"
-            >
-              <Link to={`/review/${String(draft.assessment_id)}`} className="underline">
+            <li key={`${String(draft.assessment_id)}:${index}`} className="row">
+              <Link to={`/review/${String(draft.assessment_id)}`} className="text-[13px]">
                 {t("overview.draftFor", { student: String(draft.student_id).slice(0, 8) })}
               </Link>
               <Badge tone={draft.confidence === "high" ? "good" : "warn"}>
@@ -101,46 +105,41 @@ export function OverviewPage() {
               </Badge>
             </li>
           ))}
-        </ul>
-      </Section>
+        </Section>
 
-      <Section
-        title={t("overview.syncIssues")}
-        empty={t("overview.syncHealthy")}
-        count={data.sync_issues.length}
-        note={t("overview.syncNote")}
-      >
-        <ul className="divide-y divide-border">
+        <Section
+          title={t("overview.syncIssues")}
+          empty={t("overview.syncHealthy")}
+          count={data.sync_issues.length}
+          note={t("overview.syncNote")}
+        >
           {data.sync_issues.map((issue, index) => (
-            <li
-              key={`${String(issue.repository_id)}:${index}`}
-              className="flex items-center justify-between px-4 py-2 text-sm"
-            >
-              <span>{String(issue.full_name)}</span>
+            <li key={`${String(issue.repository_id)}:${index}`} className="row">
+              <span className="font-mono text-[12.5px]">{String(issue.full_name)}</span>
               <FreshnessBadge
                 state={String(issue.state)}
                 lastFinishedAt={issue.last_finished_at as string | null}
               />
             </li>
           ))}
-        </ul>
-      </Section>
+        </Section>
 
-      <Section
-        title={t("overview.stalled")}
-        empty={t("overview.nothingStalled")}
-        count={data.stalled_analyses.length}
-        note={t("overview.stalledNote")}
-      >
-        <ul className="divide-y divide-border">
+        <Section
+          title={t("overview.stalled")}
+          empty={t("overview.nothingStalled")}
+          count={data.stalled_analyses.length}
+          note={t("overview.stalledNote")}
+        >
           {data.stalled_analyses.map((run, index) => (
-            <li key={`${String(run.run_id)}:${index}`} className="px-4 py-2 text-sm">
-              <span className="font-medium">{String(run.state)}</span>
+            <li key={`${String(run.run_id)}:${index}`} className="px-4 py-2.5 text-[13px]">
+              <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-warn">
+                {String(run.state)}
+              </span>
               <span className="text-muted-foreground"> — {String(run.reason || "")}</span>
             </li>
           ))}
-        </ul>
-      </Section>
+        </Section>
+      </div>
     </section>
   );
 }
@@ -160,19 +159,19 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
-      <h2 className="flex items-center gap-2 text-sm font-medium">
-        {title}
-        <Badge tone={count === 0 ? "neutral" : "warn"}>{count}</Badge>
+    <div>
+      <h2 className="flex items-baseline gap-2.5">
+        <span className="section-title">{title}</span>
+        <span className={count === 0 ? "chip chip-neutral" : "chip chip-warn"}>{count}</span>
       </h2>
-      <div className="rounded-lg border border-border">
+      <ul className="panel mt-2.5">
         {count === 0 ? (
-          <p className="px-4 py-2 text-sm text-muted-foreground">{empty}</p>
+          <li className="px-4 py-2.5 text-sm text-muted-foreground">{empty}</li>
         ) : (
           children
         )}
-      </div>
-      {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+      </ul>
+      {note ? <p className="stamp mt-2">{note}</p> : null}
     </div>
   );
 }

@@ -110,77 +110,22 @@ export function Attachments({
   }
 
   return (
-    <section className="space-y-3 rounded-lg border border-border p-4" data-testid="attachments">
-      <h3 className="text-sm font-medium">{t("report.attachments.title")}</h3>
+    <section className="mt-7 border-t border-border pt-5" data-testid="attachments">
+      <h3 className="section-title">{t("report.attachments.title")}</h3>
+      <p className="stamp mt-1.5">{t("report.attachments.limit")}</p>
 
-      <label className="block space-y-1">
-        <span className="text-sm">{t("report.attachments.claim")}</span>
-        <input
-          value={claim}
-          onChange={(event) => setClaim(event.target.value)}
-          placeholder={t("report.attachments.claimPlaceholder")}
-          className="w-full rounded-md border border-border px-3 py-2 text-sm"
-        />
-        <span className="block text-xs text-muted-foreground">
-          {t("report.attachments.claimNote")}
-        </span>
-      </label>
-
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="space-y-1 text-sm">
-          <span className="block font-medium">{t("report.attachments.file")}</span>
-          <input
-            type="file"
-            disabled={busy}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void upload(file);
-              event.target.value = "";
-            }}
-            className="text-sm"
-          />
-        </label>
-
-        <label className="flex-1 space-y-1 text-sm">
-          <span className="block font-medium">{t("report.attachments.link")}</span>
-          <div className="flex gap-2">
-            <input
-              value={link}
-              onChange={(event) => setLink(event.target.value)}
-              placeholder="https://…"
-              className="flex-1 rounded-md border border-border px-3 py-2 text-sm"
-            />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void attachLink()}
-              className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
-            >
-              {t("report.attachments.addLink")}
-            </button>
-          </div>
-        </label>
-      </div>
-
-      <p className="text-xs text-muted-foreground">{t("report.attachments.limit")}</p>
-      {error && (
-        <p role="alert" className="text-sm text-red-600" data-testid="attachment-error">
-          {error}
-        </p>
-      )}
-
-      <ul className="divide-y divide-border" data-testid="attachment-list">
+      <ul className="panel mt-3.5" data-testid="attachment-list">
         {attachments.map((attachment) => (
           <li
             key={`${attachment.artifact_id}:${attachment.version_no}`}
-            className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+            className="row items-start"
           >
-            <span>{attachment.filename}</span>
-            <span className="flex items-center gap-2">
+            <span className="font-mono text-[12.5px]">{attachment.filename}</span>
+            <span className="flex items-center gap-2.5">
               <ExtractionBadge attachment={attachment} />
               <a
                 href={`/api/v1/artifacts/${attachment.artifact_id}/download`}
-                className="text-xs underline"
+                className="btn-quiet"
               >
                 {t("report.attachments.download")}
               </a>
@@ -188,9 +133,65 @@ export function Attachments({
           </li>
         ))}
         {attachments.length === 0 && (
-          <li className="py-2 text-sm text-muted-foreground">{t("report.attachments.none")}</li>
+          <li className="px-4 py-2.5 text-sm text-muted-foreground">
+            {t("report.attachments.none")}
+          </li>
         )}
       </ul>
+
+      <div className="mt-3.5 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
+        <label className="block">
+          <span className="field-label">{t("report.attachments.claim")}</span>
+          <input
+            value={claim}
+            onChange={(event) => setClaim(event.target.value)}
+            placeholder={t("report.attachments.claimPlaceholder")}
+            className="input"
+          />
+          <span className="stamp mt-1.5 block">{t("report.attachments.claimNote")}</span>
+        </label>
+
+        <div className="flex flex-col gap-2.5">
+          <label className="block">
+            <span className="field-label">{t("report.attachments.file")}</span>
+            <input
+              type="file"
+              disabled={busy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void upload(file);
+                event.target.value = "";
+              }}
+              className="mt-2 w-full rounded border border-dashed border-border-strong bg-surface px-3 py-2.5 text-[13px] file:mr-3 file:rounded file:border file:border-border file:bg-raised file:px-2 file:py-1 file:text-[12px]"
+            />
+          </label>
+          <label className="block">
+            <span className="field-label">{t("report.attachments.link")}</span>
+            <span className="mt-2 flex gap-2">
+              <input
+                value={link}
+                onChange={(event) => setLink(event.target.value)}
+                placeholder="https://…"
+                className="min-w-0 flex-1 rounded border border-border-strong bg-surface px-3 py-2.5 text-sm"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void attachLink()}
+                className="btn-ghost whitespace-nowrap"
+              >
+                {t("report.attachments.addLink")}
+              </button>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-bad" data-testid="attachment-error">
+          {error}
+        </p>
+      )}
     </section>
   );
 }
