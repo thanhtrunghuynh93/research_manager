@@ -11,7 +11,10 @@
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy same-origin
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
+		# connect-src carries the object store because the browser PUTs an attachment straight to
+		# it and never through the API (REP-04). Without the origin listed, every upload is
+		# refused by the browser before a byte leaves it.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://objects.{$RM_DOMAIN:localhost}; frame-ancestors 'none'"
 		-Server
 	}
 
@@ -36,6 +39,41 @@
 		try_files {path} /index.html
 		file_server
 	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# ---------------------------------------------------------------- object storage
+#
+# Attachments go from the browser to the store and back without passing through the application,
+# which is what keeps a 25 MB transfer off the app process — but it means the store needs a public
+# name of its own. Only the S3 API is published here, on its own subdomain.
+#
+# The Host is not rewritten, and neither is the path. A presigned URL is signed over both: point
+# this at a path prefix, or let the proxy replace the Host with `minio:9000`, and every signature
+# the application issues stops verifying.
+objects.{$RM_DOMAIN:localhost} {
+	# No `encode` here on purpose: these payloads are already compressed archives, and re-encoding
+	# an object store's responses buys nothing and surprises S3 clients.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		# An attachment is a download, never a page. The store sets this per object as well; it is
+		# repeated here so that publishing the bucket cannot turn an uploaded .html into a site.
+		Content-Security-Policy "default-src 'none'; sandbox"
+		-Server
+	}
+
+	# The admin API, the console and the health endpoints are not reachable by a presigned URL and
+	# are no part of what a browser needs. Publishing the S3 API must not publish them too.
+	handle /minio/* {
+		respond 404
+	}
+
+	reverse_proxy minio:9000
 
 	log {
 		output stdout

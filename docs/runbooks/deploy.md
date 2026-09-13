@@ -2,6 +2,12 @@
 
 Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
 
+0. First deploy only: point **two** A records at the VPS — `<domain>` and `objects.<domain>`.
+   Attachments go from the browser straight to the object store and back, never through the API
+   (REP-04), so the store is published on its own subdomain and Caddy obtains a certificate for
+   it. Without that record, uploads fail at the moment the browser PUTs the file, after the
+   student has already chosen it, and `RM_S3_PUBLIC_ENDPOINT` in `infra/.env` must be
+   `https://objects.<domain>` to match.
 1. On the VPS: `cd /opt/research-management && git fetch --tags && git checkout <tag>`.
 2. Confirm `infra/.env` has every variable in `.env.example` (`diff <(grep -o '^[A-Z_]*' .env.example | sort) <(grep -o '^[A-Z_]*' infra/.env | sort)`).
    That compares *keys*; three of them also have to be non-empty, and an empty value fails
@@ -34,7 +40,12 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
    ```
    The professor overview then shows `analysis delayed: budget` rather than a silent absence when
    the limit is reached.
-8. Verify: `curl -fsS https://<domain>/api/readyz` returns `ready`; worker logs show
+8. Verify attachments end to end, because nothing else exercises the browser-to-store path:
+   sign in as a student, attach a file to the weekly package, reload the page, and confirm it is
+   still listed. `readyz` reports `object_storage: ok` only when the bucket is actually present,
+   but it says nothing about whether a *browser* can reach it — that is DNS, the certificate for
+   `objects.<domain>`, and `RM_S3_PUBLIC_ENDPOINT` agreeing with each other.
+9. Verify: `curl -fsS https://<domain>/api/readyz` returns `ready`; worker logs show
    `worker starting`; the professor overview loads. If `RM_OPENAI_API_KEY` is unset the api log
    says so at start-up and assessments run on the deterministic fake gateway — which is a valid
    way to run a pilot, but it should be a decision rather than a surprise.
