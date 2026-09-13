@@ -99,7 +99,6 @@ class User(UUIDPrimaryKeyMixin, Base):
     display_name: Mapped[str] = mapped_column(Text)
     password_hash: Mapped[str | None] = mapped_column(Text)
     state: Mapped[UserState] = mapped_column(USER_STATE_ENUM, default=UserState.INVITED)
-    locale: Mapped[str] = mapped_column(Text, default="en", server_default="en")
     deactivated_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

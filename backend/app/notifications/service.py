@@ -296,7 +296,6 @@ async def dispatch_missed_deadline(
                 workspace_id=notification.workspace_id,
                 recipient_email=contact.email,
                 template=MISSED_DEADLINE_TEMPLATE,
-                locale=contact.locale,
                 state=DeliveryState.QUEUED,
             )
         )
@@ -377,7 +376,6 @@ async def send_queued_emails(session: AsyncSession, sender: EmailSender, *, limi
         contact = await identity_service.contact_for_job(session, notification.recipient_id)
         params = {
             **notification.payload,
-            "locale": delivery.locale,
             "display_name": contact.display_name if contact else "",
         }
         result = await sender.send(

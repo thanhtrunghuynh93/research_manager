@@ -1,1 +1,0 @@
-Chưa nhận được báo cáo tuần {{ period_start }} – {{ period_end }}

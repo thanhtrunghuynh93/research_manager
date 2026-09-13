@@ -32,9 +32,7 @@ async def list_users(
 async def update_own_profile(
     payload: ProfilePatch, scope: ScopeDep, session: SessionDep
 ) -> UserOut:
-    return await service.update_profile(
-        session, scope, display_name=payload.display_name, locale=payload.locale
-    )
+    return await service.update_profile(session, scope, display_name=payload.display_name)
 
 
 @router.post(

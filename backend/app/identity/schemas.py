@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.types import Role
 from app.identity.models import UserState
-
-Locale = Literal["en", "vi"]
 
 
 class UserOut(BaseModel):
@@ -23,7 +20,6 @@ class UserOut(BaseModel):
     email: str
     display_name: str
     state: UserState
-    locale: str
     deactivated_at: datetime | None = None
     created_at: datetime
 
@@ -78,7 +74,6 @@ class PasswordResetConfirmIn(BaseModel):
 
 class ProfilePatch(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
-    locale: Locale | None = None
 
 
 class RolePatch(BaseModel):

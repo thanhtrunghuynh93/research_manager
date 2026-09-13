@@ -35,7 +35,6 @@ class InvitationCreated:
     user_id: UUID
     email: str
     display_name: str
-    locale: str
     token: str
     expires_at: datetime
 
@@ -46,7 +45,6 @@ class PasswordResetRequested:
     user_id: UUID
     email: str
     display_name: str
-    locale: str
     token: str
     expires_at: datetime
 

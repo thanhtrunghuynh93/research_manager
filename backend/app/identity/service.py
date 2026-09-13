@@ -188,7 +188,7 @@ async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]
 
 
 async def contact_for_job(session: AsyncSession, user_id: UUID) -> UserOut | None:
-    """Job-level read: the address and language to send to. The worker has no Scope."""
+    """Job-level read: the address to send to. The worker has no Scope."""
     user = await repository.get_user_by_id(session, user_id)
     return None if user is None else UserOut.model_validate(user)
 
@@ -260,7 +260,6 @@ async def invite_user(
             user_id=user.id,
             email=address,
             display_name=user.display_name,
-            locale=user.locale,
             token=token,
             expires_at=invitation.expires_at,
         ),
@@ -537,14 +536,11 @@ async def update_profile(
     scope: Scope,
     *,
     display_name: str | None = None,
-    locale: str | None = None,
 ) -> UserOut:
     user = await _require_user(session, scope, scope.user_id)
-    before = {"display_name": user.display_name, "locale": user.locale}
+    before = {"display_name": user.display_name}
     if display_name:
         user.display_name = display_name
-    if locale:
-        user.locale = locale
     write_audit(
         session,
         workspace_id=scope.workspace_id,
@@ -553,7 +549,7 @@ async def update_profile(
         target_table="users",
         target_id=user.id,
         before=before,
-        after={"display_name": user.display_name, "locale": user.locale},
+        after={"display_name": user.display_name},
     )
     await session.flush()
     return UserOut.model_validate(user)
@@ -606,7 +602,6 @@ async def request_password_reset(session: AsyncSession, *, email: str) -> ResetR
             user_id=user.id,
             email=address,
             display_name=user.display_name,
-            locale=user.locale,
             token=token,
             expires_at=reset.expires_at,
         ),
@@ -826,7 +821,6 @@ async def _issue_recovery_link(
             user_id=user.id,
             email=user.email,
             display_name=user.display_name,
-            locale=user.locale,
             token=token,
             expires_at=reset.expires_at,
         ),

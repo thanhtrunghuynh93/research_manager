@@ -19,8 +19,7 @@ class SmtpEmailSender:
     async def send(
         self, to: str, template: str, params: dict[str, Any], idempotency_key: str
     ) -> DeliveryResult:
-        locale = str(params.get("locale", "en"))
-        subject, text_body, html_body = render(template, locale, params)
+        subject, text_body, html_body = render(template, params)
 
         message = EmailMessage()
         message["From"] = self._settings.mail_from

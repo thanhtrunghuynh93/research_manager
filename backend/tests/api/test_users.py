@@ -100,13 +100,23 @@ async def test_the_professor_deactivates_and_reactivates(
 async def test_a_user_edits_their_own_profile(client: AsyncClient, student_a: models.User) -> None:
     await _sign_in(client, student_a)
 
-    response = await client.patch(
-        "/api/v1/users/me", json={"display_name": "Renamed", "locale": "vi"}
-    )
+    response = await client.patch("/api/v1/users/me", json={"display_name": "Renamed"})
 
     assert response.status_code == 200
     assert response.json()["display_name"] == "Renamed"
-    assert response.json()["locale"] == "vi"
+
+
+async def test_the_profile_carries_no_language_setting(
+    client: AsyncClient, student_a: models.User
+) -> None:
+    """The product is English. A stored language nothing reads is a setting that lies about what
+    the next email will be written in, so the field is gone rather than pinned to one value."""
+    await _sign_in(client, student_a)
+
+    response = await client.patch("/api/v1/users/me", json={"display_name": "Renamed"})
+
+    assert response.status_code == 200
+    assert "locale" not in response.json()
 
 
 async def test_only_the_professor_changes_a_role(
