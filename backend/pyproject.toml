@@ -28,6 +28,7 @@ dependencies = [
   "pyjwt[crypto]>=2.9",
   "pypdf",
   "python-docx",
+  "python-pptx",
 ]
 
 [dependency-groups]

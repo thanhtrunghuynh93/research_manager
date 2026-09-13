@@ -119,3 +119,81 @@ def _minimal_docx(paragraph: str) -> bytes:
             "</w:p></w:body></w:document>",
         )
     return buffer.getvalue()
+
+
+def _deck(title: str, bullets: str, notes: str = "") -> bytes:
+    from pptx import Presentation
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+    slide.shapes.title.text = title
+    slide.placeholders[1].text = bullets
+    if notes:
+        slide.notes_slide.notes_text_frame.text = notes
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def test_a_pptx_yields_its_slides_and_speaker_notes() -> None:
+    """A weekly package is often a deck, and the argument is usually in the notes."""
+    deck = _deck("Retrieval baselines", "Recall@10 rose to 0.62", notes="Not conclusive yet.")
+
+    result = extract("week3.pptx", deck)
+
+    assert result.state is ExtractionState.OK
+    assert "Retrieval baselines" in result.text
+    assert "Recall@10 rose to 0.62" in result.text
+    assert "Not conclusive yet" in result.text
+
+
+def test_a_pptx_keeps_its_slide_boundaries() -> None:
+    """ "Results" on slide 2 and "Results" on slide 9 are different claims, not one paragraph."""
+    result = extract("week3.pptx", _deck("Results", "Seed spread dominates"))
+
+    assert "[slide 1]" in result.text
+
+
+def test_a_deck_of_only_figures_is_unsupported_rather_than_failed() -> None:
+    from pptx import Presentation
+
+    presentation = Presentation()
+    presentation.slides.add_slide(presentation.slide_layouts[6])  # blank
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+
+    result = extract("figures.pptx", buffer.getvalue())
+
+    assert result.state is ExtractionState.UNSUPPORTED
+    assert "no text" in result.note
+
+
+def test_a_pptx_that_cannot_be_parsed_is_a_failure_not_an_empty_deck() -> None:
+    result = extract("week3.pptx", b"PK\x03\x04 not really a pptx")
+
+    assert result.state is ExtractionState.FAILED
+
+
+def test_html_yields_its_prose_without_its_markup() -> None:
+    page = (
+        b"<html><head><title>ignored</title><style>p{color:red}</style></head>"
+        b"<body><h1>Weekly summary</h1><p>Curriculum ordering did not help.</p>"
+        b"<script>var secret = 1;</script></body></html>"
+    )
+
+    result = extract("summary.html", page)
+
+    assert result.state is ExtractionState.OK
+    assert "Weekly summary" in result.text
+    assert "Curriculum ordering did not help" in result.text
+    # Script and style bodies are code. Indexed, they bury the prose they sit next to.
+    assert "var secret" not in result.text
+    assert "color:red" not in result.text
+    assert "<p>" not in result.text
+
+
+def test_html_entities_are_read_as_the_characters_they_name() -> None:
+    result = extract("note.htm", b"<body><p>loss &lt; 1.3 &amp; falling</p></body>")
+
+    assert result.state is ExtractionState.OK
+    assert "loss < 1.3 & falling" in result.text

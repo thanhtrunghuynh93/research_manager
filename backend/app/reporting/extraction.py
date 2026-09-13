@@ -22,6 +22,7 @@ import json
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
+from html.parser import HTMLParser
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class Extracted:
 
 
 TEXT_EXTENSIONS = frozenset({"md", "txt", "tex", "bib", "json"})
+HTML_EXTENSIONS = frozenset({"html", "htm"})
 TABLE_EXTENSIONS = frozenset({"csv", "tsv"})
 IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "gif", "webp", "svg"})
 BINARY_EXTENSIONS = frozenset({"zip"})
@@ -77,6 +79,10 @@ def extract(filename: str, data: bytes) -> Extracted:
             return _cap(_pdf(data))
         if extension == "docx":
             return _cap(_docx(data))
+        if extension == "pptx":
+            return _cap(_pptx(data))
+        if extension in HTML_EXTENSIONS:
+            return _cap(_html(data))
         if extension in TEXT_EXTENSIONS or not extension:
             return _cap(_plain(data))
     except Exception as error:  # noqa: BLE001 - a malformed file is a state, not a crash
@@ -152,6 +158,83 @@ def _docx(data: bytes) -> Extracted:
             if any(cells):
                 parts.append(" | ".join(cells))
     return Extracted(state=ExtractionState.OK, text="\n".join(parts))
+
+
+def _pptx(data: bytes) -> Extracted:
+    """Every text frame, slide by slide, plus the speaker notes.
+
+    A deck is mostly headings and fragments, so slide boundaries are kept: "Results" under slide 4
+    and "Results" under slide 9 are different claims, and a flat blob of phrases reads as one.
+    Notes are included because that is where the argument usually is.
+    """
+    from pptx import Presentation
+
+    parts: list[str] = []
+    for number, slide in enumerate(Presentation(io.BytesIO(data)).slides, start=1):
+        lines = [
+            shape.text_frame.text.strip()
+            for shape in slide.shapes
+            if shape.has_text_frame and shape.text_frame.text.strip()
+        ]
+        for table in (shape.table for shape in slide.shapes if shape.has_table):
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                if any(cells):
+                    lines.append(" | ".join(cells))
+        if slide.has_notes_slide:
+            notes = slide.notes_slide.notes_text_frame
+            if notes is not None and notes.text.strip():
+                lines.append(f"Notes: {notes.text.strip()}")
+        if lines:
+            parts.append(f"[slide {number}]\n" + "\n".join(lines))
+
+    if not parts:
+        # A deck of nothing but figures is evidence; it simply has no text to index.
+        return Extracted(
+            state=ExtractionState.UNSUPPORTED,
+            note="the presentation has no text, so nothing could be extracted",
+        )
+    return Extracted(state=ExtractionState.OK, text="\n\n".join(parts))
+
+
+class _TextOnly(HTMLParser):
+    """Visible text only. Script and style bodies are code, and indexing them buries the prose."""
+
+    SKIP = frozenset({"script", "style", "head", "title"})
+    BREAK = frozenset({"p", "br", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"})
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._muted = 0
+
+    def handle_starttag(self, tag: str, attrs: object) -> None:
+        if tag in self.SKIP:
+            self._muted += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.SKIP and self._muted:
+            self._muted -= 1
+        elif tag in self.BREAK:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._muted and data.strip():
+            self.parts.append(data.strip())
+
+
+def _html(data: bytes) -> Extracted:
+    decoded = _plain(data)
+    parser = _TextOnly()
+    parser.feed(decoded.text)
+    parser.close()
+    text = " ".join(parser.parts).replace(" \n ", "\n").replace("\n ", "\n")
+    lines = [line.strip() for line in text.split("\n")]
+    return Extracted(
+        state=ExtractionState.OK,
+        text="\n".join(line for line in lines if line),
+        note=decoded.note,
+    )
 
 
 def _cap(result: Extracted) -> Extracted:

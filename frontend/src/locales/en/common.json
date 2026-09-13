@@ -73,7 +73,7 @@
       "addLink": "Add link",
       "download": "Download",
       "none": "Nothing attached yet.",
-      "limit": "Up to 25 MB per file. PDF, DOCX, Markdown, figures, notebooks and data files.",
+      "limit": "Up to 25 MB per file. Slides (PPTX), documents (DOCX), Markdown, HTML, PDF, figures, notebooks and data files.",
       "truncated": "truncated",
       "state": {
         "pending": "Reading…",
