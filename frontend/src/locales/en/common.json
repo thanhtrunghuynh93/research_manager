@@ -3,7 +3,8 @@
     "title": "Research Management",
     "greeting": "Hello {{name}}",
     "toDark": "Switch to dark",
-    "toLight": "Switch to light"
+    "toLight": "Switch to light",
+    "tagline": "supervision"
   },
   "common": {
     "loading": "Loading…",
@@ -12,7 +13,8 @@
   },
   "status": {
     "title": "System status",
-    "unreachable": "The API is unreachable."
+    "unreachable": "The API is unreachable.",
+    "polled": "Polled every 15 s · /api/readyz"
   },
   "auth": {
     "signIn": "Sign in",
@@ -95,7 +97,8 @@
     "stalled": "Analyses that did not complete",
     "nothingStalled": "Every analysis completed.",
     "stalledNote": "Each of these is retryable and none of them changed a report or its timestamp.",
-    "asOf": "as of {{when}}"
+    "asOf": "as of {{when}}",
+    "currentPeriod": "Current period"
   },
   "assessment": {
     "notRated": "Not rated — insufficient evidence",
@@ -167,7 +170,9 @@
     "suggestionsNote": "Drafts for you to act on, never actions taken.",
     "citations": "Sources",
     "gaps": "What could not be established",
-    "keepScope": "Keep this scope for follow-up questions"
+    "keepScope": "Keep this scope for follow-up questions",
+    "computedBadge": "computed",
+    "modelBadge": "model"
   },
   "notifications": {
     "title": "Notifications",

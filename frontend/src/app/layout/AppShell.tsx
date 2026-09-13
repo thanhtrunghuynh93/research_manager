@@ -32,7 +32,7 @@ export function AppShell() {
               {t("app.title")}
             </span>
             <span className="h-4 w-px bg-border" />
-            <span className="eyebrow">supervision</span>
+            <span className="eyebrow">{t("app.tagline")}</span>
           </Link>
           <div className="flex items-center gap-3">
             {/* Named, not just badged: the header is where you confirm whose workspace this is. */}

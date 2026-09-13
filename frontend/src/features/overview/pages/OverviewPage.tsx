@@ -35,7 +35,7 @@ export function OverviewPage() {
     <section className="animate-rise-in">
       <header className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-5">
         <div>
-          <p className="eyebrow mb-1.5">Current period</p>
+          <p className="eyebrow mb-1.5">{t("overview.currentPeriod")}</p>
           <h1 className="page-title">{t("overview.title")}</h1>
           {period ? (
             <p className="mt-2 font-mono text-[13px] text-muted-foreground">

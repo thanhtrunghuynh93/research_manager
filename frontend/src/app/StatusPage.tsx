@@ -20,7 +20,7 @@ export function StatusPage() {
     <section className="max-w-xl animate-rise-in space-y-5">
       <div>
         <h1 className="page-title">{t("status.title")}</h1>
-        <p className="stamp mt-2">Polled every 15 s · /api/readyz</p>
+        <p className="stamp mt-2">{t("status.polled")}</p>
       </div>
       {readiness.isPending && <p className="stamp">{t("common.loading")}</p>}
       {readiness.isError && <p className="text-sm text-bad">{t("status.unreachable")}</p>}

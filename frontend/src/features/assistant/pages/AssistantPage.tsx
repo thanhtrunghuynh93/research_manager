@@ -104,7 +104,7 @@ export function AssistantPage() {
                 <div className="mt-7" data-testid="facts">
                   <h2 className="flex items-baseline gap-2.5">
                     <span className="section-title">{t("assistant.facts")}</span>
-                    <span className="chip chip-good uppercase">computed</span>
+                    <span className="chip chip-good uppercase">{t("assistant.computedBadge")}</span>
                   </h2>
                   <p className="stamp mt-1.5">{t("assistant.factsNote")}</p>
                   <ul className="panel mt-2.5">
@@ -126,7 +126,7 @@ export function AssistantPage() {
                 <div className="mt-6" data-testid="synthesis">
                   <h2 className="flex items-baseline gap-2.5">
                     <span className="section-title">{t("assistant.synthesis")}</span>
-                    <span className="chip chip-accent uppercase">model</span>
+                    <span className="chip chip-accent uppercase">{t("assistant.modelBadge")}</span>
                   </h2>
                   <p className="stamp mt-1.5">{t("assistant.synthesisNote")}</p>
                   <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
