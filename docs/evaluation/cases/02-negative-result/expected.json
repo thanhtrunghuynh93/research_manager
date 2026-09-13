@@ -1,0 +1,30 @@
+{
+  "stage": "experimentation",
+  "language": "en",
+  "tags": [
+    "experiments",
+    "negative-result"
+  ],
+  "professor_ratings": {
+    "progress": 3,
+    "learning": 4,
+    "rigor": 4,
+    "artifacts": 3
+  },
+  "expected_index_range": [
+    80,
+    95
+  ],
+  "claim_expectations": [
+    {
+      "claim_contains": "does not help",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "0.82",
+      "status": "supported"
+    }
+  ],
+  "must_not_appear": [],
+  "notes": "AC-05: a rigorous negative result must be able to rate highly. A rating of 0 or 1 here is a calibration failure, not a strict assessor."
+}

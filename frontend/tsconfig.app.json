@@ -16,8 +16,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"],
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    // No `baseUrl`: it exists for AMD loaders, `paths` has not needed it since TS 4.1, and it
+    // is deprecated in TS 6.0 and gone in 7.0. The target is relative to this file instead.
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src"]
 }

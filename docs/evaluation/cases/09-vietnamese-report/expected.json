@@ -1,0 +1,29 @@
+{
+  "stage": "data_preparation",
+  "language": "vi",
+  "tags": [
+    "multilingual"
+  ],
+  "professor_ratings": {
+    "progress": 3,
+    "learning": 3,
+    "rigor": 3,
+    "artifacts": 3
+  },
+  "expected_index_range": [
+    70,
+    88
+  ],
+  "claim_expectations": [
+    {
+      "claim_contains": "0,4",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "TCVN3",
+      "status": "supported"
+    }
+  ],
+  "must_not_appear": [],
+  "notes": "REP-03: Vietnamese report text must be read on its own terms, and the rationale should be legible to the student who wrote it."
+}

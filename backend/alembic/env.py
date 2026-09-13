@@ -11,7 +11,15 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.ai.models  # noqa: F401
+import app.assessment.models  # noqa: F401
+import app.assistant.models  # noqa: F401
 import app.core.audit  # noqa: F401  (every module with ORM models is imported for autogenerate)
+import app.evidence.models  # noqa: F401
+import app.identity.models  # noqa: F401
+import app.notifications.models  # noqa: F401
+import app.projects.models  # noqa: F401
+import app.reporting.models  # noqa: F401
 from app.core.config import get_settings
 from app.core.db import Base
 
@@ -26,6 +34,13 @@ config.set_main_option(
 target_metadata = Base.metadata
 
 
+def include_object(
+    _object: object, name: str | None, type_: str, _reflected: bool, _compare_to: object
+) -> bool:
+    """The job queue's tables belong to procrastinate, so autogenerate leaves them alone."""
+    return not (type_ == "table" and name is not None and name.startswith("procrastinate_"))
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
@@ -33,13 +48,19 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def _run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

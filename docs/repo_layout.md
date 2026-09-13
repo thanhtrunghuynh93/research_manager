@@ -1,8 +1,8 @@
 # Research Management System — Repository Layout
 
-Version 0.1 — 11 September 2026 — companion to [architecture.md](architecture.md) and [research_management_requirements.md](research_management_requirements.md)
+Version 0.2 — 12 September 2026 — companion to [architecture.md](architecture.md) and [research_management_requirements.md](research_management_requirements.md)
 
-This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It is a specification for the repository, not a description of code that exists yet. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
+This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 
 ## 1 Principles
 
@@ -31,6 +31,7 @@ research_management/
 │   ├── research_management_requirements.md
 │   ├── architecture.md
 │   ├── repo_layout.md         this file
+│   ├── implementation_status.md  what is built, what is left, decisions taken (section 9)
 │   ├── adr/                   architecture decision records, one file each (section 7)
 │   ├── runbooks/              deploy.md, backup-restore.md, rotate-secrets.md, break-glass.md, incident.md
 │   ├── api/                   openapi.json exported by CI for review; changelog of breaking changes
@@ -59,7 +60,10 @@ backend/
 │   ├── __init__.py
 │   ├── main.py                FastAPI factory: create_app(settings) → mounts api routers, middleware, lifespan
 │   ├── worker.py              procrastinate app entry: imports every module's tasks.py, registers periodic tasks
-│   ├── cli.py                 typer root command; subcommands registered by modules (breakglass, seed, export)
+│   ├── cli.py                 typer root command; subcommands registered by modules
+│   ├── seed.py                demo dataset and the AC-19 missed-deadline drill
+│   ├── tasks.py               periodic jobs that span modules: calendar, queue health, retention
+│   ├── observability.py       reads the current state into the metric gauges
 │   ├── core/
 │   │   ├── config.py          Settings (pydantic-settings), one class, env-var names in section 3.6
 │   │   ├── db.py              engine, session factory, metadata, Base, get_session dependency
@@ -70,20 +74,28 @@ backend/
 │   │   ├── context.py         request/job id contextvar readable by lower layers (audit, logging)
 │   │   ├── errors.py          domain exceptions → HTTP problem details mapping
 │   │   ├── ids.py             uuid7()
+│   │   ├── storage.py         ObjectStore protocol, presigned URLs, S3/MinIO and in-memory stores
+│   │   ├── metrics.py         the Prometheus series; filled by app/observability.py
 │   │   ├── pagination.py      cursor pagination helpers
 │   │   └── types.py           shared enums (Role, Visibility, JobState)
 │   ├── identity/              module shape in 3.2
 │   ├── projects/
 │   ├── reporting/
+│   │   ├── artifacts.py       uploads, links, versions, download (REP-04)
+│   │   ├── extraction.py      text from markdown, csv, pdf, docx, notebooks
+│   │   └── links.py           SSRF-guarded link fetching
 │   ├── evidence/
 │   │   ├── connectors/
 │   │   │   ├── base.py        RepositoryConnector protocol, RepoRef, Page, DiffResult, WebhookEvent
 │   │   │   ├── github.py      GitHub App implementation
+│   │   │   ├── factory.py     picks a connector for a stored repository; falls back loudly
 │   │   │   └── fake.py        in-memory connector for tests and demo seed
 │   │   └── index/
 │   │       ├── chunking.py
-│   │       ├── embeddings.py  calls ai.gateway.embed; content-hash cache
+│   │       ├── embeddings.py  Embedder protocol + registry; content-hash cache (ai registers the
+│   │       │                gateway-backed one at start-up, so evidence never imports app.ai)
 │   │       └── retrieval.py   hybrid SQL (permission predicate first, then rank fusion)
+│   │   └── tasks.py           incremental_sync (30 min), targeted sync from a webhook
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
 │   │   ├── metrics.py         progress_index, plan_completion, coverage_pct, confidence — pure functions
@@ -92,6 +104,9 @@ backend/
 │   │   │   ├── matching.py    match_claims job
 │   │   │   ├── rating.py      rate_rubric job + validate_output()
 │   │   │   └── draft.py       create_draft job
+│   │   ├── events.py          subscribes to ReportSubmitted; enqueues one job per changed entry
+│   │   ├── tasks.py           the pipeline as a worker job
+│   │   ├── ops.py             model spend and budgets, for the professor-only admin routes
 │   │   └── review.py          approve, override, request_revision services
 │   ├── assistant/
 │   │   ├── router.py          intent + entity extraction → plan
@@ -107,9 +122,13 @@ backend/
 │   │   │   └── console.py     dev sender: logs to stdout / writes to MinIO "outbox"
 │   │   ├── templates/         Jinja2, en/ and vi/ subfolders, plain-text and HTML pairs
 │   │   ├── scheduler_tasks.py ensure_periods, freeze_baselines, scan_due_reminders, dispatch_missed_deadline
-│   │   └── preferences.py
+│   │   ├── preferences.py
+│   │   └── cli.py             dispatch-missed-deadline, send-queued-emails
+│   ├── exports/               bundle assembly across reporting, projects and assessment (UI-06)
 │   ├── ai/
-│   │   ├── gateway.py         AIGateway: complete_structured(), embed(); the only OpenAI import
+│   │   ├── gateway.py         AIGateway protocol, OpenAIGateway, prompt framing; the only OpenAI import
+│   │   ├── bootstrap.py       installs the gateway and the embedder at start-up
+│   │   ├── models.py          ai_calls, the cost ledger
 │   │   ├── prompts/
 │   │   │   ├── registry.py    load(prompt_id, version) → Prompt(model, temperature, schema, text)
 │   │   │   ├── extract_claims/v1.md + manifest.toml
@@ -118,7 +137,7 @@ backend/
 │   │   │   ├── route_question/v1.md + manifest.toml
 │   │   │   └── answer/v1.md + manifest.toml
 │   │   ├── schemas/           Pydantic models for every structured output (RubricOutput, ClaimList, RoutePlan, Answer)
-│   │   ├── cost.py            ai_calls ledger writes, budget checks
+│   │   ├── cost.py            ledger writes, published prices, budget checks
 │   │   ├── redaction.py
 │   │   └── fake.py            deterministic fake gateway for tests (fixtures keyed by prompt_id)
 │   └── api/
@@ -174,12 +193,13 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Layered bounded contexts"
 type = "layers"
-layers = ["app.assistant", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
+layers = ["app.assistant", "app.exports", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
 
 [[tool.importlinter.contracts]]
 name = "Only assessment and assistant use the AI gateway"
 type = "forbidden"
-source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.api", "app.core"]
+allow_indirect_imports = "true"   # the API calls assessment.service, which may reach the gateway
+source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.exports", "app.api", "app.core"]
 forbidden_modules = ["app.ai"]
 
 [[tool.importlinter.contracts]]
@@ -199,6 +219,7 @@ forbidden_modules = ["app.evidence", "app.assessment", "app.assistant"]
 [[tool.importlinter.contracts]]
 name = "API never touches ORM models directly"
 type = "forbidden"
+allow_indirect_imports = "true"   # the API reaches models through service.py by design
 source_modules = ["app.api"]
 forbidden_modules = ["app.identity.models", "app.projects.models", "app.reporting.models", "app.evidence.models", "app.assessment.models", "app.assistant.models", "app.notifications.models"]
 ```
@@ -231,7 +252,7 @@ Conventions: test names state the behaviour (`test_late_submission_keeps_first_s
 | ruff | `[tool.ruff]` line length 100, rules E,F,I,B,UP,S,N | Lint and format |
 | mypy | strict, plugins for SQLAlchemy and Pydantic | Type check |
 | import-linter | section 3.3 | Module boundaries |
-| pytest | `-p no:cacheprovider`, `asyncio_mode = auto`, markers `unit`, `module`, `acceptance`, `evaluation` | Tests |
+| pytest | `-p no:cacheprovider`, `asyncio_mode = auto`, markers `unit`, `module`, `api`, `authz`, `acceptance`, `evaluation_contract`, `evaluation` | Tests |
 | alembic | autogenerate diff checked in CI (`make migrate-check`) | Schema drift |
 | gitleaks | pre-commit and CI | Secret scanning |
 
@@ -260,7 +281,7 @@ All read once by `core/config.py`. Prefix `RM_`.
 frontend/
 ├── package.json               scripts: dev, build, preview, lint, typecheck, test, e2e, gen:api
 ├── package-lock.json          npm; CI installs with `npm ci`
-├── vite.config.ts             /api proxy to localhost:8000 in dev; build to dist/
+├── vite.config.ts             /api proxy to localhost:8021 in dev; build to dist/
 ├── tsconfig.json              project references → tsconfig.app.json (strict, alias @/ → src/) and tsconfig.node.json
 ├── tailwind.config.ts, postcss.config.js, components.json (shadcn)
 ├── eslint.config.js           ESLint 9 flat config (typescript-eslint, react-hooks, react-refresh)
@@ -333,6 +354,10 @@ Image build: one `backend/Dockerfile` produces `rm-backend`; `frontend/` builds 
 
 ```
 scripts/
+├── run.sh                     start the stack in real mode; refuses to start with a credential
+│                              missing, because each integration otherwise falls back to a fake
+├── run_mock.sh                the same in mock mode: fake gateway, in-memory connector, mailpit;
+│                              a separate compose project, so seeded demo data never mixes in
 ├── dev-up.sh                  compose dev stack, wait for readiness, run migrations
 ├── seed_demo.py               calls app.cli seed: one professor, 6 students, 4 projects, 8 periods, fake repo events
 ├── seed_benchmark.py          50 students × 30 projects × 3 years, 100k chunks, for the performance suite
@@ -358,6 +383,9 @@ scripts/
 - `release.yml` on tag `v*`: build, push to the registry, generate SBOM, create release notes from commits.
 
 ## 9 Bootstrap order
+
+Progress against this order, and the decisions taken while working through it, are recorded in
+[implementation_status.md](implementation_status.md).
 
 The first pull requests, in dependency order, so that the tree above fills in without dead directories:
 

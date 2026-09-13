@@ -1,0 +1,347 @@
+# Implementation status
+
+Version 0.4 — 12 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
+
+This document records what has been built, what remains, and the decisions taken while building
+that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
+layout. Update it in the pull request that changes what it describes.
+
+## 1 Where the project stands
+
+| Step | Scope | State |
+| --- | --- | --- |
+| 1 | Repository skeleton, `core/`, health endpoints, dev Compose, CI | Done |
+| 2 | `identity/`: users, invitations, sessions, authz, break-glass | Done |
+| 3 | `projects/` and `reporting/`: periods, obligations, drafts, submission, versions, plan baselines, artifacts; student frontend | Done |
+| 4 | `notifications/`: scheduler tasks, missed-deadline email, in-app messages | Done |
+| 5 | `evidence/`: connectors, identity mapping, indexing and retrieval | Done |
+| 6 | `assessment/`: snapshot, metrics, pipeline, review | Done |
+| 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Done |
+| 8 | `assistant/`, exports, professor overview, backup drill, release | Done |
+| 9 | The seams: assessment triggering, the periodic tasks, the repository API | Done |
+| 10 | A full review of the branch, and the defects it found | Done |
+
+At the time of writing: 710 backend tests, 60 frontend tests, 91.3 % backend coverage, fifteen
+migrations, and all five import-linter contracts holding. Every one of the nineteen acceptance scenarios has a test.
+
+**Version 0.2 of this document claimed the MVP was complete. It was not**, and the error is worth
+recording because of its shape: every module was built and tested, and three of the seams between
+them were missing, which no module-level test could see.
+
+- Nothing subscribed to `ReportSubmitted` on behalf of `assessment`, so a submitted report indexed
+  itself and notified the professor and never produced a draft. The review queue stayed empty until
+  somebody asked for each assessment by hand.
+- Four of the six periodic tasks in architecture §12 did not exist, so the reporting calendar and
+  the plan baselines only advanced when a person POSTed for them.
+- `evidence` was complete and unreachable: every service existed and no route did, so a repository
+  could not be connected through the product at all.
+
+All three are now built (§2, step 9). The lesson for the next reviewer of this document: a step
+marked Done means its module is done, and the question worth asking separately is what calls it.
+
+**Version 0.3 was then reviewed line by line, and the same shape appeared again.** A fourth seam
+was missing — the API process never opened the job queue, so every `defer_async` raised
+`AppNotOpen` and a submitted report still produced no draft, exactly the symptom §9 was meant to
+have cured. The review found more than fifty further defects, and what they had in common is
+worth recording as plainly as the seams were:
+
+- **A test that stubs the seam proves the module, not the product.** The assessment trigger test
+  monkeypatched `defer_pipeline`, the seed called `run_pipeline` directly, and the webhook test
+  signed its payload with the test double's own published secret — so three separate defects in
+  the same path were invisible while the suite was green.
+- **Docstrings asserted invariants the code did not hold.** `core/jobs.py` said jobs were enqueued
+  in the caller's transaction; `useAutosave` said it flushed on unmount; `links.py` said the fetch
+  was bounded in three directions; `embeddings.py` said a restricted project skipped the provider;
+  the exports bundle called itself complete. Each was a decision written down and then not
+  implemented, and each read as documentation of working behaviour.
+- **Wrong numbers look like numbers.** Commitment completion was computed with every fraction
+  hardcoded to zero; coverage took its denominator from whatever the model returned; the snapshot
+  carried a fortnight of already-assessed evidence. None of these fails — they produce a plausible
+  figure, which is the worst available outcome for an assessment system.
+
+All are fixed, each with a test that fails without the fix. What remains before a pilot
+is still calibration and operation rather than construction: the rubric has to be rated against
+real work, and the professor still owes the decisions in §5.
+
+## 2 What each finished step delivers
+
+### Step 2 — `identity/` (AUTH-01..03)
+
+Invitation-based enrollment with single-use tokens stored only as digests; Argon2 passwords;
+server-side sessions with a 12-hour idle and 30-day absolute expiry; password recovery; and the
+audited break-glass procedure the runbook describes, reachable only from a host shell.
+
+One predicate decides every read of a user record, and search, downloads and exports compile the
+same one — there is no second permission model. Deactivation, role change, and password reset each
+revoke every session and advance `workspaces.access_epoch` in the same transaction, which is what
+later lets a cached answer be refused.
+
+`app.cli identity bootstrap` creates the workspace and its professor; without it there was no way
+to get a first account, and the deploy runbook now names it.
+
+### Step 3 — `projects/` and `reporting/` (PROJ-01..06, REP-01..06)
+
+Projects with research questions, stages and statuses; membership history that is never deleted;
+milestones whose baselines are retained as immutable revisions when scope or weight changes; tasks
+whose partial completion must carry a reason; dated research decisions.
+
+The reporting calendar generates periods, derives obligations from membership dates and project
+status, and records exemptions and extensions. Drafts autosave. Submission writes an immutable
+version with one entry per required project, and a repeated submission carrying the same
+idempotency key returns the version already written.
+
+Plan baselines freeze at period start from the previous report's next-week plan, or record an empty
+baseline when there is nothing to freeze; a student may then propose a first plan, which becomes a
+commitment only once the professor accepts it.
+
+Attachments (REP-04) upload straight to object storage: the API validates the size, issues a
+presigned PUT, and then verifies what arrived against the checksum the client declared. Extraction
+records three outcomes rather than two, because a file we could not read and a file with no text to
+read lead to opposite conclusions about the week. Links are fetched only after the resolved address
+is checked, and every redirect is checked again.
+
+The frontend covers sign-in, the student overview, and the weekly editor with a tab per required
+project, autosave, attachments, and an idempotent submit.
+
+### Step 4 — `notifications/` (REP-07, REP-08, UI-07)
+
+The missed-deadline job reads obligations at the moment it sends, so a submission at 23:59 receives
+nothing. Every write is keyed, so a retried job sends no duplicate. The professor sees the
+outstanding list in-app at the same time and receives no email. In-app notifications carry
+per-recipient visibility and mutable preferences, with the critical categories unmutable.
+
+The procrastinate schema ships as a migration, so a deploy still runs only `alembic upgrade head`.
+
+`app.cli notifications dispatch-missed-deadline` runs the dispatch again after a mail
+misconfiguration is fixed; it is safe to repeat because the notification key and the delivery row
+make a repeat a no-op.
+
+### Step 5 — `evidence/` (REPO-01..08)
+
+A read-only connector protocol with two implementations: an in-memory one that the tests, the demo
+seed and the end-to-end stack run against, and the GitHub App connector, which mints an installation
+token per run and never persists it.
+
+Sync normalises commits, pull requests, reviews, issues and check runs into events that keep author,
+commit, merge and ingestion time apart. A run ends completed, partial, or failed, so a rate limit
+keeps its progress and a revoked credential is reported rather than read as an absence of work.
+
+Attribution is deliberately narrow: only a verified login or an explicitly confirmed alias
+attributes anything; a merger is recorded as a merger; co-authors are joint and the project counts
+the artifact once; bots are labelled; and a repository serving several projects leaves unmatched
+paths unresolved.
+
+The index stores citable references with their access label and chunks that carry it too, so the
+permission predicate sits inside each ranking arm and a chunk outside the caller's scope is never
+scored.
+
+### Step 6 — `assessment/` (ASSESS-01..10)
+
+The arithmetic is pure and replayable: the specification's worked example runs end to end, an
+unknown withholds the index rather than scoring zero, a not-applicable dimension renormalises the
+rest, and a missing baseline leaves commitment completion unavailable.
+
+Snapshots are built through the student's own view of the evidence, so an assessment later
+published to them cites only what they can open, and a supervision note can never reach one. A
+citation that is not in the snapshot is dropped and the rating that rested on it is downgraded to
+`unknown`. A failed model step leaves the run partial and retryable; a restricted project reaches
+no provider at all.
+
+Drafts are the professor's to approve. An override requires a recorded reason and keeps the model's
+own output beside it; a revision creates a new version while the approved one still stands.
+
+### Step 7 — `ai/` (ASSESS-09, requirements §11, §13)
+
+`gateway.py` is the only module that imports the OpenAI SDK. A prompt file splits at its first
+labelled section: the instructions stay above, and every piece of student text, diff or README is
+rendered into the untrusted block below them. Placeholders are filled by plain substitution rather
+than a template engine, because a real engine would hand that text an expression language to sit
+in. No tool is offered to the model in any call, so there is nothing for an injected instruction to
+reach even if one is followed.
+
+Inputs are redacted before they are serialised; what was removed is recorded as a rule name, never
+as the value. Retries cover only errors that could plausibly clear. Every outcome — completed,
+refused, failed, delayed by budget — writes an `ai_calls` row in the caller's transaction, and a
+model with no published rate records its tokens and leaves the cost null rather than guessing.
+
+A spent budget is its own run state. A run that produced no draft has three possible causes and the
+professor needs to tell them apart: the money ran out, the model failed, or nothing changed.
+
+The evaluation set in [`docs/evaluation/`](evaluation/) holds ten seed cases covering the categories
+requirements §13 names. The harness keeps two questions apart: contract properties are pass/fail and
+run on every CI pass against the deterministic gateway; agreement with the professor needs the real
+provider and is reported rather than asserted, because a threshold invented before anyone has seen
+real disagreement is a number to hit rather than a decision to make.
+
+### Step 8 — `assistant/`, exports, overview, operations (QA-01..07, UI-01, UI-06)
+
+The assistant runs one flow in a fixed order, because the order is the safety property: route,
+resolve entities against the database, compute facts, retrieve, re-check, generate, validate
+citations, cache.
+
+A fact question never reaches the generation step. The obligations table says how many reports are
+missing and that number is rendered, not written — the AC-15 tests script the fake gateway to
+answer "seven" so that passing proves it was not consulted. Citations are checked against what was
+actually retrieved; an invented one is dropped and the drop is stated.
+
+Confidentiality is structural rather than instructed: supervision notes live in a table nothing
+indexes and are read through a function the student branch never calls. The answer cache is keyed by
+the asker as well as the question and dies with the access epoch it was written under.
+
+Exports assemble a bundle through the owning modules' services, so "export authorization must match
+interactive access" holds by construction. Asking for a kind you may not export is refused rather
+than answered with an empty list, because an empty list is a claim that there is nothing there.
+
+The professor overview is built from the same fact functions the assistant uses, so the number on
+the dashboard and the number in an answer cannot disagree.
+
+The demo dataset (`app.cli seed demo`) and the missed-deadline drill (`seed missed-deadline-drill`)
+give the Playwright suite something to act on; the e2e specs read mailpit to prove REP-08 end to
+end, which the service tests cannot.
+
+### Step 9 — the seams (architecture §9.1, §12; REPO-01..05)
+
+`assessment/events.py` subscribes to `ReportSubmitted` and enqueues one pipeline job per entry
+whose content moved — two projects in one package give two assessments (AC-01), an entry carried
+forward unchanged gives none (AC-17). The queueing lock is the job key, so a redelivered event and
+a manual retry are the same job. An enqueue that fails is logged and swallowed: the submitted
+version is the thing that cannot be lost, and a missing draft is recoverable from the retry
+endpoint (requirements §10, AC-13).
+
+Eight periodic tasks now run: `ensure_periods` and `freeze_baselines` daily, `scan_due_reminders`
+and `send_queued_emails` on their short cycles, `dispatch_due_reminders` every fifteen minutes,
+`incremental_sync` every thirty, `queue_health` every five, and `retention_sweep` nightly. The two
+calendar tasks are idempotent by construction, so a worker that was down for a day catches up
+rather than skipping a week.
+
+The repository routes close REPO-01 through REPO-05 as a *product* rather than a module: connect,
+link to a project, map a developer identity, resync, search the evidence index, and the signed
+GitHub webhook — which also enqueues the targeted run architecture §8.3 describes and reports
+whether the delivery matched anything, because one landing nowhere looks identical to one working.
+
+`/api/metrics` serves the series requirements §11 names. The assistant gained the SSE stream its
+client helper was already written against.
+
+## 3 What is deliberately not built
+
+| Gap | Requirement | Why |
+| --- | --- | --- |
+| OCR for scanned documents | REP-04 | Explicitly later work in the specification. A scanned PDF is recorded as "no text layer", not as an extraction failure |
+| Second repository provider, experiment trackers | §12 next release | Out of MVP scope by the specification |
+| Row-Level Security | §11 | ADR 0004: application-level authorization first, RLS as defence in depth after the MVP |
+| Student-side assistant | §2, §12 | Next release; the retrieval path and the predicate are already shared, so it is a surface rather than a rebuild |
+| Rubric calibration | ASSESS-03, §13 | Needs the professor's own ratings on real weeks. The harness and the protocol are ready for them |
+| Retention and authorized deletion | §11 "Data control" | `retention_sweep` expires the answer cache, which has a defined lifetime. Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
+| Performance benchmarks | §11, §15 | `scripts/bench/` is empty. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured against the 100k-chunk corpus the seed script can build |
+
+### Acceptance scenarios
+
+All nineteen have tests: AC-01 through AC-19. `scripts/check_traceability.py` asserts it on every
+CI run and prints the list.
+
+AC-16 runs a real `pg_dump` and `pg_restore` cycle and reads the restored database back through the
+ordinary services. It claims what a test can claim — that the records, the permission boundary and
+the immutability triggers survive — and not the wall-clock recovery time, which
+`scripts/restore_drill.sh` measures on real infrastructure.
+
+## 4 Decisions taken while building
+
+These are choices the specification left open, or places where following it literally would have
+produced something wrong. Each is reflected in the code and in the document it contradicts.
+
+| Decision | Reason |
+| --- | --- |
+| `meeting_date` is derived from the period's end, not its start (architecture §7.1 corrected) | The formula as written placed the deadline the day before the period opened. The meeting follows the week it discusses |
+| `project_memberships.left_on` is exclusive | With an inclusive end, "remove this student now" left their access alive until midnight |
+| Embeddings come from a registered `Embedder`, not a direct gateway call | repo_layout §3.1 said otherwise, but §3.3 forbids `evidence` importing `ai`, and a restricted project must be able to index without a provider |
+| The index tells the embedder who to bill, through `EmbedContext` | Same contract: `evidence` cannot write an `ai_calls` row, but it can say which workspace a batch is for and leave the accounting to whoever makes the vectors |
+| `repository_events` and `plan_baselines` carry targeted guards rather than the blanket immutability trigger | REPO-06 must record that a force push removed an object upstream, and a proposed baseline must be acceptable; the guards allow exactly those transitions and nothing else |
+| Email delivery is a queued row drained by a periodic task, not one job per message | Same at-least-once behaviour, with the attempt count and the last error in one place |
+| Two import contracts scoped to direct imports | The API reaches models through `service.py` and the gateway through `assessment.service`; that is the intended arrangement, and the contracts now forbid what they meant to forbid |
+| Full-text search uses the `simple` configuration | Reports are written in English and Vietnamese; English stemming distorts the latter. Revisit with the retrieval benchmark |
+| Report entries and attachments are indexed by `evidence` reacting to events | Reporting stays unaware of evidence, which is the layer direction the architecture sets. `ArtifactExtracted` uses the same seam `ReportSubmitted` does |
+| Deadlines render as 23:59 rather than 11:59 PM | The requirement states the rule in 24-hour time, and the workspace's timezone convention matches |
+| `app.exports` is a bounded context, not just a router | A bundle spans reporting, projects and assessment; assembling it through those modules' services is what makes export authorization identical to interactive access rather than a second implementation of it |
+| Model prices live in a table in `ai/cost.py`, and an unknown model records a null cost | A guessed price would be believed. The tokens are the fact; the money is arithmetic over a published rate |
+| A spent budget is a distinct run state, not a `partial` | The professor's response to "the money ran out" is different from their response to "the model failed", so the record distinguishes them |
+| The assistant resolves entity names against records the caller can already see | A model asked about a name will produce a plausible id. Matching against the caller's own visible set means a wrong guess finds nothing rather than reaching a record |
+| Relative dates are resolved in Python, not by the router model | "Last month" has an exact answer, and a language model is the wrong instrument for arithmetic on dates |
+| Attachment text is indexed `student_private`, matching the artifact record | The artifact is readable by its owner and the professor; indexing its text as project-shared would let a project-mate retrieve through search what they cannot open directly |
+| A link is extracted by the server's `Content-Type`, not by the URL's last path segment | `/abs/2401.00001` has no extension worth reading, and the response says what it actually sent |
+| A failed enqueue is logged and swallowed, not raised | Requirements §10: report acceptance must not wait on anything downstream. A missing draft is recoverable from the retry endpoint; an unrecorded submission is not recoverable at all |
+| The connector factory falls back to the in-memory connector and says so in the log | A misconfigured key should surface as stale evidence on the dashboard, not as a dead worker that stops syncing every repository. Silently syncing nothing is the one outcome that must not happen, because it is indistinguishable from a student who did nothing (AC-04) |
+| A webhook for an unknown repository is accepted, recorded, and reported as unmatched | Asking GitHub to retry something that will never match is noise rather than resilience; but a webhook landing nowhere looks identical to one working, so the response says which it was |
+| Metric labels may never identify a person | A metric is scraped into a system with different access rules from this one, so a student id in a label would be a disclosure through the monitoring stack |
+| `retention_sweep` expires only the answer cache | It is the one record with a defined lifetime. Inventing a deletion schedule for reports and assessments would be irreversible and is the professor's decision (requirements §14) |
+| The evaluation harness reports agreement rather than asserting a threshold | Requirements §13 says the threshold is agreed with the professor during the pilot. Asserting one now would turn calibration into a test that gets tuned until it passes |
+
+## 5 Open decisions still owed by the professor
+
+Carried from requirements §14 and architecture §17, narrowed to what is still open:
+
+1. **Mail provider** — SMTP relay or a transactional API. The `EmailSender` protocol takes either;
+   the dev stack uses mailpit.
+2. **Model and data-processing terms** — which content may reach OpenAI, and which projects need
+   `ai_restricted`. The gateway, the ledger and the restriction flag are built and wired; what is
+   missing is the decision about what may be sent.
+3. **Rubric calibration** — the default weights and anchors are the specification's proposals. The
+   pilot gates in §13 are the point at which they become real, and
+   [`docs/evaluation/protocol.md`](evaluation/protocol.md) is the procedure.
+4. **Monthly AI budget** — `admin/ai/budgets` accepts one; none is configured, which means no limit
+   rather than a limit of zero.
+5. **VPS region and offsite backup destination**.
+6. **Whether to add Row-Level Security** as defence in depth after the MVP.
+7. **Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.
+
+The first repository provider is settled: GitHub, as ADR 0005 assumed.
+
+## 6 How to verify the current state
+
+```bash
+cd backend
+uv run ruff check . && uv run ruff format --check .
+uv run mypy app
+uv run lint-imports
+uv run pytest --cov=app --cov-fail-under=85
+
+cd ../frontend && npm ci && npm run lint && npm run typecheck && npm test -- --run && npm run build
+
+cd .. && python3 scripts/check_traceability.py
+bash scripts/gen_api_client.sh && git diff --exit-code -- docs/api frontend/src/api/generated
+```
+
+Migrations are verified by applying them to an empty database, running `alembic check` for drift,
+then downgrading and re-applying. The worker is verified by running it against a real queue: that
+is how the missing engine initialisation in step 4 was found.
+
+`tests/jobs/test_defer_seam.py` covers the wiring itself: that the API process can actually
+enqueue against a real connector, and that nothing is enqueued for a transaction that did not
+commit. It exists because the by-hand check below verifies the worker's registry and says nothing
+about whether anything can defer to it.
+
+A check worth running by hand after any change to the seams — the worker must register every task,
+and the periodic list must match architecture §12:
+
+```bash
+cd backend && uv run python -c "
+import importlib
+from app.core.jobs import TASK_MODULES, procrastinate_app
+for module in TASK_MODULES: importlib.import_module(module)
+print(sorted(procrastinate_app.tasks))
+print(sorted(d.task.name for d in procrastinate_app.periodic_registry.periodic_tasks.values()))
+"
+```
+
+The end-to-end suite needs the Compose stack and the demo dataset:
+
+```bash
+bash scripts/dev-up.sh
+cd backend && uv run python -m app.cli seed demo
+cd ../frontend && npm run e2e
+```
+
+The calibration run costs money and is opt-in:
+
+```bash
+cd backend && RM_EVAL=1 uv run pytest tests/evaluation -m evaluation -s
+```

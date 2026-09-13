@@ -1,0 +1,31 @@
+{
+  "stage": "data_preparation",
+  "language": "en",
+  "tags": [
+    "incomplete-evidence"
+  ],
+  "professor_ratings": {
+    "progress": "unknown",
+    "learning": "unknown",
+    "rigor": "unknown",
+    "artifacts": "unknown"
+  },
+  "expected_index_range": null,
+  "expected_index_is_none": true,
+  "claim_expectations": [
+    {
+      "claim_contains": "11.4",
+      "status": "unverifiable"
+    },
+    {
+      "claim_contains": "memory",
+      "status": "unverifiable"
+    }
+  ],
+  "must_not_appear": [
+    "no work was done",
+    "did not work",
+    "zero progress"
+  ],
+  "notes": "AC-04 and AC-07: a failed connector is stale evidence, never an absence of work. Every rating must be unknown and the index must be withheld, not set to zero."
+}

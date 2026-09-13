@@ -17,12 +17,20 @@ node_modules/
 frontend/dist/
 frontend/playwright-report/
 frontend/test-results/
+# `tsc -b` incremental state. It changes on every typecheck and describes this machine's last
+# build, so tracking it makes a clean tree dirty for doing nothing.
+*.tsbuildinfo
 
 # Environment and secrets
 .env
 infra/.env
+# Per-mode env files for scripts/run.sh; infra/.env.real holds live provider credentials.
+infra/.env.*
 *.pem
 *.key
+# Host secrets mounted into the containers. The README explaining them is kept.
+infra/secrets/*
+!infra/secrets/README.md
 
 # Editors and OS
 .vscode/

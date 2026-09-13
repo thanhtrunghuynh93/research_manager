@@ -51,7 +51,12 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
     try {
       problem = (await response.json()) as Problem;
     } catch {
-      problem = { type: "about:blank", title: response.statusText, status: response.status, detail: "" };
+      problem = {
+        type: "about:blank",
+        title: response.statusText,
+        status: response.status,
+        detail: "",
+      };
     }
     throw new ApiError(problem, response);
   }
@@ -68,6 +73,31 @@ export const api = {
   delete: <T>(path: string, opts?: RequestOptions) => request<T>("DELETE", path, opts),
 };
 
+/**
+ * A random key identifying one submission attempt (REP-05).
+ *
+ * `crypto.randomUUID` exists only in a secure context — HTTPS, or a localhost origin — so over
+ * plain HTTP on a LAN or Tailscale address it is undefined and merely reading it throws.
+ * `crypto.getRandomValues` carries no such restriction, so the v4 layout is assembled from it
+ * and `randomUUID` is used only when it is actually there.
+ */
 export function newIdempotencyKey(): string {
-  return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    // Neither is a browser this app supports; a key that is merely unlikely to repeat still
+    // makes a retry idempotent, which is the only thing asked of it.
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // variant 1
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

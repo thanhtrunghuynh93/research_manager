@@ -15,6 +15,13 @@
 		-Server
 	}
 
+	# Prometheus scrapes over the internal network, never through here. The app also requires
+	# RM_METRICS_TOKEN in prod; this is the second lock, so a misconfigured token is not the only
+	# thing standing between the public internet and every workspace's queue and sync health.
+	handle /api/metrics* {
+		respond 404
+	}
+
 	# API and webhooks; SSE needs flushing without buffering.
 	handle /api/* {
 		reverse_proxy api:8000 {

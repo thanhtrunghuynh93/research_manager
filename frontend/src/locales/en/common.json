@@ -1,8 +1,251 @@
 {
-  "app": { "title": "Research Management" },
-  "common": { "loading": "Loading…", "save": "Save", "cancel": "Cancel" },
+  "app": {
+    "title": "Research Management"
+  },
+  "common": {
+    "loading": "Loading…",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
   "status": {
     "title": "System status",
     "unreachable": "The API is unreachable."
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "signOut": "Sign out"
+  },
+  "me": {
+    "title": "This week",
+    "dueBy": "Due by",
+    "obligations": "Reports owed",
+    "nothingOwed": "Nothing is owed for this week.",
+    "noPeriod": "No reporting period has been configured yet.",
+    "startWeek": "Start this week",
+    "openWeek": "Open this week"
+  },
+  "report": {
+    "title": "Weekly package",
+    "tabs": "Project entries",
+    "submit": "Submit package",
+    "submitted": "Submitted as version {{version}}.",
+    "state": {
+      "not_started": "Not started",
+      "draft": "Draft",
+      "submitted": "Submitted",
+      "revision_requested": "Revision requested",
+      "resubmitted": "Resubmitted",
+      "reviewed": "Reviewed"
+    },
+    "obligation": {
+      "required": "Required",
+      "excused": "Excused"
+    },
+    "autosave": {
+      "idle": "Not saved yet",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "failed": "Not saved — retrying"
+    },
+    "fields": {
+      "workPerformed": "Work performed",
+      "results": "Results and research learning",
+      "deviations": "Deviations and blockers",
+      "nextPlan": "Next-week plan",
+      "questions": "Questions for the professor",
+      "hours": "Hours (optional)",
+      "hoursNote": "Self-reported; not treated as verified productivity."
+    },
+    "attachments": {
+      "title": "Evidence",
+      "claim": "What does this show?",
+      "claimPlaceholder": "The run log behind the nDCG number",
+      "claimNote": "Your description of what this supports. Recorded as your claim, not as a finding.",
+      "file": "Attach a file",
+      "link": "Or a link",
+      "addLink": "Add link",
+      "download": "Download",
+      "none": "Nothing attached yet.",
+      "limit": "Up to 25 MB per file. PDF, DOCX, Markdown, figures, notebooks and data files.",
+      "truncated": "truncated",
+      "state": {
+        "pending": "Reading…",
+        "ok": "Text extracted",
+        "failed": "Could not be read",
+        "unsupported": "Stored, no text"
+      }
+    }
+  },
+  "overview": {
+    "title": "Overview",
+    "unavailable": "The overview could not be loaded.",
+    "outstanding": "Reports still owed",
+    "nothingOutstanding": "Every obligation for this week has been met.",
+    "reviewQueue": "Assessments awaiting review",
+    "nothingToReview": "Nothing is waiting for review.",
+    "draftFor": "Draft for {{student}}",
+    "syncIssues": "Repository sync",
+    "syncHealthy": "Every connected repository synced recently.",
+    "syncNote": "A stale repository means the evidence is incomplete, not that no work was done.",
+    "stalled": "Analyses that did not complete",
+    "nothingStalled": "Every analysis completed.",
+    "stalledNote": "Each of these is retryable and none of them changed a report or its timestamp.",
+    "asOf": "as of {{when}}"
+  },
+  "assessment": {
+    "notRated": "Not rated — insufficient evidence",
+    "unknown": "Unknown",
+    "confidence": {
+      "high": "High confidence",
+      "medium": "Medium confidence",
+      "low": "Low confidence"
+    },
+    "dimension": {
+      "progress": "Progress toward agreed outcomes",
+      "learning": "Research learning and reasoning",
+      "rigor": "Rigor and evidence quality",
+      "artifacts": "Usable research artifacts"
+    }
+  },
+  "evidence": {
+    "stale": "Sync {{state}}",
+    "fresh": "Synced {{when}}",
+    "noLongerAvailable": "no longer available to you",
+    "privateNote": "Private supervision note",
+    "noCitations": "No citations — nothing here rests on a retrieved record."
+  },
+  "review": {
+    "title": "Review",
+    "unavailable": "This assessment could not be loaded.",
+    "version": "Version {{n}}",
+    "claims": "Report claims",
+    "noDiscrepancies": "No claim was left unresolved.",
+    "evidence": "Evidence snapshot",
+    "noEvidence": "The snapshot is empty. Ratings cannot rest on anything.",
+    "integrated": "integrated earlier work",
+    "draft": "Draft assessment",
+    "rationale": "Reason for any change",
+    "rationalePlaceholder": "Why you are changing a rating. Recorded with the approval.",
+    "rationaleRequired": "A changed rating needs a recorded reason before it can be approved.",
+    "approve": "Approve and publish",
+    "approveWithOverride": "Approve with an override",
+    "published": "Published to the student at {{when}}.",
+    "state": {
+      "draft": "Draft",
+      "approved": "Approved",
+      "superseded": "Superseded",
+      "withdrawn": "Withdrawn"
+    },
+    "claimStatus": {
+      "supported": "Supported",
+      "partially_supported": "Partly supported",
+      "unsupported": "Unsupported",
+      "unverifiable": "Unverifiable"
+    }
+  },
+  "assistant": {
+    "title": "Assistant",
+    "question": "Question",
+    "ask": "Ask",
+    "thinking": "Working…",
+    "placeholder": "Which reports are missing this week?",
+    "readOnly": "Read-only. It can draft text; sending, approving and changing remain your actions.",
+    "failed": "The question could not be answered.",
+    "scope": "Scope",
+    "wholeWorkspace": "the whole workspace",
+    "cached": "Cached",
+    "facts": "Read from the records",
+    "factsNote": "Computed from the database, not written by the model.",
+    "synthesis": "Inferred",
+    "synthesisNote": "The model's reading of the facts and evidence above.",
+    "suggestions": "Suggested next steps",
+    "suggestionsNote": "Drafts for you to act on, never actions taken.",
+    "citations": "Sources",
+    "gaps": "What could not be established",
+    "keepScope": "Keep this scope for follow-up questions"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "Nothing to read.",
+    "read": "Read",
+    "markRead": "Mark read",
+    "preferences": "Categories",
+    "mute": "Mute",
+    "cannotMute": "Cannot be muted",
+    "kind": {
+      "missed_deadline": "Missed deadline",
+      "revision_requested": "Revision requested",
+      "unfulfilled_obligations": "Outstanding reports",
+      "report_submitted": "Report submitted",
+      "assessment_published": "Assessment released"
+    }
+  },
+  "exports": {
+    "title": "Exports",
+    "scopeNote": "A bundle contains only the records this account can already read.",
+    "kinds": "What to include",
+    "since": "From",
+    "until": "To",
+    "downloadJson": "Download JSON bundle",
+    "downloadCsv": "{{kind}}.csv",
+    "portabilityNote": "Bundles carry identifiers, versions, relationships and approval status, so records stay readable elsewhere.",
+    "kind": {
+      "reports": "Weekly reports",
+      "assessments": "Assessments",
+      "projects": "Projects and membership",
+      "obligations": "Reporting obligations",
+      "supervision_notes": "Supervision notes (private)"
+    }
+  },
+  "project": {
+    "unavailable": "This project could not be loaded.",
+    "researchQuestions": "Research questions",
+    "progress": "Milestone completion",
+    "progressNote": "Computed from milestone weights and accepted completion — never from student scores.",
+    "milestoneCounts": "{{done}} of {{total}} milestones complete, {{overdue}} overdue",
+    "noWeights": "Not available — no milestone weights are set.",
+    "members": "Members",
+    "noMembers": "Nobody is assigned to this project.",
+    "noResponsibility": "No stated responsibility",
+    "milestones": "Milestones",
+    "noMilestones": "No milestones yet.",
+    "decisions": "Research decisions",
+    "noDecisions": "No decisions recorded.",
+    "aiRestricted": "No model processing",
+    "stage": {
+      "literature_review": "Literature review",
+      "theory": "Theory",
+      "data_preparation": "Data preparation",
+      "implementation": "Implementation",
+      "experimentation": "Experimentation",
+      "analysis": "Analysis",
+      "writing": "Writing"
+    },
+    "status": {
+      "proposed": "Proposed",
+      "active": "Active",
+      "paused": "Paused",
+      "completed": "Completed",
+      "archived": "Archived"
+    },
+    "milestoneStatus": {
+      "planned": "Planned",
+      "in_progress": "In progress",
+      "achieved": "Achieved",
+      "missed": "Missed",
+      "cancelled": "Cancelled"
+    }
+  },
+  "student": {
+    "title": "Research profile",
+    "trajectory": "Trajectory on {{project}}",
+    "rubricBreak": "These points span {{count}} rubric versions and are not one comparable series.",
+    "rubric": "rubric {{id}}",
+    "noApproved": "No approved assessment yet.",
+    "assessments": "Assessments",
+    "noAssessments": "No assessment has been produced yet.",
+    "week": "Week {{period}}"
   }
 }

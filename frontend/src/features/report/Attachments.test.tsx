@@ -1,0 +1,143 @@
+/** REP-04: the three-step upload, and saying plainly what happened to the file afterwards. */
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+
+import { Attachments, type Attachment } from "@/features/report/components/Attachments";
+import "@/lib/i18n";
+import { server } from "@/test/setup";
+
+const GRANT = {
+  artifact_id: "a1",
+  version_no: 1,
+  url: "https://objects.example/upload/a1",
+  expires_in: 900,
+  headers: { "Content-Type": "text/markdown" },
+};
+
+function renderPanel(attachments: Attachment[] = [], onAttached = vi.fn()) {
+  return {
+    onAttached,
+    ...render(
+      <Attachments
+        projectId="p1"
+        periodId="per1"
+        attachments={attachments}
+        onAttached={onAttached}
+      />,
+    ),
+  };
+}
+
+function attachment(overrides: Partial<Attachment> = {}): Attachment {
+  return {
+    artifact_id: "a1",
+    version_no: 1,
+    filename: "notes.md",
+    byte_size: 42,
+    extraction_state: "ok",
+    extraction_note: "",
+    truncated: false,
+    ...overrides,
+  };
+}
+
+test("the file goes to object storage and only the confirmation goes to the API", async () => {
+  const seen: string[] = [];
+  server.use(
+    http.post("/api/v1/artifacts/uploads", () => {
+      seen.push("grant");
+      return HttpResponse.json(GRANT, { status: 201 });
+    }),
+    http.put("https://objects.example/upload/a1", () => {
+      seen.push("put");
+      return new HttpResponse(null, { status: 200 });
+    }),
+    http.post("/api/v1/artifacts/a1/confirm", () => {
+      seen.push("confirm");
+      return HttpResponse.json(attachment());
+    }),
+  );
+  const { onAttached } = renderPanel();
+
+  await userEvent.upload(
+    screen.getByLabelText(/attach a file/i),
+    new File(["# notes"], "notes.md", { type: "text/markdown" }),
+  );
+
+  await waitFor(() => expect(onAttached).toHaveBeenCalled());
+  // The bytes went straight to the store, between the grant and the confirmation.
+  expect(seen).toEqual(["grant", "put", "confirm"]);
+});
+
+test("a file the server refuses shows the reason it gave", async () => {
+  server.use(
+    http.post("/api/v1/artifacts/uploads", () =>
+      HttpResponse.json(
+        {
+          title: "Validation failed",
+          status: 422,
+          detail: "this file is larger than the 25 MB per-file limit",
+        },
+        { status: 422 },
+      ),
+    ),
+  );
+  renderPanel();
+
+  await userEvent.upload(
+    screen.getByLabelText(/attach a file/i),
+    new File(["x"], "huge.pdf", { type: "application/pdf" }),
+  );
+
+  expect(await screen.findByTestId("attachment-error")).toHaveTextContent(/25 MB/);
+});
+
+test("a file that could not be read says so, with the reason in reach", async () => {
+  // REP-04: unreadable and empty are different, and the student can only fix the first.
+  renderPanel([
+    attachment({
+      filename: "scan.pdf",
+      extraction_state: "failed",
+      extraction_note: "the file could not be read (PdfReadError); it is stored unchanged",
+    }),
+  ]);
+
+  const badge = screen.getByTestId("extraction-badge");
+  expect(badge).toHaveTextContent(/could not be read/i);
+  expect(badge).toHaveAttribute("title", expect.stringContaining("PdfReadError"));
+});
+
+test("an image is shown as stored rather than as a failure", async () => {
+  renderPanel([attachment({ filename: "figure.png", extraction_state: "unsupported" })]);
+
+  expect(screen.getByTestId("extraction-badge")).toHaveTextContent(/stored, no text/i);
+});
+
+test("a link is attached through the API, which decides whether to follow it", async () => {
+  server.use(
+    http.post("/api/v1/artifacts/links", () =>
+      HttpResponse.json(
+        attachment({
+          filename: "2401.00001",
+          extraction_state: "failed",
+          extraction_note: "example.com resolves to a private or reserved address",
+        }),
+        { status: 201 },
+      ),
+    ),
+  );
+  const { onAttached } = renderPanel();
+
+  await userEvent.type(screen.getByPlaceholderText("https://…"), "https://example.com/paper");
+  await userEvent.click(screen.getByRole("button", { name: /add link/i }));
+
+  await waitFor(() => expect(onAttached).toHaveBeenCalled());
+});
+
+test("the panel says what the claim field is for", async () => {
+  // REPO-08: what the student says a file shows is their claim, not a finding.
+  renderPanel();
+
+  expect(screen.getByText(/Recorded as your claim, not as a finding/i)).toBeInTheDocument();
+});

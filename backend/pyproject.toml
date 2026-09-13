@@ -25,6 +25,9 @@ dependencies = [
   "openai>=1.50",
   "prometheus-client>=0.21",
   "orjson>=3.10",
+  "pyjwt[crypto]>=2.9",
+  "pypdf",
+  "python-docx",
 ]
 
 [dependency-groups]
@@ -84,8 +87,11 @@ testpaths = ["tests"]
 markers = [
   "unit: pure functions, no I/O",
   "module: service-level tests against a real database",
+  "api: HTTP tests through the ASGI app",
+  "authz: one test per access acceptance scenario",
   "acceptance: one test per requirements acceptance scenario",
-  "evaluation: AI evaluation harness, run only with RM_EVAL=1",
+  "evaluation_contract: evaluation-set properties that must never regress; runs in CI",
+  "evaluation: AI evaluation harness against the real provider, run only with RM_EVAL=1",
 ]
 
 [tool.coverage.run]
@@ -106,6 +112,9 @@ name = "Layered bounded contexts"
 type = "layers"
 layers = [
   "app.assistant",
+  # Exports read across reporting, projects and assessment and nothing depends on them, so they
+  # sit above assessment and below the assistant (docs/repo_layout.md §3.3).
+  "app.exports",
   "app.assessment",
   "app.evidence",
   "app.reporting",
@@ -117,12 +126,16 @@ layers = [
 [[tool.importlinter.contracts]]
 name = "Only assessment and assistant use the AI gateway"
 type = "forbidden"
+# Direct imports only: the API calls assessment.service, which is exactly the module allowed to
+# reach the gateway. What this forbids is any other module importing it itself.
+allow_indirect_imports = "true"
 source_modules = [
   "app.identity",
   "app.projects",
   "app.reporting",
   "app.evidence",
   "app.notifications",
+  "app.exports",
   "app.api",
   "app.core",
 ]
@@ -134,7 +147,7 @@ type = "forbidden"
 source_modules = ["app"]
 forbidden_modules = ["openai"]
 ignore_imports = ["app.ai.gateway -> openai"]
-unmatched_ignore_imports_alerting = "none"  # gateway lands in a later PR
+unmatched_ignore_imports_alerting = "none"
 
 [[tool.importlinter.contracts]]
 name = "Notifications depend on reporting and core only"
@@ -145,6 +158,9 @@ forbidden_modules = ["app.evidence", "app.assessment", "app.assistant"]
 [[tool.importlinter.contracts]]
 name = "API never touches ORM models directly"
 type = "forbidden"
+# Direct imports only: the API reaches models through each module's service.py by design, which is
+# exactly the arrangement this contract protects (docs/repo_layout.md 3.2).
+allow_indirect_imports = "true"
 source_modules = ["app.api"]
 forbidden_modules = [
   "app.identity.models",

@@ -1,0 +1,32 @@
+{
+  "stage": "implementation",
+  "language": "en",
+  "tags": [
+    "shared-contribution"
+  ],
+  "professor_ratings": {
+    "progress": 3,
+    "learning": 3,
+    "rigor": 3,
+    "artifacts": 3
+  },
+  "expected_index_range": [
+    70,
+    88
+  ],
+  "claim_expectations": [
+    {
+      "claim_contains": "4 %",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "merged",
+      "status": "supported"
+    }
+  ],
+  "must_not_appear": [
+    "sole author",
+    "single-handedly"
+  ],
+  "notes": "AC-06: joint work stays joint. The merge by Student B must not read as B's authorship, and the shared artifact must not be counted twice for the project."
+}

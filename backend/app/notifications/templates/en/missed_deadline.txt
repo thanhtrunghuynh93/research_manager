@@ -1,0 +1,14 @@
+Hello {{ display_name }},
+
+The deadline for the reporting week {{ period_start }} – {{ period_end }} passed at
+{{ deadline_local }}, and the following {{ "entry is" if missing_projects|length == 1 else "entries are" }} still missing:
+
+{% for project in missing_projects %}
+  - {{ project.title }}
+{% endfor %}
+
+You can still submit here: {{ submit_url }}
+
+A report submitted now is recorded with its actual time and marked late or within the grace
+period, according to the workspace's reporting policy. Nothing is assumed about your work from
+this message.

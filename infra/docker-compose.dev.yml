@@ -14,8 +14,10 @@ services:
     command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ../backend:/app
+      - ${RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}:/run/secrets/github-app.pem:ro
     ports:
-      - "8000:8000"
+      # host:container — the container keeps 8000, which is what Caddy and the healthcheck use.
+      - "8021:8000"
     environment:
       RM_ENV: dev
 
@@ -26,17 +28,20 @@ services:
     command: ["uv", "run", "python", "-m", "app.worker"]
     volumes:
       - ../backend:/app
+      - ${RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}:/run/secrets/github-app.pem:ro
     environment:
       RM_ENV: dev
 
   postgres:
     ports:
-      - "5432:5432"
+      # host:container — the container keeps 5432, which is what RM_DATABASE_URL and the backup
+      # scripts address it by on the compose network.
+      - "8022:5432"
 
   minio:
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:9000"   # S3 API
+      - "8026:9001"   # console
 
   mailpit:
     image: axllent/mailpit:v1.21

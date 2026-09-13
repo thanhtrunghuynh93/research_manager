@@ -17,9 +17,13 @@ class Settings(BaseSettings):
     env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
     log_json: bool = False
-    public_url: str = "http://localhost:5173"
+    public_url: str = "http://localhost:8020"
 
-    database_url: str = "postgresql+psycopg://rm:rm@localhost:5432/rm"
+    # The host-side default, for the make targets that run alembic and the seed outside the
+    # containers. It has to match what the dev stack actually creates: the credential from
+    # .env.example, on the port infra/docker-compose.dev.yml publishes. Inside the containers
+    # RM_DATABASE_URL names `postgres:5432` on the compose network instead.
+    database_url: str = "postgresql+psycopg://rm:rm-dev-password@localhost:8022/rm"
     secret_key: SecretStr = SecretStr("dev-only-change-me")
 
     s3_endpoint: str = "http://localhost:9000"
@@ -40,6 +44,11 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: SecretStr = SecretStr("")
     mail_from: str = "research-management@example.edu"
+
+    # Who may read /metrics. Prometheus scrapes it, people should not: the gauges name every
+    # workspace's queue depth and sync staleness, and `?fresh=1` turns a scrape into database
+    # work. Required in prod; without one there, the endpoint refuses everybody.
+    metrics_token: SecretStr = SecretStr("")
 
     upload_max_file_mb: int = Field(default=25, ge=1)
     worker_concurrency: int = Field(default=4, ge=1)

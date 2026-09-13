@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.ids import uuid7
 
 # Deterministic constraint names so migrations and docs agree (architecture §5.4).
@@ -68,14 +69,44 @@ def session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: one session per request, committed on success, rolled back on error."""
+    """FastAPI dependency: one session per request, committed on success, rolled back on error.
+
+    Jobs recorded with `jobs.defer_after_commit` are sent here, after the commit, so a worker
+    never dequeues a job for rows the request has not yet made visible (app.core.jobs).
+    """
+    from app.core import jobs
+
     async with session_factory()() as session:
         try:
             yield session
             await session.commit()
         except BaseException:
+            jobs.discard_deferred(session)
             await session.rollback()
             raise
+        await jobs.flush_deferred(session)
+
+
+def run_in_session[T](operation: Callable[[AsyncSession], Awaitable[T]]) -> T:
+    """Run one async operation in its own engine, session, and transaction.
+
+    For operator commands (app/cli.py and each module's cli.py), which have no request lifespan.
+    """
+
+    async def _main() -> T:
+        from app.core import jobs
+
+        init_engine(get_settings())
+        try:
+            async with session_factory()() as session:
+                result = await operation(session)
+                await session.commit()
+                await jobs.flush_deferred(session)
+                return result
+        finally:
+            await dispose_engine()
+
+    return asyncio.run(_main())
 
 
 async def ping() -> bool:

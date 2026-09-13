@@ -7,6 +7,10 @@ x-backend: &backend
   build:
     context: ../backend
   env_file: .env
+  volumes:
+    # The GitHub App private key, read-only. Without it the connector falls back to the in-memory
+    # one and a connected repository would silently report no activity (REPO-01, AC-04).
+    - ${RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH:-./secrets/github-app.pem}:/run/secrets/github-app.pem:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -65,7 +69,9 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # quay.io, not Docker Hub: `minio/minio` there is no longer publicly pullable
+    # (`pull access denied`), and quay serves the same pinned release.
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     env_file: .env
     command: ["server", "/data", "--console-address", ":9001"]
     volumes:

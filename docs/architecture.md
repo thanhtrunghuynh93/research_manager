@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.1 — 11 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.3
+Version 0.2 — 12 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.3
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -134,13 +134,13 @@ A module reads another module's data only through that module's `service.py`; it
 
 | Group | Tables |
 | --- | --- |
-| Identity | `workspaces`, `users`, `invitations`, `sessions`, `audit_events` |
-| Projects | `projects`, `project_memberships`, `milestones`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
-| Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `artifacts`, `artifact_versions` |
-| Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
+| Identity | `workspaces`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
+| Projects | `projects`, `project_memberships`, `milestones`, `milestone_revisions`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
+| Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
+| Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `webhook_deliveries`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
 | Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `feedback`, `supervision_notes` |
 | Assistant | `conversations`, `messages`, `answer_cache` |
-| Operations | `notifications`, `email_deliveries`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
+| Operations | `notifications`, `email_deliveries`, `notification_preferences`, `reminder_rules`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
 
 Every table carries `workspace_id`; composite foreign keys `(workspace_id, x_id)` enforce the same-workspace invariant from requirements section 9.
 
@@ -151,7 +151,7 @@ Types abbreviated. `id` columns are UUIDv7 unless noted. All timestamps are `tim
 **users** — `id, workspace_id, role ENUM(prof, student), email UNIQUE, display_name, password_hash, state ENUM(invited, active, deactivated), deactivated_at, created_at`
 
 **project_memberships** — `id, workspace_id, project_id, student_id, responsibility, joined_on DATE, left_on DATE NULL, first_required_period_id NULL, last_required_period_id NULL, planned_allocation NUMERIC NULL, created_at`
-Constraint `uq_membership_active`: unique `(project_id, student_id)` where `left_on IS NULL`.
+Constraint `uq_membership_active`: unique `(project_id, student_id)` where `left_on IS NULL`. `left_on` is exclusive — the first day the student is no longer a member — so ending a membership today revokes access today (AUTH-03), and a departure dated in the future keeps access until it arrives.
 
 **calendar_configs** — `id, workspace_id, version INT, timezone TEXT, meeting_weekday SMALLINT, week_start_weekday SMALLINT, grace_minutes INT, effective_from DATE, created_by, created_at`
 The deadline is not stored here; it is derived per period (section 7).
@@ -163,7 +163,7 @@ Constraint `uq_period_start`: unique `(workspace_id, local_start)`. `deadline_ut
 Constraint `uq_obligation`: unique `(membership_id, period_id)`.
 
 **weekly_reports** — `id, workspace_id, student_id, period_id, workflow_state ENUM(draft, submitted, revision_requested, resubmitted, reviewed), first_submitted_at NULL, current_version_id NULL, draft_content JSONB, draft_saved_at`
-Constraint `uq_report`: unique `(student_id, period_id)`. `first_submitted_at` is written once and never updated (REP-07, AC-13); a trigger raises on any change after it is set.
+Constraint `uq_report`: unique `(student_id, period_id)`. `first_submitted_at` is written once and never updated (REP-07, AC-13); the `freeze_first_submitted_at` trigger raises on any change after it is set.
 
 **report_versions** — `id, workspace_id, report_id, version_no INT, author_id, submitted_at, idempotency_key TEXT, timing_status ENUM(on_time, late, excused)`
 Constraints `uq_report_version (report_id, version_no)`, `uq_report_idem (report_id, idempotency_key)`. Immutable (section 5.3).
@@ -226,7 +226,7 @@ stateDiagram-v2
     superseded --> proposed: new version marked student-proposed
 ```
 
-The freeze point is `reporting_periods.start_utc` by default. A periodic task `freeze_baselines(period_id)` runs at period start and inserts a `frozen` or `empty` row per required obligation. Commitment completion (ASSESS-05) is computed only against rows in state `frozen` or `accepted`; otherwise the assessment shows completion as unavailable.
+The freeze point is `reporting_periods.start_utc` by default. A periodic task `freeze_baselines(period_id)` runs at period start and inserts a `frozen` or `empty` row per required obligation; it is idempotent, so a membership that already has a baseline for the period keeps it. Baseline rows carry their own database guard rather than the blanket immutability trigger: the content columns can never change, and the only state moves the guard admits are the two in the diagram above — a proposal the professor accepts, and a version a later one supersedes. Commitment completion (ASSESS-05) is computed only against rows in state `frozen` or `accepted`; otherwise the assessment shows completion as unavailable.
 
 ### 5.6 File storage
 
@@ -234,7 +234,7 @@ Bucket layout: `{workspace_id}/artifacts/{artifact_id}/{version_no}/{sha256}.{ex
 
 ### 5.7 Search and retrieval storage
 
-`evidence_chunks` — `id, workspace_id, evidence_ref_id, project_id, owner_student_id NULL, visibility, source_version, chunk_no, text, tsv tsvector GENERATED, embedding vector(1536), source_time`. Indexes: GIN on `tsv`, HNSW on `embedding`, B-tree on `(workspace_id, project_id, visibility, source_time)`. Hybrid retrieval runs one SQL statement: the permission and scope predicate first, then reciprocal-rank fusion of the FTS rank and cosine distance. Because filters precede ranking, no chunk outside the caller's scope is ever scored (QA-06). Each chunk resolves to a citation `(source_kind, source_id, source_version, locator)` through `evidence_references` (QA-03).
+`evidence_chunks` — `id, workspace_id, evidence_ref_id, project_id, owner_student_id NULL, visibility, source_version, chunk_no, text, tsv tsvector GENERATED, embedding vector(1536), source_time`. The text search configuration is `simple` rather than `english`: reports are written in English and Vietnamese, and English stemming distorts the latter, so stemming waits on the retrieval benchmark (section 17). Vectors come from an `Embedder` registered at start-up rather than from a direct gateway call, which keeps `app.evidence` free of `app.ai` and lets a restricted project index without reaching a provider at all. Indexes: GIN on `tsv`, HNSW on `embedding`, B-tree on `(workspace_id, project_id, visibility, source_time)`. Hybrid retrieval runs one SQL statement: the permission and scope predicate first, then reciprocal-rank fusion of the FTS rank and cosine distance. Because filters precede ranking, no chunk outside the caller's scope is ever scored (QA-06). Each chunk resolves to a citation `(source_kind, source_id, source_version, locator)` through `evidence_references` (QA-03).
 
 ## 6 Authorization and confidentiality
 
@@ -270,7 +270,7 @@ Downloads and exports reuse the same predicates: a presigned GET is issued only 
 - Invitation: the professor creates a user in state `invited`; a signed, single-use token with 7-day expiry is emailed. Accepting sets the password and activates.
 - Sessions: server-side rows in `sessions` with an opaque cookie (`HttpOnly`, `Secure`, `SameSite=Lax`), 12-hour idle expiry, 30-day absolute. Deactivating a user deletes their sessions in the same transaction (AUTH-03).
 - Recovery: password reset by emailed single-use token for every user.
-- Break-glass: `python -m app.identity.breakglass recover-professor --email …` runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It is not reachable through the API.
+- Break-glass: `python -m app.cli breakglass recover-professor --email …` (also reachable as `python -m app.identity.breakglass`) runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It issues a single-use recovery link valid for 15 minutes rather than a password, so the secret is handed over out of band. `transfer-professor --from … --to …` deactivates the outgoing account in the same transaction. Neither is reachable through the API.
 
 ### 6.3 Access changes and cached answers (AUTH-03, AC-11)
 
@@ -289,10 +289,15 @@ A periodic task `ensure_periods()` runs daily and materialises `reporting_period
 ```
 local_start   = first week_start_weekday on or after previous local_end + 1
 local_end     = local_start + 6 days
-meeting_date  = first meeting_weekday strictly after local_start - 1 day
+meeting_date  = first meeting_weekday on or after local_end + 1 day
 deadline_utc  = to_utc(meeting_date - 1 day, 23:59:00, timezone)
 reminder_due_utc = deadline_utc + 60 s
 ```
+
+The meeting follows the week it discusses, so the deadline falls inside the period: with the
+proposed default the week of Mon 14 to Sun 20 September is discussed on Mon 21 and is due Sun 20 at
+23:59 local. Deriving `meeting_date` from `local_start` instead would put the deadline on the day
+before the period opens.
 
 Changing the meeting day inserts a new `calendar_configs` version with an `effective_from`; periods already materialised keep their `deadline_utc` (requirements REP-01). Obligations are derived per period from memberships whose `joined_on ≤ local_end`, `left_on` is null or `≥ local_start`, the project is `active`, and `first/last_required_period_id` bounds are satisfied; exemptions and extensions edit the obligation row, never the period.
 
@@ -320,7 +325,12 @@ sequenceDiagram
     E->>DB: UPDATE email_deliveries SET state, attempts, last_error
 ```
 
-Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. `send_email` retries five times with exponential backoff up to two hours; after that the notification stays visible in-app with `delivery_state = failed` and the professor overview shows a mail-delivery warning.
+Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. Delivery is a queued row rather than one job per message: `dispatch_missed_deadline` writes an
+`email_deliveries` row in state `queued` in the same transaction as the notification, and a periodic
+`send_queued_emails` task drains them. That keeps the attempt count and the last error in one place
+and gives the same at-least-once behaviour, since both the notification and its delivery row are
+keyed. A send is attempted five times; after that the notification stays visible in-app with
+`state = failed` and the professor overview shows a mail-delivery warning.
 
 ### 7.3 Pre-deadline reminders (REP-07)
 
@@ -349,7 +359,7 @@ GitHub implementation: a GitHub App installed by the professor on selected repos
 
 `repository_events` — `id, workspace_id, repository_id, provider_event_id TEXT, kind ENUM(commit, pr_opened, pr_merged, review, issue, check_run, push_force), source_version TEXT (sha or object id), actors JSONB [{role: author|committer|reviewer|merger, login, email, is_bot}], authored_at NULL, committed_at NULL, merged_at NULL, event_at, ingested_at, paths TEXT[], stats JSONB {additions, deletions, files}, payload_key TEXT (MinIO), truncated BOOL, live_available BOOL`
 
-`uq_repo_event (repository_id, provider_event_id)` makes reprocessing idempotent (REPO-05, AC-09). Commit author time, commit time, merge time, and ingestion time are separate columns (REPO-06). A `push_force` event marks affected `repository_events.live_available = false` while their retained payloads stay in MinIO.
+`uq_repo_event (repository_id, provider_event_id)` makes reprocessing idempotent (REPO-05, AC-09). Commit author time, commit time, merge time, and ingestion time are separate columns (REPO-06). A `push_force` event marks affected `repository_events.live_available = false` while their retained payloads stay in MinIO. Events carry their own database guard rather than the blanket immutability trigger: every column the provider gave us is frozen, and `live_available` is the single exception, because it records our observation that the object is gone rather than a fact the provider reported.
 
 ### 8.3 Sync run lifecycle (REPO-05)
 
@@ -439,7 +449,7 @@ def coverage_pct(sufficiency: dict[str, bool], weights) -> Decimal
 def confidence(coverage: Decimal, source_status: SourceStatus) -> tuple[Level, list[str]]  # rule table, reasons listed
 ```
 
-Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25, 15 give 78.75 and display 79 (ASSESS-04). Confidence rules are a small table (for example: coverage ≥ 90 % and fresh sync → high; any `unverifiable` discrepancy on a rated dimension → at most medium; stale repository or missing baseline → low with the reason named), stored in `rubric_versions.calculation_rules` so a change is versioned (ASSESS-06, ASSESS-09).
+Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25, 15 give 78.75 and display 79 (ASSESS-04). Confidence rules are a small table (for example: coverage ≥ 90 % and fresh sync → high; any `unverifiable` discrepancy on a rated dimension → at most medium; stale repository or missing baseline → low with the reason named), stored in `rubric_versions.calculation_rules` so a change is versioned (ASSESS-06, ASSESS-09). `SourceStatus.repository_fresh` is `None` when a project has no repository at all, which is not a gap in coverage: a literature or theory project reaches full coverage through other artifacts (AC-05).
 
 ### 9.5 Versioning triggers (ASSESS-08, ASSESS-09, AC-03, AC-17)
 
@@ -501,7 +511,7 @@ flowchart TB
 
 ## 12 Background jobs
 
-- **Library:** procrastinate with the async connector. Enqueue is a row insert, so `submit_report()` writes `report_versions`, `project_report_entries`, and the job rows in one transaction; either all persist or none (section 10 of the requirements, AC-13).
+- **Library:** procrastinate with the async connector. Enqueue is a row insert, so `submit_report()` writes `report_versions`, `project_report_entries`, and the job rows in one transaction; either all persist or none (section 10 of the requirements, AC-13). The queue's own schema is applied by a migration from the installed library version, so `alembic upgrade head` is the only step a deploy needs; alembic's autogenerate ignores the `procrastinate_*` tables because the library owns them.
 - **Job key convention:** `{domain}:{ids}:{step}` as `queueing_lock`; procrastinate refuses a second queued job with the same lock. Completed jobs are retained for 30 days for observability.
 - **Retries:** transient errors retry with exponential backoff (max 5); permanent errors fail immediately. A domain record (`analysis_runs`, `sync_runs`, `email_deliveries`) carries the application state including `partial`.
 - **Manual retry:** `POST /api/admin/jobs/{run_id}/retry` re-enqueues with the same lock; because every step is idempotent on its key, no duplicate assessments or notifications result.
@@ -517,7 +527,7 @@ class EmailSender(Protocol):
     async def send(self, to: str, template: str, params: dict, idempotency_key: str) -> DeliveryResult: ...
 ```
 
-`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). Users can mute non-critical kinds in `notification_preferences`; `missed_deadline` and `revision_requested` cannot be muted.
+`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). Users can mute non-critical kinds in `notification_preferences`; `missed_deadline`, `revision_requested`, and the professor's `unfulfilled_obligations` summary cannot be muted. `kind` is free text drawn from a vocabulary in `notifications/service.py`, because a pre-deadline reminder carries its configured offset in the kind (`reminder:48h`).
 
 ## 14 Frontend architecture
 
@@ -619,6 +629,23 @@ class EmailSender(Protocol):
 | AC-17 | 5.2 (`content_changed_in_version_id`), 9.1, 9.5 |
 | AC-18 | 5.5 |
 | AC-19 | 7.2, 13 |
+
+## 16.1 Where the implementation refines this document
+
+Two corrections and one addition, each carried in
+[implementation_status.md](implementation_status.md) §4 with its reason:
+
+- §7.1's period formula derived `meeting_date` from `local_start`, which put the deadline the day
+  before the period opened. It is derived from `local_end`: the meeting follows the week it
+  discusses.
+- §5.7 has `evidence` obtaining vectors from a registered `Embedder` rather than calling the
+  gateway, because §4.1 forbids `app.evidence` importing `app.ai`. The index passes an
+  `EmbedContext` naming the workspace and project, so a gateway-backed embedder can still write the
+  `ai_calls` row that `app.evidence` cannot.
+- `app.exports` is a bounded context between `app.assistant` and `app.assessment` in the layer
+  order, not merely the router §4.1 implies. A bundle spans reporting, projects and assessment, and
+  assembling it through those modules' services is what makes export authorization identical to
+  interactive access rather than a second implementation of it.
 
 ## 17 Open decisions
 

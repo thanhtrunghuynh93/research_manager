@@ -1,0 +1,32 @@
+{
+  "stage": "literature_review",
+  "language": "en",
+  "tags": [
+    "literature"
+  ],
+  "professor_ratings": {
+    "progress": 3,
+    "learning": 4,
+    "rigor": 3,
+    "artifacts": 3
+  },
+  "expected_index_range": [
+    78,
+    92
+  ],
+  "claim_expectations": [
+    {
+      "claim_contains": "fourteen",
+      "status": "supported"
+    },
+    {
+      "claim_contains": "exchangeability",
+      "status": "supported"
+    }
+  ],
+  "must_not_appear": [
+    "no commits",
+    "no repository activity"
+  ],
+  "notes": "AC-05 and REPO-01: a literature week with zero commits must reach full coverage. Any rationale that treats the absence of commits as a shortfall is a calibration failure."
+}
