@@ -1,6 +1,7 @@
 {
   "app": {
     "title": "Research Management",
+    "greeting": "Hello {{name}}",
     "toDark": "Switch to dark",
     "toLight": "Switch to light"
   },

@@ -27,11 +27,17 @@ function renderShell(role: "prof" | "student" = "prof") {
 
 afterEach(() => document.documentElement.classList.remove("dark"));
 
+test("greets the signed-in user by name", async () => {
+  renderShell();
+
+  expect(await screen.findByTestId("greeting")).toHaveTextContent("Hello Prof Demo");
+});
+
 test("the theme toggle flips the class the whole palette hangs off", async () => {
   renderShell();
   expect(document.documentElement).not.toHaveClass("dark");
 
-  await userEvent.click(await screen.findByTestId("theme-toggle"));
+  await userEvent.click(screen.getByTestId("theme-toggle"));
 
   await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
   // And back, so it is a toggle rather than a one-way switch.
@@ -41,7 +47,7 @@ test("the theme toggle flips the class the whole palette hangs off", async () =>
 
 test("offers no language switcher", async () => {
   renderShell();
-  await screen.findByText("Sign out");
+  await screen.findByTestId("greeting");
 
   expect(screen.queryByRole("button", { name: /^(vi|en)$/i })).not.toBeInTheDocument();
 });

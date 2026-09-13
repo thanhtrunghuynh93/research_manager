@@ -35,6 +35,12 @@ export function AppShell() {
             <span className="eyebrow">supervision</span>
           </Link>
           <div className="flex items-center gap-3">
+            {/* Named, not just badged: the header is where you confirm whose workspace this is. */}
+            {user && (
+              <span className="text-[13px] text-muted-foreground" data-testid="greeting">
+                {t("app.greeting", { name: user.display_name })}
+              </span>
+            )}
             <button
               type="button"
               onClick={toggle}
