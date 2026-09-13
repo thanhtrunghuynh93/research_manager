@@ -1,5 +1,6 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter } from "react-router-dom";
 
+import { HomeRedirect } from "@/app/HomeRedirect";
 import { AppShell } from "@/app/layout/AppShell";
 import { RequireAuth } from "@/app/RequireAuth";
 import { StatusPage } from "@/app/StatusPage";
@@ -20,17 +21,27 @@ export const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
-      { path: "/", element: <Navigate to="/me" replace /> },
       { path: "/login", element: <LoginPage /> },
       { path: "/status", element: <StatusPage /> },
       {
         element: <RequireAuth />,
         children: [
-          { path: "/me", element: <StudentHomePage /> }, // UI-02
-          { path: "/report/:periodId", element: <ReportEditorPage /> }, // REP-02, REP-03
+          // "/" and anything unrecognised go to the home for this role, not to a fixed page.
+          { path: "/", element: <HomeRedirect /> },
+          { path: "*", element: <HomeRedirect /> },
           { path: "/projects/:id", element: <ProjectPage /> }, // UI-03
           { path: "/notifications", element: <NotificationsPage /> }, // UI-07
           { path: "/exports", element: <ExportsPage /> }, // UI-06
+        ],
+      },
+      {
+        // The student screens, guarded the way the professor's are. The weekly flow is a student
+        // flow: the API answers a professor writing to a draft with 422, so offering it is
+        // offering a dead end.
+        element: <RequireAuth role="student" />,
+        children: [
+          { path: "/me", element: <StudentHomePage /> }, // UI-02
+          { path: "/report/:periodId", element: <ReportEditorPage /> }, // REP-02, REP-03
         ],
       },
       {
@@ -42,7 +53,6 @@ export const router = createBrowserRouter([
           { path: "/assistant", element: <AssistantPage /> }, // QA-01..07
         ],
       },
-      { path: "*", element: <Navigate to="/me" replace /> },
     ],
   },
 ]);

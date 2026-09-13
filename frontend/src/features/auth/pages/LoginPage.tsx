@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
+import { homeFor } from "@/app/home";
 import { useLogin } from "@/features/auth/queries";
 
 export function LoginPage() {
@@ -14,10 +15,7 @@ export function LoginPage() {
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
-    login.mutate(
-      { email, password },
-      { onSuccess: (user) => navigate(user.role === "prof" ? "/overview" : "/me") },
-    );
+    login.mutate({ email, password }, { onSuccess: (user) => navigate(homeFor(user.role)) });
   }
 
   // The API answers a wrong password and an unknown address identically; show what it said.
