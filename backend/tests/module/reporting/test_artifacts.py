@@ -547,3 +547,80 @@ async def test_an_artifact_cannot_be_filed_under_an_unrelated_week(
             entry_id=submitted.entries[0].id,
             period_id=uuid4(),
         )
+
+
+# ------------------------------------------------------------------ listing (REP-04, AC-02)
+#
+# Without a listing there is no way back to a file: the artifact id appeared only in the response
+# to the upload that created it, so a reloaded page lost its own attachments and the professor
+# could not reach a student's at all.
+
+
+async def test_a_student_lists_the_attachments_they_uploaded(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    await _upload(db, scope, store, project, filename="notes.md")
+    await _upload(db, scope, store, project, filename="summary.html", data=b"<p>ok</p>")
+
+    rows = await artifacts.list_artifacts(db, scope, project_id=project.id)
+
+    assert {row.filename for row in rows} == {"notes.md", "summary.html"}
+    assert all(row.owner_student_id == student_a.id for row in rows)
+    assert all(row.uploaded for row in rows)
+
+
+async def test_the_professor_sees_a_students_attachments(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    await _upload(db, scope, store, project)
+
+    rows = await artifacts.list_artifacts(db, prof_scope, student_id=student_a.id)
+
+    assert [row.filename for row in rows] == ["notes.md"]
+    # The filename and what could be read of it, not just an identifier.
+    assert rows[0].content_type == "text/markdown"
+    assert rows[0].extraction_state is ExtractionState.OK
+
+
+async def test_one_student_never_sees_anothers_attachments(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """AC-02: an attachment belongs to the student who attached it, and asking does not tell."""
+    _period, project = await _project(db, prof_scope, student_a)
+    scope_a = await identity_service.scope_for(db, student_a)
+    await _upload(db, scope_a, store, project)
+    scope_b = await identity_service.scope_for(db, student_b)
+
+    rows = await artifacts.list_artifacts(db, scope_b, student_id=student_a.id)
+
+    # Empty rather than refused: whether that student has attachments is not B's to learn.
+    assert rows == []
+
+
+async def test_an_upload_that_never_arrived_is_not_listed_as_an_attachment(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    """A grant is not a file. Listing one would show the professor evidence that does not exist."""
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        filename="abandoned.pptx",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+
+    rows = await artifacts.list_artifacts(db, prof_scope, student_id=student_a.id)
+
+    assert [row.filename for row in rows] == []

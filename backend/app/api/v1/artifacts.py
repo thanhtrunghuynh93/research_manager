@@ -51,6 +51,25 @@ class LinkRequest(BaseModel):
     period_id: UUID | None = None
 
 
+class ArtifactOut(BaseModel):
+    artifact_id: UUID
+    owner_student_id: UUID
+    project_id: UUID | None = None
+    period_id: UUID | None = None
+    entry_id: UUID | None = None
+    kind: str
+    filename: str
+    supported_claim: str = ""
+    source_url: str | None = None
+    version_no: int
+    byte_size: int
+    content_type: str
+    extraction_state: ExtractionState
+    extraction_note: str = ""
+    uploaded: bool
+    created_at: datetime
+
+
 class ArtifactVersionOut(BaseModel):
     artifact_id: UUID
     version_id: UUID
@@ -70,6 +89,26 @@ class ArtifactVersionOut(BaseModel):
 class DownloadOut(BaseModel):
     url: str
     expires_in: int
+
+
+@router.get("", summary="The attachments the caller may see")
+async def list_artifacts(
+    scope: ScopeDep,
+    session: SessionDep,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    period_id: UUID | None = None,
+) -> list[ArtifactOut]:
+    """AC-02: a professor sees the workspace's attachments, a student only their own.
+
+    Without this there is no way back to a file. The upload response was the only place an
+    artifact id ever appeared, so a reloaded page lost its own attachments and the professor
+    could not reach a student's at all.
+    """
+    rows = await service.list_artifacts(
+        session, scope, student_id=student_id, project_id=project_id, period_id=period_id
+    )
+    return [ArtifactOut(**{**asdict(row), "kind": row.kind.value}) for row in rows]
 
 
 @router.post(

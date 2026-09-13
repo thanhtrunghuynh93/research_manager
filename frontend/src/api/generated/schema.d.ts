@@ -118,6 +118,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The attachments the caller may see
+         * @description AC-02: a professor sees the workspace's attachments, a student only their own.
+         *
+         *     Without this there is no way back to a file. The upload response was the only place an
+         *     artifact id ever appeared, so a reloaded page lost its own attachments and the professor
+         *     could not reach a student's at all.
+         */
+        get: operations["list_artifacts_api_v1_artifacts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/artifacts/links": {
         parameters: {
             query?: never;
@@ -1628,6 +1652,55 @@ export interface components {
             } | null;
             /** Rationale */
             rationale?: string | null;
+        };
+        /** ArtifactOut */
+        ArtifactOut: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Byte Size */
+            byte_size: number;
+            /** Content Type */
+            content_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Entry Id */
+            entry_id?: string | null;
+            /**
+             * Extraction Note
+             * @default
+             */
+            extraction_note: string;
+            extraction_state: components["schemas"]["ExtractionState"];
+            /** Filename */
+            filename: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Owner Student Id
+             * Format: uuid
+             */
+            owner_student_id: string;
+            /** Period Id */
+            period_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /**
+             * Supported Claim
+             * @default
+             */
+            supported_claim: string;
+            /** Uploaded */
+            uploaded: boolean;
+            /** Version No */
+            version_no: number;
         };
         /** ArtifactVersionOut */
         ArtifactVersionOut: {
@@ -3711,6 +3784,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RepositoryHealth"][];
+                };
+            };
+        };
+    };
+    list_artifacts_api_v1_artifacts_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                project_id?: string | null;
+                period_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

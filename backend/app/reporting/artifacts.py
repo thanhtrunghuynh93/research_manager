@@ -70,6 +70,32 @@ class UploadGrant:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactOut:
+    """One attachment as a reader meets it: what it is, who attached it, and what we could read.
+
+    The current version's details are folded in, because a list of attachments with no filename
+    and no extraction state is a list of identifiers.
+    """
+
+    artifact_id: UUID
+    owner_student_id: UUID
+    project_id: UUID | None
+    period_id: UUID | None
+    entry_id: UUID | None
+    kind: ArtifactKind
+    filename: str
+    supported_claim: str
+    source_url: str | None
+    version_no: int
+    byte_size: int
+    content_type: str
+    extraction_state: ExtractionState
+    extraction_note: str
+    uploaded: bool
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class ArtifactVersionOut:
     artifact_id: UUID
     version_id: UUID
@@ -365,6 +391,60 @@ async def download_url(
 
     active = store or current_store()
     return await active.presigned_get(version.storage_key, filename=artifact.filename)
+
+
+async def list_artifacts(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    period_id: UUID | None = None,
+) -> list[ArtifactOut]:
+    """The attachments the caller may see, newest first (REP-04, AC-02).
+
+    The predicate does the whole job: a professor sees the workspace, a student sees only what
+    they attached. `student_id` therefore narrows a professor's view and can only ever narrow a
+    student's — asking for someone else's returns nothing rather than refusing, because whether
+    that student exists is not something the asker is entitled to learn.
+    """
+    # `current_version_no` only advances on confirm, so zero means a grant was issued and the
+    # bytes never arrived — a file the student abandoned or whose upload failed. It has no
+    # content, its download 404s, and showing it to the professor as an attachment is a lie. A
+    # link that was refused kept version 1 and its reason, and is deliberately still here.
+    query = select(Artifact).where(visible_to(scope, Artifact), Artifact.current_version_no > 0)
+    if student_id is not None:
+        query = query.where(Artifact.owner_student_id == student_id)
+    if project_id is not None:
+        query = query.where(Artifact.project_id == project_id)
+    if period_id is not None:
+        query = query.where(Artifact.period_id == period_id)
+    rows = (await session.execute(query.order_by(Artifact.created_at.desc()))).scalars().all()
+
+    out: list[ArtifactOut] = []
+    for artifact in rows:
+        version = await _version(session, artifact.id, artifact.current_version_no)
+        out.append(
+            ArtifactOut(
+                artifact_id=artifact.id,
+                owner_student_id=artifact.owner_student_id,
+                project_id=artifact.project_id,
+                period_id=artifact.period_id,
+                entry_id=artifact.entry_id,
+                kind=artifact.kind,
+                filename=artifact.filename,
+                supported_claim=artifact.supported_claim,
+                source_url=artifact.source_url,
+                version_no=artifact.current_version_no,
+                byte_size=version.byte_size if version else 0,
+                content_type=version.content_type if version else "",
+                extraction_state=(version.extraction_state if version else ExtractionState.PENDING),
+                extraction_note=version.extraction_note if version else "",
+                uploaded=bool(version and version.uploaded),
+                created_at=artifact.created_at,
+            )
+        )
+    return out
 
 
 async def list_versions(
