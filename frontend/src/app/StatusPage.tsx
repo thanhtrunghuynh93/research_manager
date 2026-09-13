@@ -17,16 +17,25 @@ export function StatusPage() {
   });
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-xl font-semibold">{t("status.title")}</h1>
-      {readiness.isPending && <p className="text-muted-foreground">{t("common.loading")}</p>}
-      {readiness.isError && <p className="text-red-600">{t("status.unreachable")}</p>}
+    <section className="max-w-xl animate-rise-in space-y-5">
+      <div>
+        <h1 className="page-title">{t("status.title")}</h1>
+        <p className="stamp mt-2">Polled every 15 s · /api/readyz</p>
+      </div>
+      {readiness.isPending && <p className="stamp">{t("common.loading")}</p>}
+      {readiness.isError && <p className="text-sm text-bad">{t("status.unreachable")}</p>}
       {readiness.data && (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="panel">
           {Object.entries(readiness.data.checks).map(([name, state]) => (
-            <li key={name} className="flex items-center justify-between px-4 py-2 text-sm">
+            <li key={name} className="row font-mono text-[13px]">
               <span>{name}</span>
-              <span className={state === "ok" ? "text-green-600" : "text-amber-600"}>{state}</span>
+              <span
+                className={
+                  state === "ok" ? "text-good" : state === "fail" ? "text-warn" : "text-faint"
+                }
+              >
+                {state}
+              </span>
             </li>
           ))}
         </ul>

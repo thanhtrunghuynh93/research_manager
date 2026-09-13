@@ -158,7 +158,7 @@ async def test_ac_19_the_email_says_what_is_missing_and_nothing_else(
     from app.notifications.templates import render
 
     for email in sender.outbox:
-        subject, text, html = render(email.template, email.params["locale"], email.params)
+        subject, text, html = render(email.template, email.params)
         other = student_b.email if email.to == student_a.email else student_a.email
         assert "Baseline evaluation" in text
         assert f"/report/{period.id}" in text

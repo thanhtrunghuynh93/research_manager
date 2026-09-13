@@ -2,7 +2,12 @@ import { useTranslation } from "react-i18next";
 
 import type { EntryDraft } from "@/features/report/entry";
 
-/** REP-03: the fields the template requires, in the order the specification lists them. */
+/**
+ * REP-03: the fields the template requires, in the order the specification lists them.
+ *
+ * The body text is mono because this is a record of work, and because a monospaced column makes
+ * the difference between a sentence and a filled-in field visible at a glance.
+ */
 export function EntryForm({
   entry,
   onChange,
@@ -12,8 +17,8 @@ export function EntryForm({
 }) {
   const { t } = useTranslation();
   const field = (key: keyof EntryDraft, label: string, rows = 4) => (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium" htmlFor={`${entry.project_id}-${key}`}>
+    <div>
+      <label className="field-label" htmlFor={`${entry.project_id}-${key}`}>
         {label}
       </label>
       <textarea
@@ -21,20 +26,20 @@ export function EntryForm({
         rows={rows}
         value={entry[key]}
         onChange={(event) => onChange({ ...entry, [key]: event.target.value })}
-        className="w-full rounded-md border border-border px-3 py-2 font-mono text-sm"
+        className="textarea"
       />
     </div>
   );
 
   return (
-    <div className="space-y-4">
+    <div className="mt-5 grid gap-5">
       {field("work_performed", t("report.fields.workPerformed"))}
       {field("results", t("report.fields.results"))}
       {field("deviations", t("report.fields.deviations"), 3)}
       {field("next_plan_text", t("report.fields.nextPlan"), 3)}
       {field("questions", t("report.fields.questions"), 2)}
-      <div className="space-y-1">
-        <label className="block text-sm font-medium" htmlFor={`${entry.project_id}-hours`}>
+      <div>
+        <label className="field-label" htmlFor={`${entry.project_id}-hours`}>
           {t("report.fields.hours")}
         </label>
         <input
@@ -45,9 +50,9 @@ export function EntryForm({
           step="0.5"
           value={entry.hours}
           onChange={(event) => onChange({ ...entry, hours: event.target.value })}
-          className="w-32 rounded-md border border-border px-3 py-2 text-sm"
+          className="input w-28 font-mono"
         />
-        <p className="text-xs text-muted-foreground">{t("report.fields.hoursNote")}</p>
+        <p className="stamp mt-2">{t("report.fields.hoursNote")}</p>
       </div>
     </div>
   );

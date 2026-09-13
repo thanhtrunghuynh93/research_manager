@@ -117,10 +117,9 @@ async def test_a_student_cannot_change_their_own_role(
 
 
 async def test_a_user_updates_their_own_profile(db: AsyncSession, student_a_scope: Scope) -> None:
-    user = await service.update_profile(db, student_a_scope, display_name="Renamed", locale="vi")
+    user = await service.update_profile(db, student_a_scope, display_name="Renamed")
 
     assert user.display_name == "Renamed"
-    assert user.locale == "vi"
 
 
 async def test_a_user_outside_the_workspace_is_not_found(

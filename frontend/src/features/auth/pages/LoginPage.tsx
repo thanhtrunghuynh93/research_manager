@@ -22,11 +22,13 @@ export function LoginPage() {
   const problem = login.error instanceof ApiError ? login.error.problem.detail : null;
 
   return (
-    <section className="mx-auto max-w-sm space-y-6 py-10">
-      <h1 className="text-xl font-semibold">{t("auth.signIn")}</h1>
-      <form className="space-y-4" onSubmit={onSubmit}>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium" htmlFor="email">
+    <section className="mx-auto max-w-sm animate-rise-in py-10">
+      <h1 className="font-display text-[2.125rem] font-normal tracking-[-0.015em]">
+        {t("auth.signIn")}
+      </h1>
+      <form className="panel mt-6 space-y-4 p-5" onSubmit={onSubmit}>
+        <div>
+          <label className="field-label" htmlFor="email">
             {t("auth.email")}
           </label>
           <input
@@ -36,11 +38,11 @@ export function LoginPage() {
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-md border border-border px-3 py-2 text-sm"
+            className="input bg-raised"
           />
         </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium" htmlFor="password">
+        <div>
+          <label className="field-label" htmlFor="password">
             {t("auth.password")}
           </label>
           <input
@@ -50,22 +52,21 @@ export function LoginPage() {
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-md border border-border px-3 py-2 text-sm"
+            className="input bg-raised"
           />
         </div>
         {problem && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-bad">
             {problem}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={login.isPending}
-          className="w-full rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60"
-        >
+        <button type="submit" disabled={login.isPending} className="btn-primary w-full">
           {login.isPending ? t("common.loading") : t("auth.signIn")}
         </button>
       </form>
+      <p className="stamp mt-4">
+        Invitation and recovery links are issued by the professor&apos;s bootstrap.
+      </p>
     </section>
   );
 }

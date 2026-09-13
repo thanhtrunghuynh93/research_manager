@@ -3,8 +3,9 @@
  *
  * The layout carries the answer contract rather than decorating it. Computed facts, model
  * synthesis, and suggestions are three visually distinct blocks, because QA-03 makes the
- * distinction a product commitment and a single flowing paragraph would erase it. Gaps are shown
- * as prominently as the answer: "what I could not establish" is the part a busy reader most needs
+ * distinction a product commitment and a single flowing paragraph would erase it. Each block is
+ * tagged COMPUTED or MODEL so the provenance survives a reader who only skims. Gaps are shown as
+ * prominently as the answer: "what I could not establish" is the part a busy reader most needs
  * and would otherwise never scroll to.
  *
  * The active scope is always on screen (QA-05), and a clarifying question replaces the answer
@@ -52,64 +53,66 @@ export function AssistantPage() {
   };
 
   return (
-    <section className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">{t("assistant.title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("assistant.readOnly")}</p>
+    <section className="max-w-3xl animate-rise-in">
+      <header>
+        <h1 className="page-title">{t("assistant.title")}</h1>
+        <p className="mt-2 text-[13.5px] text-muted-foreground">{t("assistant.readOnly")}</p>
       </header>
 
-      <form onSubmit={submit} className="flex gap-2">
+      <form onSubmit={submit} className="mt-6 flex flex-wrap gap-2">
         <input
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           placeholder={t("assistant.placeholder")}
           aria-label={t("assistant.question")}
-          className="flex-1 rounded-md border border-border px-3 py-2 text-sm"
+          className="min-w-0 flex-1 rounded border border-border-strong bg-surface px-3.5 py-2.5 text-sm"
         />
-        <button
-          type="submit"
-          disabled={ask.isPending}
-          className="rounded-md border border-border px-3 py-2 text-sm font-medium disabled:opacity-50"
-        >
+        <button type="submit" disabled={ask.isPending} className="btn-primary">
           {ask.isPending ? t("assistant.thinking") : t("assistant.ask")}
         </button>
       </form>
 
-      {ask.isError && <p className="text-sm text-muted-foreground">{t("assistant.failed")}</p>}
+      {ask.isError && <p className="mt-4 text-sm text-muted-foreground">{t("assistant.failed")}</p>}
 
       {answer && (
-        <article className="space-y-5" data-testid="answer">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge data-testid="scope-badge">
+        <article className="mt-7 animate-rise-in" data-testid="answer">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3.5">
+            <Badge data-testid="scope-badge" className="chip chip-accent uppercase">
               {t("assistant.scope")}: {scopeLabel(answer, t)}
             </Badge>
             <Badge>{answer.time_range}</Badge>
             {answer.cached && <Badge tone="neutral">{t("assistant.cached")}</Badge>}
-            <span className="text-muted-foreground">
+            <span className="stamp">
               {formatInstant(answer.generated_at)} · {answer.model_name}
             </span>
           </div>
 
           {answer.clarifying_question ? (
-            <p className="rounded-md border border-border p-4 text-sm" data-testid="clarifying">
+            <p className="card mt-5 text-sm" data-testid="clarifying">
               {answer.clarifying_question}
             </p>
           ) : (
             <>
-              <p className="whitespace-pre-line text-sm" data-testid="answer-text">
+              <p
+                className="mt-5 whitespace-pre-line font-display text-[1.1875rem] leading-relaxed [text-wrap:pretty]"
+                data-testid="answer-text"
+              >
                 {answer.answer}
               </p>
 
               {answer.facts.length > 0 && (
-                <div className="space-y-2" data-testid="facts">
-                  <h2 className="text-sm font-medium">{t("assistant.facts")}</h2>
-                  <p className="text-xs text-muted-foreground">{t("assistant.factsNote")}</p>
-                  <ul className="divide-y divide-border rounded-lg border border-border">
+                <div className="mt-7" data-testid="facts">
+                  <h2 className="flex items-baseline gap-2.5">
+                    <span className="section-title">{t("assistant.facts")}</span>
+                    <span className="chip chip-good uppercase">computed</span>
+                  </h2>
+                  <p className="stamp mt-1.5">{t("assistant.factsNote")}</p>
+                  <ul className="panel mt-2.5">
                     {answer.facts.map((fact) => (
-                      <li key={fact.name} className="px-4 py-2 text-sm">
+                      <li key={fact.name} className="px-4 py-2.5 text-[13.5px]">
                         <span className="font-medium">{fact.label}: </span>
                         <span>{renderValue(fact.value)}</span>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="stamp mt-1">
                           {t("overview.asOf", { when: formatInstant(fact.as_of) })}
                           {fact.note ? ` — ${fact.note}` : ""}
                         </p>
@@ -120,10 +123,13 @@ export function AssistantPage() {
               )}
 
               {answer.synthesis.length > 0 && (
-                <div className="space-y-2" data-testid="synthesis">
-                  <h2 className="text-sm font-medium">{t("assistant.synthesis")}</h2>
-                  <p className="text-xs text-muted-foreground">{t("assistant.synthesisNote")}</p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm">
+                <div className="mt-6" data-testid="synthesis">
+                  <h2 className="flex items-baseline gap-2.5">
+                    <span className="section-title">{t("assistant.synthesis")}</span>
+                    <span className="chip chip-accent uppercase">model</span>
+                  </h2>
+                  <p className="stamp mt-1.5">{t("assistant.synthesisNote")}</p>
+                  <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
                     {answer.synthesis.map((line, index) => (
                       <li key={index}>{line}</li>
                     ))}
@@ -132,10 +138,10 @@ export function AssistantPage() {
               )}
 
               {answer.suggestions.length > 0 && (
-                <div className="space-y-2" data-testid="suggestions">
-                  <h2 className="text-sm font-medium">{t("assistant.suggestions")}</h2>
-                  <p className="text-xs text-muted-foreground">{t("assistant.suggestionsNote")}</p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm">
+                <div className="mt-6" data-testid="suggestions">
+                  <h2 className="section-title">{t("assistant.suggestions")}</h2>
+                  <p className="stamp mt-1.5">{t("assistant.suggestionsNote")}</p>
+                  <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
                     {answer.suggestions.map((line, index) => (
                       <li key={index}>{line}</li>
                     ))}
@@ -143,20 +149,17 @@ export function AssistantPage() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <h2 className="text-sm font-medium">{t("assistant.citations")}</h2>
+              <div className="mt-6">
+                <h2 className="section-title mb-2.5">{t("assistant.citations")}</h2>
                 <CitationList citations={answer.citations} />
               </div>
             </>
           )}
 
           {answer.gaps.length > 0 && (
-            <div
-              className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-4 dark:bg-amber-950"
-              data-testid="gaps"
-            >
-              <h2 className="text-sm font-medium">{t("assistant.gaps")}</h2>
-              <ul className="list-disc space-y-1 pl-5 text-sm">
+            <div className="notice-warn mt-6" data-testid="gaps">
+              <h2 className="section-title">{t("assistant.gaps")}</h2>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
                 {answer.gaps.map((gap, index) => (
                   <li key={index}>{gap}</li>
                 ))}
@@ -170,7 +173,7 @@ export function AssistantPage() {
               // The conversation, not `answer.id`: that one is minted per answer and is not
               // something `AskIn.conversation_id` can resolve (QA-05).
               onClick={() => setConversationId(answer.conversation_id ?? null)}
-              className="text-xs underline"
+              className="btn-quiet mt-5"
             >
               {t("assistant.keepScope")}
             </button>

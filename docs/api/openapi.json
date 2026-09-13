@@ -3044,21 +3044,6 @@
               }
             ],
             "title": "Display Name"
-          },
-          "locale": {
-            "anyOf": [
-              {
-                "enum": [
-                  "en",
-                  "vi"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Locale"
           }
         },
         "title": "ProfilePatch",
@@ -4788,10 +4773,6 @@
             "title": "Id",
             "type": "string"
           },
-          "locale": {
-            "title": "Locale",
-            "type": "string"
-          },
           "role": {
             "$ref": "#/components/schemas/Role"
           },
@@ -4811,7 +4792,6 @@
           "email",
           "display_name",
           "state",
-          "locale",
           "created_at"
         ],
         "title": "UserOut",

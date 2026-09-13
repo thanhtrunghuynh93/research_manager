@@ -2822,8 +2822,6 @@ export interface components {
         ProfilePatch: {
             /** Display Name */
             display_name?: string | null;
-            /** Locale */
-            locale?: ("en" | "vi") | null;
         };
         /** ProjectIn */
         ProjectIn: {
@@ -3470,8 +3468,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Locale */
-            locale: string;
             role: components["schemas"]["Role"];
             state: components["schemas"]["UserState"];
             /**

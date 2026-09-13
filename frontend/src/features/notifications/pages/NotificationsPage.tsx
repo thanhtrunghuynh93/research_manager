@@ -37,23 +37,21 @@ export function NotificationsPage() {
   ).sort();
 
   return (
-    <section className="space-y-8">
+    <section className="max-w-2xl animate-rise-in">
       <header>
-        <h1 className="text-xl font-semibold">{t("notifications.title")}</h1>
+        <h1 className="page-title">{t("notifications.title")}</h1>
       </header>
 
-      <ul className="divide-y divide-border rounded-lg border border-border" data-testid="list">
+      <ul className="panel mt-6" data-testid="list">
         {notifications.data?.map((notification) => (
-          <li key={notification.id} className="flex items-start justify-between gap-4 px-4 py-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium">
+          <li key={notification.id} className="row items-start">
+            <div>
+              <p className="text-[13.5px] font-medium">
                 {t(`notifications.kind.${notification.kind}`, {
                   defaultValue: notification.kind,
                 })}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {formatInstant(notification.created_at)}
-              </p>
+              <p className="stamp mt-1">{formatInstant(notification.created_at)}</p>
             </div>
             {notification.read_at ? (
               <Badge>{t("notifications.read")}</Badge>
@@ -61,7 +59,7 @@ export function NotificationsPage() {
               <button
                 type="button"
                 onClick={() => markRead.mutate(notification.id)}
-                className="text-xs underline"
+                className="btn-quiet"
               >
                 {t("notifications.markRead")}
               </button>
@@ -73,33 +71,32 @@ export function NotificationsPage() {
         )}
       </ul>
 
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium">{t("notifications.preferences")}</h2>
-        <ul className="divide-y divide-border rounded-lg border border-border">
-          {kinds.map((kind) => {
-            const locked = UNMUTABLE.includes(kind);
-            return (
-              <li key={kind} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span>{t(`notifications.kind.${kind}`, { defaultValue: kind })}</span>
-                {locked ? (
-                  <span className="text-xs text-muted-foreground" data-testid={`locked-${kind}`}>
-                    {t("notifications.cannotMute")}
-                  </span>
-                ) : (
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={mutedKinds.has(kind)}
-                      onChange={(event) => mute.mutate({ kind, muted: event.target.checked })}
-                    />
-                    {t("notifications.mute")}
-                  </label>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      <h2 className="section-title mt-8">{t("notifications.preferences")}</h2>
+      <ul className="panel mt-2.5">
+        {kinds.map((kind) => {
+          const locked = UNMUTABLE.includes(kind);
+          return (
+            <li key={kind} className="row">
+              <span>{t(`notifications.kind.${kind}`, { defaultValue: kind })}</span>
+              {locked ? (
+                <span className="stamp" data-testid={`locked-${kind}`}>
+                  {t("notifications.cannotMute")}
+                </span>
+              ) : (
+                <label className="flex cursor-pointer items-center gap-2 font-mono text-[11.5px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={mutedKinds.has(kind)}
+                    onChange={(event) => mute.mutate({ kind, muted: event.target.checked })}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  {t("notifications.mute")}
+                </label>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

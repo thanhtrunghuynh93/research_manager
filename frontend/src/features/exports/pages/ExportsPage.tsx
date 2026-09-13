@@ -3,7 +3,8 @@
  *
  * The page shows only the kinds this account may ask for, which the server answers rather than the
  * client assuming. The download link is a plain navigation to the API: the session cookie is the
- * credential, so there is no token to mint and nothing to leak into a URL.
+ * credential, so there is no token to mint and nothing to leak into a URL. The request line is
+ * printed under the buttons, because an export the reader cannot describe is one they cannot check.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -36,16 +37,19 @@ export function ExportsPage() {
   if (until) params.set("until", localDateToInstant(until, "end"));
 
   return (
-    <section className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">{t("exports.title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("exports.scopeNote")}</p>
+    <section className="max-w-2xl animate-rise-in">
+      <header>
+        <h1 className="page-title">{t("exports.title")}</h1>
+        <p className="mt-2 text-[13.5px] text-muted-foreground">{t("exports.scopeNote")}</p>
       </header>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">{t("exports.kinds")}</legend>
+      <fieldset className="panel mt-6 px-4 pb-4 pt-1.5">
+        <legend className="field-label px-1.5">{t("exports.kinds")}</legend>
         {kinds.data?.kinds.map((kind) => (
-          <label key={kind} className="flex items-center gap-2 text-sm">
+          <label
+            key={kind}
+            className="flex cursor-pointer items-center gap-2.5 py-1.5 text-[13.5px]"
+          >
             <input
               type="checkbox"
               checked={chosen.includes(kind)}
@@ -57,38 +61,39 @@ export function ExportsPage() {
                     : current.filter((value) => value !== kind);
                 })
               }
+              className="h-4 w-4 accent-accent"
             />
             {t(`exports.kind.${kind}`, { defaultValue: kind })}
           </label>
         ))}
       </fieldset>
 
-      <div className="flex flex-wrap gap-4">
-        <label className="space-y-1 text-sm">
-          <span className="block font-medium">{t("exports.since")}</span>
+      <div className="mt-5 flex flex-wrap gap-4">
+        <label className="block">
+          <span className="field-label">{t("exports.since")}</span>
           <input
             type="date"
             value={since}
             onChange={(event) => setSince(event.target.value)}
-            className="rounded-md border border-border px-2 py-1"
+            className="input w-auto font-mono"
           />
         </label>
-        <label className="space-y-1 text-sm">
-          <span className="block font-medium">{t("exports.until")}</span>
+        <label className="block">
+          <span className="field-label">{t("exports.until")}</span>
           <input
             type="date"
             value={until}
             onChange={(event) => setUntil(event.target.value)}
-            className="rounded-md border border-border px-2 py-1"
+            className="input w-auto font-mono"
           />
         </label>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="mt-6 flex flex-wrap gap-2.5">
         <a
           href={`/api/v1/exports?${params.toString()}`}
           download
-          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium"
+          className="btn-primary no-underline"
           data-testid="download-json"
         >
           {t("exports.downloadJson")}
@@ -98,14 +103,17 @@ export function ExportsPage() {
             key={kind}
             href={`/api/v1/exports/${kind}.csv?${params.toString()}`}
             download
-            className="rounded-md border border-border px-3 py-1.5 text-sm"
+            className="btn-ghost font-mono text-[12.5px] text-ink2 no-underline"
           >
             {t("exports.downloadCsv", { kind })}
           </a>
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">{t("exports.portabilityNote")}</p>
+      <p className="stamp mt-5 break-all">GET /api/v1/exports?{params.toString()}</p>
+      <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
+        {t("exports.portabilityNote")}
+      </p>
     </section>
   );
 }

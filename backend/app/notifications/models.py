@@ -108,7 +108,6 @@ class EmailDelivery(Base):
     workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     recipient_email: Mapped[str] = mapped_column(Text)
     template: Mapped[str] = mapped_column(Text)
-    locale: Mapped[str] = mapped_column(Text, default="en")
     state: Mapped[DeliveryState] = mapped_column(DELIVERY_STATE_ENUM, default=DeliveryState.QUEUED)
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text)
