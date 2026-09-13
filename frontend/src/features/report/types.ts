@@ -7,3 +7,4 @@ export type Report = components["schemas"]["ReportOut"];
 export type Version = components["schemas"]["VersionOut"];
 export type Entry = components["schemas"]["EntryIn"];
 export type Project = components["schemas"]["ProjectOut"];
+export type Artifact = components["schemas"]["ArtifactOut"];

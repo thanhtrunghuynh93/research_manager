@@ -1,13 +1,15 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
-import { Attachments, type Attachment } from "@/features/report/components/Attachments";
+import { Attachments } from "@/features/report/components/Attachments";
 import { AutosaveIndicator } from "@/features/report/components/AutosaveIndicator";
 import { EntryForm } from "@/features/report/components/EntryForm";
 import { emptyEntry, type EntryDraft } from "@/features/report/entry";
 import {
+  useArtifacts,
   useObligations,
   usePeriods,
   useProjects,
@@ -37,7 +39,6 @@ export function ReportEditorPage() {
   const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [active, setActive] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<Record<string, Attachment[]>>({});
 
   const period = periods.data?.find((candidate) => candidate.id === periodId);
   const required = (obligations.data ?? []).filter((item) => item.state === "required");
@@ -141,17 +142,7 @@ export function ReportEditorPage() {
             onChange={(entry) => setDrafts({ ...drafts, [entry.project_id]: entry })}
           />
           {/* REP-04: evidence is attached per project entry, not per package. */}
-          <Attachments
-            projectId={active}
-            periodId={periodId}
-            attachments={attachments[active] ?? []}
-            onAttached={(attachment) =>
-              setAttachments((previous) => ({
-                ...previous,
-                [active]: [...(previous[active] ?? []), attachment],
-              }))
-            }
-          />
+          <EntryAttachments projectId={active} periodId={periodId} />
         </>
       )}
 
@@ -178,5 +169,22 @@ export function ReportEditorPage() {
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * The attachments already on this entry, read from the server rather than remembered in this tab.
+ * Refetched after each one is attached, so the list is what the professor will also see.
+ */
+function EntryAttachments({ projectId, periodId }: { projectId: string; periodId: string }) {
+  const queryClient = useQueryClient();
+  const artifacts = useArtifacts({ periodId, projectId });
+  return (
+    <Attachments
+      projectId={projectId}
+      periodId={periodId}
+      attachments={artifacts.data ?? []}
+      onAttached={() => void queryClient.invalidateQueries({ queryKey: ["artifacts"] })}
+    />
   );
 }

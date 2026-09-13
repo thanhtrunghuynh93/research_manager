@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 
 import { api, ApiError } from "@/api/client";
 import { Badge } from "@/components/evidence/Badges";
+import { openArtifact } from "@/features/report/queries";
 
 type Grant = {
   artifact_id: string;
@@ -30,7 +31,7 @@ export type Attachment = {
   byte_size: number;
   extraction_state: "pending" | "ok" | "failed" | "unsupported";
   extraction_note: string;
-  truncated: boolean;
+  truncated?: boolean;
 };
 
 /** The browser's own SHA-256, so the server has something to verify the upload against. */
@@ -50,7 +51,8 @@ export function Attachments({
   projectId: string;
   periodId: string;
   attachments: Attachment[];
-  onAttached: (attachment: Attachment) => void;
+  /** Called after anything is attached, so the caller can refetch the list from the server. */
+  onAttached: () => void;
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
@@ -78,8 +80,8 @@ export function Attachments({
       });
       if (!response.ok) throw new Error(`upload failed with ${response.status}`);
 
-      const attached = await api.post<Attachment>(`/api/v1/artifacts/${grant.artifact_id}/confirm`);
-      onAttached(attached);
+      await api.post<Attachment>(`/api/v1/artifacts/${grant.artifact_id}/confirm`);
+      onAttached();
       setClaim("");
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.problem.detail : String(problem));
@@ -93,13 +95,13 @@ export function Attachments({
     setBusy(true);
     setError(null);
     try {
-      const attached = await api.post<Attachment>("/api/v1/artifacts/links", {
+      await api.post<Attachment>("/api/v1/artifacts/links", {
         project_id: projectId,
         period_id: periodId,
         url: link,
         supported_claim: claim,
       });
-      onAttached(attached);
+      onAttached();
       setLink("");
       setClaim("");
     } catch (problem) {
@@ -123,12 +125,13 @@ export function Attachments({
             <span className="font-mono text-[12.5px]">{attachment.filename}</span>
             <span className="flex items-center gap-2.5">
               <ExtractionBadge attachment={attachment} />
-              <a
-                href={`/api/v1/artifacts/${attachment.artifact_id}/download`}
+              <button
+                type="button"
+                onClick={() => void openArtifact(attachment.artifact_id)}
                 className="btn-quiet"
               >
                 {t("report.attachments.download")}
-              </a>
+              </button>
             </span>
           </li>
         ))}

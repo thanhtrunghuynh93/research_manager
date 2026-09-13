@@ -35,6 +35,9 @@ function renderPage(extra: Parameters<typeof server.use>[number][] = []) {
     http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
     http.get("/api/v1/periods/p1/obligations", () => HttpResponse.json(OBLIGATIONS)),
     http.get("/api/v1/projects", () => HttpResponse.json({ items: PROJECTS })),
+    // The editor reads its attachments back from the server rather than remembering them, so a
+    // reloaded page shows the files that are actually in the bucket.
+    http.get("/api/v1/artifacts", () => HttpResponse.json([])),
     http.get("/api/v1/periods/p1/report", () =>
       HttpResponse.json({
         id: "r1",
@@ -289,4 +292,41 @@ test("waits for the projects before deciding each entry's stage", async () => {
     submissions[0]!.entries.map((entry) => [entry.project_id, entry.stage]),
   );
   expect(stages).toEqual({ pr1: "implementation", pr2: "theory" });
+});
+
+test("the attachments already on an entry are read back from the server", async () => {
+  // They used to live in component state, so reopening the week showed an empty list over files
+  // that were sitting in object storage (REP-04).
+  renderPage();
+  // Registered after the defaults so it wins: msw takes the first matching handler.
+  server.use(
+    http.get("/api/v1/artifacts", ({ request }) => {
+      const url = new URL(request.url);
+      if (url.searchParams.get("project_id") !== "pr1") return HttpResponse.json([]);
+      return HttpResponse.json([
+        {
+          artifact_id: "a1",
+          owner_student_id: "s1",
+          project_id: "pr1",
+          period_id: "p1",
+          entry_id: null,
+          kind: "upload",
+          filename: "week3.pptx",
+          supported_claim: "the deck behind the recall number",
+          source_url: null,
+          version_no: 1,
+          byte_size: 33797,
+          content_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          extraction_state: "ok",
+          extraction_note: "",
+          uploaded: true,
+          created_at: "2026-09-15T02:00:00Z",
+        },
+      ]);
+    }),
+  );
+
+  await userEvent.click(await screen.findByRole("tab", { name: /Baseline evaluation/ }));
+
+  expect(await screen.findByText("week3.pptx")).toBeInTheDocument();
 });

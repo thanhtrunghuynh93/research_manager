@@ -2,13 +2,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 
 import { api, ApiError, newIdempotencyKey } from "@/api/client";
-import type { Entry, Obligation, Period, Project, Report, Version } from "@/features/report/types";
+import type {
+  Artifact,
+  Entry,
+  Obligation,
+  Period,
+  Project,
+  Report,
+  Version,
+} from "@/features/report/types";
 import { todayLocal } from "@/lib/dates";
 
 export const periodsKey = ["periods"] as const;
 export const obligationsKey = (periodId: string) => ["obligations", periodId] as const;
 export const reportKey = (periodId: string) => ["report", periodId] as const;
 export const projectsKey = ["projects"] as const;
+export const artifactsKey = (scope: Record<string, string | undefined>) =>
+  ["artifacts", scope] as const;
 
 export function usePeriods() {
   return useQuery({ queryKey: periodsKey, queryFn: () => api.get<Period[]>("/api/v1/periods") });
@@ -95,4 +105,39 @@ export function currentPeriod(
     periods.find((period) => period.local_start > iso) ??
     periods[periods.length - 1]
   );
+}
+
+/**
+ * The attachments on one entry, read back from the server (REP-04).
+ *
+ * They used to live in component state, which meant they existed only for as long as the tab did:
+ * a reload showed an empty list over files that were sitting in the bucket, and the professor —
+ * who never did the upload — had no way to see them at all.
+ */
+export function useArtifacts(filters: {
+  periodId?: string;
+  projectId?: string;
+  studentId?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filters.periodId) params.set("period_id", filters.periodId);
+  if (filters.projectId) params.set("project_id", filters.projectId);
+  if (filters.studentId) params.set("student_id", filters.studentId);
+  const query = params.toString();
+  return useQuery({
+    queryKey: artifactsKey({ ...filters }),
+    queryFn: () => api.get<Artifact[]>(`/api/v1/artifacts?${query}`),
+    enabled: Boolean(query),
+  });
+}
+
+/**
+ * Open one attachment.
+ *
+ * The download endpoint answers with a short-lived URL, not with the file, so a plain link to it
+ * navigated the reader to a page of JSON. The grant is fetched first and then followed.
+ */
+export async function openArtifact(artifactId: string): Promise<void> {
+  const grant = await api.get<{ url: string }>(`/api/v1/artifacts/${artifactId}/download`);
+  window.location.assign(grant.url);
 }
