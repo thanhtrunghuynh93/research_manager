@@ -1,6 +1,7 @@
 /** The header: who you are, how the page looks, and the way out. */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 
@@ -23,6 +24,20 @@ function renderShell(role: "prof" | "student" = "prof") {
     </QueryClientProvider>,
   );
 }
+
+afterEach(() => document.documentElement.classList.remove("dark"));
+
+test("the theme toggle flips the class the whole palette hangs off", async () => {
+  renderShell();
+  expect(document.documentElement).not.toHaveClass("dark");
+
+  await userEvent.click(await screen.findByTestId("theme-toggle"));
+
+  await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
+  // And back, so it is a toggle rather than a one-way switch.
+  await userEvent.click(screen.getByTestId("theme-toggle"));
+  await waitFor(() => expect(document.documentElement).not.toHaveClass("dark"));
+});
 
 test("offers no language switcher", async () => {
   renderShell();

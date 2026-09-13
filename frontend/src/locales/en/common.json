@@ -1,6 +1,8 @@
 {
   "app": {
-    "title": "Research Management"
+    "title": "Research Management",
+    "toDark": "Switch to dark",
+    "toLight": "Switch to light"
   },
   "common": {
     "loading": "Loading…",
