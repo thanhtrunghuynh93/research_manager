@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
 import { useLogout, useSession } from "@/features/auth/queries";
-import { setLanguage } from "@/lib/i18n";
 
 /** The active item carries a rule, not a fill: this is a document, and the reader is on a page. */
 const item = ({ isActive }: { isActive: boolean }) =>
@@ -14,7 +13,7 @@ const item = ({ isActive }: { isActive: boolean }) =>
   ].join(" ");
 
 export function AppShell() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const session = useSession();
   const logout = useLogout();
 
@@ -33,13 +32,6 @@ export function AppShell() {
             <span className="eyebrow">supervision</span>
           </Link>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setLanguage(i18n.language === "vi" ? "en" : "vi")}
-              className="rounded border border-border bg-surface px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
-            >
-              {i18n.language === "vi" ? "en" : "vi"}
-            </button>
             {user && (
               <button
                 type="button"
