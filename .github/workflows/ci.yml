@@ -46,7 +46,6 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       RM_DATABASE_URL: postgresql+psycopg://rm:rm@localhost:5432/rm
-      RM_SECRET_KEY: ci
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
