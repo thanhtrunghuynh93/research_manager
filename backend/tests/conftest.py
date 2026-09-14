@@ -62,7 +62,7 @@ def settings(database_url: str) -> Settings:
     os.environ["RM_DATABASE_URL"] = database_url
     os.environ["RM_ENV"] = "test"
     get_settings.cache_clear()
-    return Settings(env="test", database_url=database_url, secret_key="test-secret")  # type: ignore[arg-type]
+    return Settings(env="test", database_url=database_url)
 
 
 @pytest.fixture(scope="session", autouse=True)

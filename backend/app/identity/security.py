@@ -3,6 +3,13 @@
 Tokens are random secrets, never signed payloads: the database stores only their SHA-256 digest,
 so a database read cannot produce a usable token and a single-use token is consumed by clearing or
 stamping its row (architecture §6.2).
+
+There is therefore no application signing key, and nothing here reads one. That is the design and
+not an omission: the row is the authority, so revocation is immediate and single use is
+enforceable, neither of which a self-contained signed token gives you without consulting the
+database anyway. A global key was once configured (`RM_SECRET_KEY`) and read by nothing; it was
+removed rather than wired up, because ending sessions is an operation, not a configuration change
+— see `service.revoke_all_sessions` and docs/runbooks/rotate-secrets.md.
 """
 
 from __future__ import annotations

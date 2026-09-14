@@ -24,7 +24,6 @@ class Settings(BaseSettings):
     # .env.example, on the port infra/docker-compose.dev.yml publishes. Inside the containers
     # RM_DATABASE_URL names `postgres:5432` on the compose network instead.
     database_url: str = "postgresql+psycopg://rm:rm-dev-password@localhost:8022/rm"
-    secret_key: SecretStr = SecretStr("dev-only-change-me")
 
     s3_endpoint: str = "http://localhost:9000"
     # Where the *browser* reaches object storage. The application and the browser do not share a
