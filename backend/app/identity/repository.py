@@ -212,6 +212,24 @@ async def revoke_sessions_for_user(session: AsyncSession, user_id: UUID, at: dat
     return len(result.scalars().all())
 
 
+async def revoke_all_sessions(session: AsyncSession, at: datetime) -> dict[UUID, int]:
+    """Every live session in the deployment. Returns the count per workspace.
+
+    Grouped by workspace because `audit_events` is workspace-scoped: a deployment holding more
+    than one workspace gets a row in each rather than one row in an arbitrary one.
+    """
+    result = await session.execute(
+        update(Session)
+        .where(Session.revoked_at.is_(None))
+        .values(revoked_at=at)
+        .returning(Session.workspace_id)
+    )
+    counts: dict[UUID, int] = {}
+    for workspace_id in result.scalars().all():
+        counts[workspace_id] = counts.get(workspace_id, 0) + 1
+    return counts
+
+
 async def get_password_reset_by_token(
     session: AsyncSession, token_hash: str
 ) -> PasswordReset | None:

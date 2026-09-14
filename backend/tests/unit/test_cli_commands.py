@@ -30,6 +30,8 @@ def test_the_root_command_lists_the_module_groups() -> None:
         (["breakglass", "recover-professor", "--help"], "--email"),
         (["breakglass", "transfer-professor", "--help"], "--from"),
         (["identity", "bootstrap", "--help"], "--display-name"),
+        # docs/runbooks/rotate-secrets.md row 1, the only way to end every session at once.
+        (["identity", "revoke-all-sessions", "--help"], "--yes"),
     ],
 )
 def test_the_documented_commands_take_the_documented_options(

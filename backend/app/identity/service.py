@@ -842,6 +842,36 @@ async def deactivate_professor(session: AsyncSession, *, email: str) -> UserOut:
     return UserOut.model_validate(user)
 
 
+async def revoke_all_sessions(session: AsyncSession) -> int:
+    """End every session in the deployment at once (docs/runbooks/rotate-secrets.md).
+
+    For a suspected leak, where the holder of a stolen cookie is unknown and revoking account by
+    account would leave a window. Sessions are opaque rows rather than signed payloads
+    (app/identity/security.py), so this — not a configuration change — is what ends them: there is
+    no key whose rotation invalidates a session, and nothing else in the system does this.
+
+    Deliberately narrower than its name might suggest: pending invitation and password-reset
+    tokens keep their own TTLs and are untouched. Revoking those is per-account today
+    (`repository.revoke_pending_invitations`), and the runbook says so rather than implying a
+    reach this does not have.
+    """
+    at = now()
+    counts = await repository.revoke_all_sessions(session, at)
+    for workspace_id, revoked in counts.items():
+        write_audit(
+            session,
+            workspace_id=workspace_id,
+            actor_id=None,
+            actor_kind=ActorKind.SYSTEM,
+            action="identity.revoke_all_sessions",
+            target_table="sessions",
+            target_id=None,
+            after={"revoked": revoked},
+        )
+    await session.flush()
+    return sum(counts.values())
+
+
 async def recover_professor(session: AsyncSession, *, email: str) -> RecoveryLink:
     """AUTH-01 break-glass: restore professor access from the host shell only.
 

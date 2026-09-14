@@ -31,3 +31,18 @@ def bootstrap(
     typer.echo(f"workspace {result.workspace.name} created ({result.workspace.id})")
     typer.echo(f"invitation for {result.user.email}, valid for 7 days, single use:")
     typer.echo(f"  {get_settings().public_url}/accept-invitation?token={result.token}")
+
+
+@cli.command("revoke-all-sessions")
+def revoke_all_sessions(
+    yes: bool = typer.Option(False, "--yes", help="Do not ask for confirmation"),
+) -> None:
+    """End every session in the deployment; everyone signs in again.
+
+    Run after a suspected leak (docs/runbooks/rotate-secrets.md). Pending invitation and
+    password-reset links are not affected.
+    """
+    if not yes:
+        typer.confirm("End every active session in this deployment?", abort=True)
+    revoked = run_in_session(service.revoke_all_sessions)
+    typer.echo(f"{revoked} session(s) revoked; everyone must sign in again.")
