@@ -14,6 +14,36 @@ export const STUDENT = { email: "an.nguyen@example.edu", password: "demo-passwor
 /** Mailpit's HTTP API, so a delivered email can be read without a mailbox. */
 export const MAILPIT = process.env.E2E_MAILPIT_URL ?? "http://localhost:8025";
 
+/**
+ * The path from a token link emailed to one address — an invitation or a recovery link.
+ *
+ * Read from the delivered mail rather than from the log, because the email is the channel the
+ * token actually travels on (AUTH-01) and a link nobody receives is an account nobody can reach.
+ *
+ * Polled: the send is deferred until the issuing transaction commits, then runs as a worker job,
+ * so it lands a moment after the click returns.
+ */
+export async function tokenPath(
+  request: APIRequestContext,
+  email: string,
+  kind: "accept-invitation" | "reset-password",
+  attempts = 20,
+): Promise<string> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const mine = (await inbox(request)).filter((message) =>
+      message.To.some((to) => to.Address === email),
+    );
+    for (const message of mine) {
+      const match = (await messageBody(request, message.ID)).match(
+        new RegExp(`/${kind}\\?token=[A-Za-z0-9._~-]+`),
+      );
+      if (match) return match[0];
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`no ${kind} link was emailed to ${email}`);
+}
+
 export async function signIn(page: Page, who: { email: string; password: string }) {
   await page.goto("/login");
   await page.getByLabel(/email/i).fill(who.email);
