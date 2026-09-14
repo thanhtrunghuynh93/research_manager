@@ -18,11 +18,14 @@ from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import write_audit
 from app.core.authz import Scope, visible_to
 from app.core.clock import now, to_utc
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
 from app.core.ids import uuid7
+from app.core.jobs import defer_after_commit
+from app.identity import security
 from app.identity import service as identity_service
 from app.notifications import policies, repository  # noqa: F401  (policies register on import)
 from app.notifications.email.base import EmailSender
@@ -54,6 +57,9 @@ SYNC_FAILED = "sync_failed"
 UNMUTABLE_KINDS = frozenset({MISSED_DEADLINE, REVISION_REQUESTED, UNFULFILLED_OBLIGATIONS})
 
 MISSED_DEADLINE_TEMPLATE = "missed_deadline"
+# AUTH-01: the two messages that carry a credential rather than news.
+INVITATION_TEMPLATE = "invitation"
+PASSWORD_RESET_TEMPLATE = "password_reset"  # noqa: S105 - a template name, not a secret
 MAX_EMAIL_ATTEMPTS = 5
 
 
@@ -170,15 +176,39 @@ async def list_preferences(session: AsyncSession, scope: Scope) -> list[Preferen
 async def set_reminder_offsets(
     session: AsyncSession, scope: Scope, *, offsets_hours: list[int]
 ) -> list[int]:
-    """How long before the deadline an in-app reminder is raised, in whole hours."""
+    """How long before the deadline an in-app reminder is raised, in whole hours.
+
+    Workspace-wide and last-writer-wins: with co-equal professors (ADR 0011) one overwrites the
+    other's schedule, so the change is audited with what it replaced. Two people need to be able
+    to answer "who changed this"; they do not need a lock.
+    """
     scope.require_prof()
     if any(hours <= 0 for hours in offsets_hours):
         raise ValidationError("a reminder offset must be a positive number of hours")
 
+    before = sorted(
+        (
+            rule.offset_minutes // 60
+            for rule in await repository.reminder_rules(session, scope.workspace_id)
+        ),
+        reverse=True,
+    )
     await repository.clear_reminder_rules(session, scope.workspace_id)
     wanted = sorted(set(offsets_hours), reverse=True)
     for hours in wanted:
         session.add(ReminderRule(workspace_id=scope.workspace_id, offset_minutes=hours * 60))
+    actor_id, actor_kind = scope.audit_actor
+    write_audit(
+        session,
+        workspace_id=scope.workspace_id,
+        actor_id=actor_id,
+        actor_kind=actor_kind,
+        action="workspace.reminder_offsets_set",
+        target_table="reminder_rules",
+        target_id=scope.workspace_id,
+        before={"offsets_hours": before},
+        after={"offsets_hours": wanted},
+    )
     await session.flush()
     return wanted
 
@@ -432,15 +462,90 @@ async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
 
 
 def register_subscriptions() -> None:
-    """Reporting emits; notifications reacts, which is how reporting stays unaware of it.
+    """Reporting and identity emit; notifications reacts, which is how they stay unaware of it.
 
     Registration happens on import, like the visibility policies, so any process that can notify
     has already wired it. `subscribe` is idempotent.
     """
+    from app.identity import events as identity_events
     from app.reporting import events as reporting_events
 
     reporting_events.subscribe(reporting_events.ReportSubmitted, _on_report_submitted)
     reporting_events.subscribe(reporting_events.RevisionRequested, _on_revision_requested)
+    identity_events.subscribe(identity_events.InvitationCreated, _on_invitation_created)
+    identity_events.subscribe(identity_events.PasswordResetRequested, _on_password_reset_requested)
+
+
+# ------------------------------------------------------------------ token emails (AUTH-01)
+
+
+async def _defer_token_email(
+    session: AsyncSession,
+    *,
+    template: str,
+    workspace_id: UUID,
+    email: str,
+    display_name: str,
+    token: str,
+    expires_at: datetime,
+    path: str,
+) -> None:
+    """AUTH-01: send the one channel the token travels on, once the issuing transaction commits.
+
+    Deferred rather than sent inline. A handler runs inside the emitting transaction, which has
+    flushed but not committed, so talking to a mail provider here would announce an invitation
+    that a later rollback erases (app.identity.events).
+
+    The link is assembled here rather than in the template because `public_url` is what the
+    recipient's browser can actually reach, and only the settings know it.
+    """
+    from app.notifications import scheduler_tasks
+
+    settings = get_settings()
+    workspace = await identity_service.workspace_for_job(session, workspace_id)
+    defer_after_commit(
+        session,
+        scheduler_tasks.send_token_email,
+        template=template,
+        to=email,
+        params={
+            "display_name": display_name,
+            "workspace_name": workspace.name if workspace else "your research workspace",
+            "link": f"{settings.public_url}{path}?token={token}",
+            "expires_at": expires_at.date().isoformat(),
+            # One key per token: a redelivered event is the same email, and a reissued
+            # invitation is a different one.
+            "idempotency_key": security.hash_token(token),
+        },
+    )
+
+
+async def _on_invitation_created(event: Any, session: AsyncSession) -> None:
+    """AUTH-01: the invitation link reaches the invited mailbox, and nowhere else."""
+    await _defer_token_email(
+        session,
+        template=INVITATION_TEMPLATE,
+        workspace_id=event.workspace_id,
+        email=event.email,
+        display_name=event.display_name,
+        token=event.token,
+        expires_at=event.expires_at,
+        path="/accept-invitation",
+    )
+
+
+async def _on_password_reset_requested(event: Any, session: AsyncSession) -> None:
+    """AUTH-01: account recovery for every user, through the address on record."""
+    await _defer_token_email(
+        session,
+        template=PASSWORD_RESET_TEMPLATE,
+        workspace_id=event.workspace_id,
+        email=event.email,
+        display_name=event.display_name,
+        token=event.token,
+        expires_at=event.expires_at,
+        path="/reset-password",
+    )
 
 
 async def _on_revision_requested(event: Any, session: AsyncSession) -> None:

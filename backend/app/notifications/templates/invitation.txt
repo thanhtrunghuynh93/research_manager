@@ -1,0 +1,10 @@
+Hello {{ display_name }},
+
+You have been invited to the research workspace {{ workspace_name }}.
+
+Open this link to choose a password. It works once, and expires on {{ expires_at }}:
+
+  {{ link }}
+
+If you were not expecting this, you can ignore it — the account stays inactive until someone
+uses the link, and it stops working on the date above.

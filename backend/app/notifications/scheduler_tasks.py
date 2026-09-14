@@ -12,7 +12,7 @@ import logging
 from app.core.clock import now
 from app.core.config import get_settings
 from app.core.db import session_factory
-from app.core.jobs import key, procrastinate_app
+from app.core.jobs import RETRY_TRANSIENT, key, procrastinate_app
 from app.notifications import service
 from app.notifications.email.console import ConsoleEmailSender
 from app.notifications.email.smtp import SmtpEmailSender
@@ -47,6 +47,24 @@ async def dispatch_missed_deadline(period_id: str) -> None:
     async with session_factory()() as session:
         await service.dispatch_missed_deadline(session, UUID(period_id), at=now())
         await session.commit()
+
+
+@procrastinate_app.task(name="notifications.send_token_email", retry=RETRY_TRANSIENT)
+async def send_token_email(template: str, to: str, params: dict[str, str]) -> None:
+    """AUTH-01: deliver one invitation or recovery link.
+
+    Sent here rather than through `email_deliveries` because a token email has no in-app
+    counterpart — the addressee has no session, which is the whole reason the link exists — and
+    because the row would hold a live credential until the next sweep. The job is deferred after
+    the issuing transaction commits, so an invitation that rolled back sends nothing.
+    """
+    sender = email_sender()
+    result = await sender.send(to, template, params, idempotency_key=params["idempotency_key"])  # type: ignore[attr-defined]
+    if not result.accepted:
+        # Raised, not swallowed: raising is what reaches RETRY_TRANSIENT, and a link nobody
+        # receives is an account nobody can reach. After the attempts are spent the job fails
+        # visibly in the queue, and the professor can reissue the invitation.
+        raise RuntimeError(f"could not send the {template} email: {result.detail}")
 
 
 @procrastinate_app.periodic(cron="*/2 * * * *")

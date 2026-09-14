@@ -99,6 +99,21 @@ async def list_preferences(session: AsyncSession, scope: Scope) -> list[Notifica
     )
 
 
+async def reminder_rules(session: AsyncSession, workspace_id: UUID) -> list[ReminderRule]:
+    """This workspace's rules, longest offset first."""
+    return list(
+        (
+            await session.execute(
+                select(ReminderRule)
+                .where(ReminderRule.workspace_id == workspace_id)
+                .order_by(ReminderRule.offset_minutes.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def clear_reminder_rules(session: AsyncSession, workspace_id: UUID) -> None:
     for rule in (
         (
