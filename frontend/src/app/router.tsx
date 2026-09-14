@@ -5,11 +5,14 @@ import { AppShell } from "@/app/layout/AppShell";
 import { RequireAuth } from "@/app/RequireAuth";
 import { StatusPage } from "@/app/StatusPage";
 import { AssistantPage } from "@/features/assistant/pages/AssistantPage";
+import { AcceptInvitationPage } from "@/features/auth/pages/AcceptInvitationPage";
 import { LoginPage } from "@/features/auth/pages/LoginPage";
+import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
 import { ExportsPage } from "@/features/exports/pages/ExportsPage";
 import { StudentHomePage } from "@/features/me/pages/StudentHomePage";
 import { NotificationsPage } from "@/features/notifications/pages/NotificationsPage";
 import { OverviewPage } from "@/features/overview/pages/OverviewPage";
+import { PeoplePage } from "@/features/people/pages/PeoplePage";
 import { ProjectPage } from "@/features/projects/pages/ProjectPage";
 import { ReportEditorPage } from "@/features/report/pages/ReportEditorPage";
 import { ReviewPage } from "@/features/review/pages/ReviewPage";
@@ -22,6 +25,10 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { path: "/login", element: <LoginPage /> },
+      // Public by necessity: the invitation token is the credential, and the person holding it
+      // has no session yet — that is the whole point of the page (AUTH-01).
+      { path: "/accept-invitation", element: <AcceptInvitationPage /> },
+      { path: "/reset-password", element: <ResetPasswordPage /> },
       { path: "/status", element: <StatusPage /> },
       {
         element: <RequireAuth />,
@@ -48,6 +55,7 @@ export const router = createBrowserRouter([
         element: <RequireAuth role="prof" />,
         children: [
           { path: "/overview", element: <OverviewPage /> }, // UI-01
+          { path: "/people", element: <PeoplePage /> }, // AUTH-01
           { path: "/students/:id", element: <StudentProfilePage /> }, // UI-04
           { path: "/review/:assessmentId", element: <ReviewPage /> }, // UI-05
           { path: "/assistant", element: <AssistantPage /> }, // QA-01..07

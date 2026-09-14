@@ -54,6 +54,40 @@ export function useLogin() {
   });
 }
 
+/**
+ * AUTH-01: set a password with an invitation token and land signed in.
+ *
+ * The API starts the session itself — accepting proves control of the invited mailbox — so this
+ * hands the app over exactly as a login does. Without that the cookie existed but the cache still
+ * said "nobody is here", and the new account arrived at its own home logged out.
+ */
+export function useAcceptInvitation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { token: string; password: string; display_name?: string }) =>
+      api.post<User>("/api/v1/auth/accept-invitation", payload),
+    onSuccess: (user) => handOver(queryClient, user),
+  });
+}
+
+/** AUTH-01: ask for a recovery link. The API answers identically for a known and unknown
+ * address, so the screen must not draw a conclusion from success either. */
+export function useRequestPasswordReset() {
+  return useMutation({
+    mutationFn: (payload: { email: string }) =>
+      api.post<{ status: string }>("/api/v1/auth/password-reset", payload),
+  });
+}
+
+/** Sets a new password with a recovery token. No session follows: unlike accepting an invitation,
+ * a reset may have been requested by someone who is not at this browser, so they sign in. */
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (payload: { token: string; password: string }) =>
+      api.post<void>("/api/v1/auth/password-reset/confirm", payload),
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({

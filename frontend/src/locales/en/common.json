@@ -20,7 +20,32 @@
     "signIn": "Sign in",
     "email": "Email",
     "password": "Password",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "invitedNote": "Invited? Open the link in your invitation email to set a password. The professor can send you a new one if it has expired."
+  },
+  "accept": {
+    "title": "Set your password",
+    "intro": "Your invitation is confirmed by this link. Choose a password and you are signed in.",
+    "name": "Your name (optional)",
+    "password": "Password",
+    "rule": "At least {{count}} characters.",
+    "confirm": "Password again",
+    "mismatch": "The two passwords do not match.",
+    "submit": "Set password and continue",
+    "noToken": "This link carries no invitation token. Open the link from your invitation email exactly as it was sent — some mail clients cut long links in half.",
+    "expiryNote": "An invitation link works once and expires after seven days. Ask the professor for a new one if this fails."
+  },
+  "reset": {
+    "title": "Choose a new password",
+    "intro": "This link confirms the request. Set a new password and sign in with it.",
+    "password": "New password",
+    "submit": "Save password",
+    "done": "Your password is set. Sign in with it below.",
+    "noToken": "This link carries no recovery token. Open the link from your email exactly as it was sent, or ask for a new one below.",
+    "forgot": "Forgot your password?",
+    "recoveryAddress": "Your email",
+    "sendLink": "Send a recovery link",
+    "requested": "If that address has an account, a recovery link is on its way. The link works once and expires in two hours."
   },
   "me": {
     "title": "This week",
@@ -259,5 +284,37 @@
     "noMaterials": "This student has not attached anything yet.",
     "materialsNote": "Every file and link this student attached to a weekly package.",
     "label": "Student {{id}}"
+  },
+  "people": {
+    "title": "People",
+    "label": "Workspace roll",
+    "intro": "Everyone with an account here. Enrolment is by invitation, and a role is fixed once the invitation is accepted — it cannot be changed afterwards from the application.",
+    "invite": "Invite someone",
+    "email": "Email",
+    "name": "Name (optional)",
+    "role": "Role",
+    "roleStudent": "Student",
+    "roleProf": "Professor",
+    "roleNote": "The invitation link is emailed to the address, never shown here. A professor invited as a colleague has the same authority over students as you do.",
+    "send": "Send invitation",
+    "sent": "Invitation sent to {{email}}.",
+    "professors": "Professors",
+    "students": "Students",
+    "noProfessors": "No professor account is active.",
+    "noStudents": "Nobody has been enrolled yet.",
+    "you": "you",
+    "colleagueNote": "Co-supervisor — changed only by the break-glass procedure",
+    "more": "Show more",
+    "suspend": "Suspend access",
+    "restore": "Restore access",
+    "remove": "Remove from workspace",
+    "removeConfirm": "Remove",
+    "removeWarning": "Removing {{name}} ends every project membership and closes the account, so no further weekly reports are owed. Their submitted work and assessments are kept. This cannot be undone — returning means a fresh invitation.",
+    "closedOn": "closed {{when}}",
+    "state": {
+      "active": "Active",
+      "invited": "Invited",
+      "deactivated": "Closed"
+    }
   }
 }
