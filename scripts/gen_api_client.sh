@@ -9,7 +9,7 @@ mkdir -p docs/api frontend/src/api/generated
 import json
 from app.main import create_app
 from app.core.config import Settings
-app = create_app(Settings(env="test", secret_key="gen"))  # type: ignore[arg-type]
+app = create_app(Settings(env="test"))
 json.dump(app.openapi(), open("../docs/api/openapi.json", "w"), indent=2, sort_keys=True)
 print("wrote docs/api/openapi.json")
 PY

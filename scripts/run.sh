@@ -100,7 +100,6 @@ if [[ ! -f "$ENV_SOURCE" ]]; then
     die "Created $ENV_SOURCE from .env.example. It holds development defaults, so real mode will
 not start until you fill in:
 
-  RM_SECRET_KEY            python -c 'import secrets; print(secrets.token_urlsafe(48))'
   RM_OPENAI_API_KEY        without it, assessments run on the deterministic fake
   RM_SMTP_*                without a real provider, nobody is told they are late
   RM_PUBLIC_URL            the origin invitation links are built from
@@ -132,17 +131,11 @@ say "Checking $MODE-mode configuration ($ENV_SOURCE)"
 OPENAI_KEY=$(setting RM_OPENAI_API_KEY)
 GITHUB_APP=$(setting RM_GITHUB_APP_ID)
 WEBHOOK_SECRET=$(setting RM_GITHUB_WEBHOOK_SECRET)
-SECRET_KEY=$(setting RM_SECRET_KEY)
 SMTP_HOST=$(setting RM_SMTP_HOST)
 PUBLIC_URL=$(setting RM_PUBLIC_URL)
 KEY_PATH=$(setting RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH)
 
 if [[ "$MODE" == real ]]; then
-  [[ -n "$SECRET_KEY" && "$SECRET_KEY" != "dev-only-change-me" ]] \
-    || die "RM_SECRET_KEY is still the shipped default. Every session and invitation link is
-signed with it, so leaving it is the same as having no protection at all.
-  python -c 'import secrets; print(secrets.token_urlsafe(48))'"
-
   [[ -n "$OPENAI_KEY" ]] \
     || die "RM_OPENAI_API_KEY is empty, so this would run on the deterministic fake gateway and
 produce assessments that look real and are not. That is a valid way to pilot the workflow —
