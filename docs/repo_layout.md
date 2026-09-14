@@ -33,7 +33,7 @@ research_management/
 │   ├── repo_layout.md         this file
 │   ├── implementation_status.md  what is built, what is left, decisions taken (section 9)
 │   ├── adr/                   architecture decision records, one file each (section 7)
-│   ├── runbooks/              deploy.md, backup-restore.md, rotate-secrets.md, break-glass.md, incident.md
+│   ├── runbooks/              deploy.md, production-readiness.md, backup-restore.md, rotate-secrets.md, break-glass.md, incident.md
 │   ├── api/                   openapi.json exported by CI for review; changelog of breaking changes
 │   └── evaluation/            AI evaluation set description, rubric calibration protocol, pilot gates
 ├── backend/                   section 3
