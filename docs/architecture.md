@@ -122,6 +122,9 @@ A module reads another module's data only through that module's `service.py`; it
 | `/me` | Student overview: obligations, draft state, next deadline, released feedback, timeline | UI-02 |
 | `/projects/:id` | Project workspace: goals, members, milestones, artifacts, repositories, decisions | UI-03 |
 | `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
+| `/people` | Workspace roll (professor): invite, suspend, restore, remove a student | AUTH-01 |
+| `/accept-invitation` | Set a password from an invitation link; public, no session | AUTH-01 |
+| `/reset-password` | Set a password from a recovery link; public, no session | AUTH-01 |
 | `/review/:assessmentId` | Review workspace: claims, evidence, draft assessment, freshness, approve/override | UI-05 |
 | `/exports` | Filtered exports with approval status | UI-06 |
 | `/notifications` | In-app notification list and mute settings | UI-07 |
@@ -258,7 +261,7 @@ Every repository function accepts `scope` and applies `visible_to(scope, Model)`
 | --- | --- | --- |
 | Weekly report, entry, artifact | All in workspace | `student_id = scope.user_id` |
 | Assessment version | All | Own, and only where an `approved` review exists |
-| Supervision note | All | Never |
+| Supervision note | All (co-supervisors share; `author_id` says whose) | Never |
 | Project, milestone, decision | All | `project_id IN scope.project_ids` |
 | Evidence chunk | All except none | `visibility = 'project_shared' AND project_id IN scope.project_ids` OR `owner_student_id = scope.user_id` |
 | Repository event | All | Own attributed contributions only |
@@ -267,10 +270,13 @@ Downloads and exports reuse the same predicates: a presigned GET is issued only 
 
 ### 6.2 Authentication and account lifecycle (AUTH-01)
 
-- Invitation: the professor creates a user in state `invited`; a signed, single-use token with 7-day expiry is emailed. Accepting sets the password and activates.
+- Invitation: a professor creates a user in state `invited`; a signed, single-use token with 7-day expiry is emailed. Accepting sets the password and activates. Any professor may invite a colleague at role `prof`; that is the only way a professor is added short of bootstrap or break-glass (ADR 0011).
+- Roles: fixed at acceptance. Before acceptance a re-invitation may reissue at a different role — the role travels on the user row; after acceptance only break-glass moves it, so there is no `set_role` and no route to change one.
+- Removal: `POST /users/{id}/remove` ends every open project membership and deactivates the account in one transaction. identity emits `UserRemoved`; projects subscribes and closes the memberships, which is what stops the derived weekly obligations. Deactivation alone is suspension and leaves memberships open. A professor account is refused — that is break-glass.
 - Sessions: server-side rows in `sessions` with an opaque cookie (`HttpOnly`, `Secure`, `SameSite=Lax`), 12-hour idle expiry, 30-day absolute. Deactivating a user deletes their sessions in the same transaction (AUTH-03).
-- Recovery: password reset by emailed single-use token for every user.
-- Break-glass: `python -m app.cli breakglass recover-professor --email …` (also reachable as `python -m app.identity.breakglass`) runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It issues a single-use recovery link valid for 15 minutes rather than a password, so the secret is handed over out of band. `transfer-professor --from … --to …` deactivates the outgoing account in the same transaction. Neither is reachable through the API.
+- Recovery: password reset by emailed single-use token for every user, requested from the sign-in screen.
+- Token emails: notifications subscribes to `InvitationCreated` and `PasswordResetRequested` and defers a `notifications.send_token_email` job, which is sent only after the issuing transaction commits. They bypass `email_deliveries` because a token message has no in-app counterpart — the addressee has no session — and the queue row would hold a live credential until the next sweep.
+- Break-glass: `python -m app.cli breakglass recover-professor --email …` (also reachable as `python -m app.identity.breakglass`) runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It issues a single-use recovery link valid for 15 minutes rather than a password, so the secret is handed over out of band. `transfer-professor --from … --to …` deactivates the outgoing account in the same transaction and moves `workspaces.owner_id`, the workspace's break-glass contact. `demote-professor` and `deactivate-professor` eject a co-supervisor; every command that could reduce the professor count refuses to leave a workspace with none. None of this is reachable through the API (ADR 0011).
 
 ### 6.3 Access changes and cached answers (AUTH-03, AC-11)
 

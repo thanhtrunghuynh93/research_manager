@@ -84,7 +84,8 @@ def feedback_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(SupervisionNote)
 def supervision_note_visible_to(scope: Scope) -> ColumnElement[bool]:
-    """QA-06: never a student, under any condition."""
+    """QA-06: never a student, under any condition. Every professor in the workspace, though —
+    co-supervisors share notes, and the row carries `author_id` to say whose it is (ADR 0011)."""
     if scope.is_prof:
         return SupervisionNote.workspace_id == scope.workspace_id
     return SupervisionNote.id.is_(None)

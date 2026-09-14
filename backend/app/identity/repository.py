@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
@@ -115,14 +115,36 @@ async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
 
 
 async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:
+    """Ordered oldest first. A workspace may hold several professors (ADR 0011), and callers that
+    take only the first — `system_scope` does — must get the same one on every run."""
     rows = await session.execute(
-        select(User.id).where(
+        select(User.id)
+        .where(
+            User.workspace_id == workspace_id,
+            User.role == Role.PROF,
+            User.state == UserState.ACTIVE,
+        )
+        .order_by(User.created_at, User.id)
+    )
+    return list(rows.scalars().all())
+
+
+async def count_active_professors(
+    session: AsyncSession, workspace_id: UUID, *, excluding: UUID | None = None
+) -> int:
+    """How many professors would remain if `excluding` stopped being one (ADR 0011)."""
+    statement = (
+        select(func.count())
+        .select_from(User)
+        .where(
             User.workspace_id == workspace_id,
             User.role == Role.PROF,
             User.state == UserState.ACTIVE,
         )
     )
-    return list(rows.scalars().all())
+    if excluding is not None:
+        statement = statement.where(User.id != excluding)
+    return int((await session.execute(statement)).scalar_one())
 
 
 async def get_invitation_by_token(session: AsyncSession, token_hash: str) -> Invitation | None:

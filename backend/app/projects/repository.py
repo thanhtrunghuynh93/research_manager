@@ -95,6 +95,31 @@ async def active_membership(
     ).scalar_one_or_none()
 
 
+async def active_memberships_for_student(
+    session: AsyncSession, workspace_id: UUID, student_id: UUID
+) -> list[ProjectMembership]:
+    """Every membership the student has not yet left, across all projects (ADR 0011).
+
+    Unscoped: the caller is the `UserRemoved` handler, which runs inside the removing professor's
+    transaction and must close every membership, not only those a Scope would surface.
+    """
+    return list(
+        (
+            await session.execute(
+                select(ProjectMembership)
+                .where(
+                    ProjectMembership.workspace_id == workspace_id,
+                    ProjectMembership.student_id == student_id,
+                    ProjectMembership.left_on.is_(None),
+                )
+                .order_by(ProjectMembership.joined_on, ProjectMembership.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def memberships_active_in_range(
     session: AsyncSession, scope: Scope, *, local_start: date, local_end: date
 ) -> list[ProjectMembership]:

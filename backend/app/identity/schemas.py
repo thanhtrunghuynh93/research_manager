@@ -47,6 +47,9 @@ class InvitationOut(BaseModel):
 
 
 class InvitationIn(BaseModel):
+    """`role` is the role the account is created with. A professor may invite a colleague as a
+    professor; after acceptance the role no longer moves (ADR 0011)."""
+
     email: str
     display_name: str | None = None
     role: Role = Role.STUDENT
@@ -74,7 +77,3 @@ class PasswordResetConfirmIn(BaseModel):
 
 class ProfilePatch(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
-
-
-class RolePatch(BaseModel):
-    role: Role

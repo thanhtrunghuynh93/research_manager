@@ -1,8 +1,8 @@
 """Domain events emitted by identity.service (docs/repo_layout.md §3.2).
 
-Handlers are registered by the modules that react, which keeps identity unaware of them. The
-notifications module subscribes to the two token events to send the invitation and recovery emails
-(AUTH-01); until it lands nothing is subscribed and `emit` is a no-op.
+Handlers are registered by the modules that react, which keeps identity unaware of them:
+notifications subscribes to the two token events and sends the invitation and recovery emails
+(AUTH-01), and projects subscribes to `UserRemoved` and ends the memberships (ADR 0011).
 
 The plaintext token travels in the event and never in an API response: only the addressee of the
 email may learn it.
@@ -54,6 +54,20 @@ class UserDeactivated:
     workspace_id: UUID
     user_id: UUID
     actor_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class UserRemoved:
+    """A student taken off the roll, not merely suspended (ADR 0011).
+
+    projects subscribes and ends every active membership at `at`, which is what stops the weekly
+    obligations. identity cannot call projects itself: it sits below it in the layer order.
+    """
+
+    workspace_id: UUID
+    user_id: UUID
+    actor_id: UUID | None
+    at: datetime
 
 
 def subscribe(event_type: type[Any], handler: Handler) -> Handler:

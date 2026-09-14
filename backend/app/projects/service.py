@@ -252,6 +252,48 @@ async def end_membership(
     return MembershipOut.model_validate(membership)
 
 
+async def _on_user_removed(event: Any, session: AsyncSession) -> None:
+    """ADR 0011: a removed student leaves every project on the day they are removed.
+
+    Obligations derive from memberships (REP-01), so this is what stops the weekly obligations and
+    the reminders attached to them. Each row is closed directly rather than through
+    `end_membership`: there is no Scope here, and the epoch has already been advanced by the
+    removal itself, so bumping it once per project would be noise.
+    """
+    left_on = event.at.date()
+    memberships = await repository.active_memberships_for_student(
+        session, event.workspace_id, event.user_id
+    )
+    for membership in memberships:
+        membership.left_on = left_on
+        write_audit(
+            session,
+            workspace_id=event.workspace_id,
+            actor_id=event.actor_id,
+            action="membership.ended",
+            target_table="project_memberships",
+            target_id=membership.id,
+            before={"left_on": None},
+            after={"left_on": left_on.isoformat(), "reason": "user.removed"},
+        )
+    if memberships:
+        await session.flush()
+
+
+def register_subscriptions() -> None:
+    """identity emits; projects reacts, which is how identity stays unaware of projects.
+
+    Registration happens on import, like the visibility policies, so any process that can remove a
+    user has already wired it. `subscribe` is idempotent.
+    """
+    from app.identity import events as identity_events
+
+    identity_events.subscribe(identity_events.UserRemoved, _on_user_removed)
+
+
+register_subscriptions()
+
+
 async def list_members(
     session: AsyncSession, scope: Scope, project_id: UUID, *, include_past: bool = False
 ) -> list[MembershipOut]:

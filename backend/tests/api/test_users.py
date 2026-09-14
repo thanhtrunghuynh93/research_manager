@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.types import Role
 from app.identity import models
 from tests.factories import DEFAULT_PASSWORD
 
@@ -119,12 +121,49 @@ async def test_the_profile_carries_no_language_setting(
     assert "locale" not in response.json()
 
 
-async def test_only_the_professor_changes_a_role(
+async def test_there_is_no_route_to_change_a_role(
+    client: AsyncClient, prof: models.User, student_b: models.User
+) -> None:
+    """ADR 0011: a role is fixed at acceptance, so the endpoint is gone rather than guarded —
+    even for the professor, who would previously have been allowed through."""
+    await _sign_in(client, prof)
+
+    response = await client.patch(f"/api/v1/users/{student_b.id}/role", json={"role": "prof"})
+
+    assert response.status_code == 404
+
+
+async def test_only_the_professor_removes_a_student(
     client: AsyncClient, student_a: models.User, student_b: models.User
 ) -> None:
     await _sign_in(client, student_a)
 
-    response = await client.patch(f"/api/v1/users/{student_b.id}/role", json={"role": "prof"})
+    response = await client.post(f"/api/v1/users/{student_b.id}/remove")
+
+    assert response.status_code == 403
+
+
+async def test_the_professor_removes_a_student(
+    client: AsyncClient, prof: models.User, student_b: models.User
+) -> None:
+    await _sign_in(client, prof)
+
+    response = await client.post(f"/api/v1/users/{student_b.id}/remove")
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "deactivated"
+
+
+async def test_a_professor_account_is_not_removable_over_http(
+    client: AsyncClient, db: AsyncSession, workspace: models.Workspace, prof: models.User
+) -> None:
+    """ADR 0011: ejecting a colleague is a break-glass command, not an API call."""
+    from tests.factories import make_user
+
+    colleague = await make_user(db, workspace, role=Role.PROF, email="colleague@example.edu")
+    await _sign_in(client, prof)
+
+    response = await client.post(f"/api/v1/users/{colleague.id}/remove")
 
     assert response.status_code == 403
 

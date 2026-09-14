@@ -268,8 +268,11 @@ class Feedback(UUIDPrimaryKeyMixin, Base):
 
 
 class SupervisionNote(UUIDPrimaryKeyMixin, Base):
-    """QA-06: private to the professor. Never indexed, never in a snapshot, never in an answer
-    a student can read. Kept in its own table so that is structural rather than a filter."""
+    """QA-06: private to the professors. Never indexed, never in a snapshot, never in an answer
+    a student can read. Kept in its own table so that is structural rather than a filter.
+
+    "Private" means not a student, not not-another-professor: co-supervisors share the workspace's
+    notes (ADR 0011). `author_id` is what lets a reader tell whose note they are looking at."""
 
     __tablename__ = "supervision_notes"
     __table_args__ = (Index("ix_supervision_notes_subject", "student_id", "project_id"),)

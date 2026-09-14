@@ -1957,6 +1957,7 @@
         "type": "string"
       },
       "InvitationIn": {
+        "description": "`role` is the role the account is created with. A professor may invite a colleague as a\nprofessor; after acceptance the role no longer moves (ADR 0011).",
         "properties": {
           "display_name": {
             "anyOf": [
@@ -4094,18 +4095,6 @@
         ],
         "title": "Role",
         "type": "string"
-      },
-      "RolePatch": {
-        "properties": {
-          "role": {
-            "$ref": "#/components/schemas/Role"
-          }
-        },
-        "required": [
-          "role"
-        ],
-        "title": "RolePatch",
-        "type": "object"
       },
       "SnapshotItemOut": {
         "properties": {
@@ -9344,7 +9333,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Invite a student or a colleague",
+        "summary": "Invite a student, or a colleague as a professor",
         "tags": [
           "users"
         ]
@@ -9471,7 +9460,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Deactivate an account",
+        "summary": "Suspend an account's access",
         "tags": [
           "users"
         ]
@@ -9520,9 +9509,10 @@
         ]
       }
     },
-    "/api/v1/users/{user_id}/role": {
-      "patch": {
-        "operationId": "set_role_api_v1_users__user_id__role_patch",
+    "/api/v1/users/{user_id}/remove": {
+      "post": {
+        "description": "Ends every project membership, then closes the account. Not reversible: a student who\nreturns is invited again (ADR 0011). A professor account is refused \u2014 that is break-glass.",
+        "operationId": "remove_student_api_v1_users__user_id__remove_post",
         "parameters": [
           {
             "in": "path",
@@ -9535,16 +9525,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RolePatch"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
@@ -9567,7 +9547,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Change a user's role",
+        "summary": "Remove a student from the workspace",
         "tags": [
           "users"
         ]

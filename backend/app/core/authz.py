@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from app.core.errors import ForbiddenError
-from app.core.types import Role
+from app.core.types import ActorKind, Role
 
 PolicyBuilder = Callable[["Scope"], ColumnElement[bool]]
 _POLICIES: dict[type[Any], PolicyBuilder] = {}
@@ -39,10 +39,25 @@ class Scope:
     role: Role
     project_ids: frozenset[UUID]
     access_epoch: int
+    # True when a scheduled task built this Scope by borrowing a user's identity rather than
+    # resolving a session. The identity is a lens, not an author: see `audit_actor` (ADR 0011).
+    is_system: bool = False
 
     @property
     def is_prof(self) -> bool:
         return self.role is Role.PROF
+
+    @property
+    def audit_actor(self) -> tuple[UUID | None, ActorKind]:
+        """Who to record as the actor of a write made under this Scope.
+
+        A system scope borrows a professor to inherit professor visibility. With one professor per
+        workspace the borrowed identity was also the right author; with several it is whichever row
+        sorted first, so attributing the write to them would be a lie a reader cannot detect.
+        """
+        if self.is_system:
+            return None, ActorKind.SYSTEM
+        return self.user_id, ActorKind.USER
 
     def require_prof(self) -> None:
         if not self.is_prof:

@@ -1,7 +1,10 @@
-"""AUTH-01/AUTH-03: deactivation, role changes, profiles, and the access epoch.
+"""AUTH-01/AUTH-03: suspension, removal, profiles, and the access epoch.
 
 AUTH-03 requires that removing access invalidates subsequent access, including cached answers.
 The epoch on the workspace is what later modules compare their cached answers against.
+
+Roles do not change here any more: a role is fixed at acceptance and moves afterwards only through
+break-glass, which `test_breakglass.py` covers (ADR 0011).
 """
 
 from __future__ import annotations
@@ -85,6 +88,30 @@ async def test_the_professor_cannot_deactivate_their_own_account(
         await service.deactivate_user(db, prof_scope, prof.id)
 
 
+async def test_a_professor_cannot_deactivate_a_colleague(
+    db: AsyncSession, workspace: models.Workspace, prof_scope: Scope
+) -> None:
+    """ADR 0011: equal over students, unequal over each other. Ejecting a colleague is break-glass,
+    so a disagreement between co-supervisors cannot be settled by whoever clicks first."""
+    from tests.factories import make_user
+
+    colleague = await make_user(db, workspace, role=Role.PROF, email="colleague@example.edu")
+
+    with pytest.raises(ForbiddenError):
+        await service.deactivate_user(db, prof_scope, colleague.id)
+
+
+async def test_a_professor_cannot_remove_a_colleague(
+    db: AsyncSession, workspace: models.Workspace, prof_scope: Scope
+) -> None:
+    from tests.factories import make_user
+
+    colleague = await make_user(db, workspace, role=Role.PROF, email="colleague@example.edu")
+
+    with pytest.raises(ForbiddenError):
+        await service.remove_student(db, prof_scope, colleague.id)
+
+
 async def test_reactivation_restores_login(
     db: AsyncSession, prof_scope: Scope, student_a: models.User
 ) -> None:
@@ -98,22 +125,10 @@ async def test_reactivation_restores_login(
     assert logged_in.user.id == student_a.id
 
 
-async def test_only_the_professor_changes_roles(
-    db: AsyncSession, workspace: models.Workspace, prof_scope: Scope, student_a: models.User
-) -> None:
-    before = await _epoch(db, workspace.id)
-
-    user = await service.set_role(db, prof_scope, student_a.id, Role.PROF)
-
-    assert user.role is Role.PROF
-    assert await _epoch(db, workspace.id) == before + 1, "a role change changes what is visible"
-
-
-async def test_a_student_cannot_change_their_own_role(
-    db: AsyncSession, student_a_scope: Scope, student_a: models.User
-) -> None:
-    with pytest.raises(ForbiddenError):
-        await service.set_role(db, student_a_scope, student_a.id, Role.PROF)
+async def test_a_role_cannot_be_changed_through_the_service(db: AsyncSession) -> None:
+    """ADR 0011: there is no promotion path. `set_role` is gone rather than guarded, so a caller
+    that wants one has to add it deliberately instead of finding it already there."""
+    assert not hasattr(service, "set_role")
 
 
 async def test_a_user_updates_their_own_profile(db: AsyncSession, student_a_scope: Scope) -> None:
@@ -139,11 +154,11 @@ async def test_account_changes_are_audited(
 ) -> None:
     await service.deactivate_user(db, prof_scope, student_a.id)
     await service.reactivate_user(db, prof_scope, student_a.id)
-    await service.set_role(db, prof_scope, student_a.id, Role.PROF)
+    await service.remove_student(db, prof_scope, student_a.id)
 
     actions = set(
         (await db.execute(select(AuditEvent.action).where(AuditEvent.target_id == student_a.id)))
         .scalars()
         .all()
     )
-    assert {"user.deactivated", "user.reactivated", "user.role_changed"} <= actions
+    assert {"user.deactivated", "user.reactivated", "user.removed"} <= actions

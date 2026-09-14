@@ -2,6 +2,10 @@
 
 Reads are filtered by the caller's Scope, so a record the caller may not see is reported as absent
 rather than forbidden: a 403 would itself disclose that the record exists (AC-02).
+
+There is no route to change a role. A role is fixed at acceptance and moves afterwards only
+through the break-glass procedure, so with two roles the endpoint had no valid transition left
+(ADR 0011).
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from fastapi import APIRouter, Query, status
 from app.api.deps import ProfScopeDep, ScopeDep, SessionDep
 from app.core.pagination import Page
 from app.identity import service
-from app.identity.schemas import InvitationIn, InvitationOut, ProfilePatch, RolePatch, UserOut
+from app.identity.schemas import InvitationIn, InvitationOut, ProfilePatch, UserOut
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -38,7 +42,7 @@ async def update_own_profile(
 @router.post(
     "/invitations",
     status_code=status.HTTP_201_CREATED,
-    summary="Invite a student or a colleague",
+    summary="Invite a student, or a colleague as a professor",
 )
 async def invite_user(
     payload: InvitationIn, scope: ProfScopeDep, session: SessionDep
@@ -58,14 +62,14 @@ async def get_user(user_id: UUID, scope: ScopeDep, session: SessionDep) -> UserO
     return await service.get_user(session, scope, user_id)
 
 
-@router.patch("/{user_id}/role", summary="Change a user's role")
-async def set_role(
-    user_id: UUID, payload: RolePatch, scope: ProfScopeDep, session: SessionDep
-) -> UserOut:
-    return await service.set_role(session, scope, user_id, payload.role)
+@router.post("/{user_id}/remove", summary="Remove a student from the workspace")
+async def remove_student(user_id: UUID, scope: ProfScopeDep, session: SessionDep) -> UserOut:
+    """Ends every project membership, then closes the account. Not reversible: a student who
+    returns is invited again (ADR 0011). A professor account is refused — that is break-glass."""
+    return await service.remove_student(session, scope, user_id)
 
 
-@router.post("/{user_id}/deactivate", summary="Deactivate an account")
+@router.post("/{user_id}/deactivate", summary="Suspend an account's access")
 async def deactivate_user(user_id: UUID, scope: ProfScopeDep, session: SessionDep) -> UserOut:
     return await service.deactivate_user(session, scope, user_id)
 

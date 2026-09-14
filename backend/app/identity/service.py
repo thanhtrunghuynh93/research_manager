@@ -171,6 +171,10 @@ async def system_scope(session: AsyncSession, workspace_id: UUID) -> Scope:
 
     Built rather than faked: the same predicates then apply to a job as to a request, and a task
     cannot reach further than the professor could.
+
+    A workspace may hold several professors (ADR 0011). `professor_ids` is ordered, so the borrowed
+    identity is stable across runs, and `is_system` marks it as a lens rather than an author — a
+    write made under this Scope is audited as the system, not as whoever sorted first.
     """
     professors = await repository.professor_ids(session, workspace_id)
     return Scope(
@@ -179,12 +183,19 @@ async def system_scope(session: AsyncSession, workspace_id: UUID) -> Scope:
         role=Role.PROF,
         project_ids=frozenset(),
         access_epoch=await repository.access_epoch(session, workspace_id),
+        is_system=True,
     )
 
 
 async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:
     """Job-level read: who to address a professor-facing notification to (UI-07)."""
     return await repository.professor_ids(session, workspace_id)
+
+
+async def workspace_for_job(session: AsyncSession, workspace_id: UUID) -> WorkspaceOut | None:
+    """Job-level read: the workspace an email names itself after. The worker has no Scope."""
+    workspace = await session.get(Workspace, workspace_id)
+    return None if workspace is None else WorkspaceOut.model_validate(workspace)
 
 
 async def contact_for_job(session: AsyncSession, user_id: UUID) -> UserOut | None:
@@ -204,7 +215,14 @@ async def invite_user(
     display_name: str | None = None,
     role: Role = Role.STUDENT,
 ) -> Invited:
-    """AUTH-01: only the professor enrolls people, and only by invitation."""
+    """AUTH-01: only a professor enrolls people, and only by invitation.
+
+    Any professor may invite a colleague as a professor; that is the only way a professor is added
+    short of bootstrap or break-glass (ADR 0011). A role is fixed at acceptance: until then an
+    invitation is an offer, and reissuing it at a different role is allowed — the role travels on
+    the user row, which the re-invitation branch below updates. An account that has already
+    accepted is refused here, so acceptance is the point after which only break-glass can move it.
+    """
     scope.require_prof()
     address = security.normalize_email(email)
     at = now()
@@ -293,9 +311,9 @@ async def accept_invitation(
     user.password_hash = password_hash
     user.state = UserState.ACTIVE
     if user.role is not invitation.role:
-        # AUTH-01: the professor's most recent decision wins. `set_role` applies to an invited
-        # user too, and there is no route to reissue the invitation, so taking the role off the
-        # invitation here would silently revert a change they already made and audited.
+        # AUTH-01: the most recent invitation wins. Re-inviting a not-yet-accepted account at a
+        # different role updates the user row and leaves this older invitation's copy behind, so
+        # taking the role off the invitation here would revert a decision already made and audited.
         log.info(
             "invitation for %s carried role %s; keeping the role %s set since",
             user.id,
@@ -442,12 +460,22 @@ def _audit_session_revoked(session: AsyncSession, revoked: Session | None) -> No
 
 
 async def deactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) -> UserOut:
-    """AUTH-03: deactivation ends every session and advances the epoch in one transaction."""
+    """AUTH-03: deactivation ends every session and advances the epoch in one transaction.
+
+    Suspension, not removal: `reactivate_user` undoes it and project memberships are untouched.
+    To take a student off the roll, use `remove_student`.
+    """
     scope.require_prof()
     if user_id == scope.user_id:
         raise ForbiddenError("a professor cannot deactivate their own account")
 
     user = await _require_user(session, scope, user_id)
+    if user.role is Role.PROF:
+        # ADR 0011: professors are equal over students and unequal over each other. Ejecting a
+        # colleague is deliberate enough to require the host shell, where it is audited as system.
+        raise ForbiddenError(
+            "a professor account is deactivated through the break-glass procedure, not the API"
+        )
     if user.state is UserState.DEACTIVATED:
         return UserOut.model_validate(user)
 
@@ -504,30 +532,58 @@ async def reactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) ->
     return UserOut.model_validate(user)
 
 
-async def set_role(session: AsyncSession, scope: Scope, user_id: UUID, role: Role) -> UserOut:
-    """AUTH-01: only the professor changes roles, and never their own."""
+async def remove_student(session: AsyncSession, scope: Scope, user_id: UUID) -> UserOut:
+    """AUTH-01/PROJ-02: take a student off the roll — memberships end, then the account closes.
+
+    Deactivating alone is not removal. Obligations are derived from memberships and nothing in that
+    path filters on user state, so a student who only lost their login keeps accruing weekly
+    obligations and the reminders that go with them. Ending the memberships in the same transaction
+    is what stops that (ADR 0011).
+
+    The ledger survives: submitted reports, assessments, artifacts and attributed commits stay, and
+    the membership rows remain as history carrying `left_on`. Removal is not reversible — a student
+    who returns is invited again and comes back with fresh memberships.
+
+    `UserRemoved` carries the membership-ending to the projects module, which subscribes to it.
+    identity sits below projects in the layer order and so cannot call it directly.
+    """
     scope.require_prof()
     if user_id == scope.user_id:
-        raise ForbiddenError("a professor cannot change their own role")
+        raise ForbiddenError("a professor cannot remove their own account")
 
     user = await _require_user(session, scope, user_id)
-    if user.role is role:
-        return UserOut.model_validate(user)
+    if user.role is Role.PROF:
+        # ADR 0011: the API removes students. A professor leaving is a break-glass transfer.
+        raise ForbiddenError(
+            "a professor account is removed through the break-glass procedure, not the API"
+        )
 
-    before = user.role.value
-    user.role = role
+    at = now()
+    before = user.state.value
+    already_closed = user.state is UserState.DEACTIVATED
+    user.state = UserState.DEACTIVATED
+    user.deactivated_at = user.deactivated_at if already_closed else at
+    await repository.revoke_sessions_for_user(session, user.id, at)
+    # An open invitation is a credential too: accepting one sets a password and starts a session.
+    await repository.revoke_pending_invitations(session, user.id, at)
     await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,
         workspace_id=scope.workspace_id,
         actor_id=scope.user_id,
-        action="user.role_changed",
+        action="user.removed",
         target_table="users",
         target_id=user.id,
-        before={"role": before},
-        after={"role": role.value},
+        before={"state": before},
+        after={"state": user.state.value},
     )
     await session.flush()
+    await events.emit(
+        events.UserRemoved(
+            workspace_id=scope.workspace_id, user_id=user.id, actor_id=scope.user_id, at=at
+        ),
+        session,
+    )
     return UserOut.model_validate(user)
 
 
@@ -672,6 +728,8 @@ async def bootstrap_workspace(
     )
     session.add(user)
     await session.flush()
+    # The break-glass contact, not a privilege: professors are co-equal and nothing authorizes
+    # against this column (ADR 0011). `transfer_professor` moves it.
     workspace.owner_id = user.id
 
     token, token_hash = security.mint_token()
@@ -701,6 +759,87 @@ async def bootstrap_workspace(
         user=UserOut.model_validate(user),
         token=token,
     )
+
+
+async def _require_another_active_professor(
+    session: AsyncSession, workspace_id: UUID, *, excluding: UUID
+) -> None:
+    """ADR 0011: a workspace never runs out of professors.
+
+    With one professor this was guaranteed by the self-action guards — nobody could act on the only
+    account that mattered. With a set of co-equal professors that reasoning no longer holds, so the
+    invariant is checked rather than inferred.
+    """
+    if await repository.count_active_professors(session, workspace_id, excluding=excluding) == 0:
+        raise ConflictError(
+            "this is the only active professor in the workspace; transfer the account instead"
+        )
+
+
+async def demote_professor(session: AsyncSession, *, email: str) -> UserOut:
+    """AUTH-01 break-glass: return a professor to the student role, from the host shell only.
+
+    Not reachable from the API: professors are equal over students and unequal over each other, so
+    one cannot unilaterally demote another (ADR 0011).
+    """
+    address = security.normalize_email(email)
+    user = await repository.get_user_by_email(session, address)
+    if user is None:
+        raise NotFoundError(f"no account with the address {address}")
+    if user.role is not Role.PROF:
+        raise ValidationError(f"{address} is not a professor")
+    await _require_another_active_professor(session, user.workspace_id, excluding=user.id)
+
+    before = {"role": user.role.value}
+    user.role = Role.STUDENT
+    await repository.bump_access_epoch(session, user.workspace_id)
+    write_audit(
+        session,
+        workspace_id=user.workspace_id,
+        actor_id=None,
+        actor_kind=ActorKind.SYSTEM,
+        action="identity.break_glass_demote",
+        target_table="users",
+        target_id=user.id,
+        before=before,
+        after={"role": Role.STUDENT.value},
+    )
+    await session.flush()
+    return UserOut.model_validate(user)
+
+
+async def deactivate_professor(session: AsyncSession, *, email: str) -> UserOut:
+    """AUTH-01 break-glass: close a professor account, from the host shell only (ADR 0011)."""
+    address = security.normalize_email(email)
+    user = await repository.get_user_by_email(session, address)
+    if user is None:
+        raise NotFoundError(f"no account with the address {address}")
+    if user.role is not Role.PROF:
+        raise ValidationError(f"{address} is not a professor")
+    if user.state is UserState.DEACTIVATED:
+        return UserOut.model_validate(user)
+    await _require_another_active_professor(session, user.workspace_id, excluding=user.id)
+
+    at = now()
+    before = {"state": user.state.value}
+    user.state = UserState.DEACTIVATED
+    user.deactivated_at = at
+    await repository.revoke_sessions_for_user(session, user.id, at)
+    await repository.revoke_pending_invitations(session, user.id, at)
+    await repository.bump_access_epoch(session, user.workspace_id)
+    write_audit(
+        session,
+        workspace_id=user.workspace_id,
+        actor_id=None,
+        actor_kind=ActorKind.SYSTEM,
+        action="identity.break_glass_deactivate",
+        target_table="users",
+        target_id=user.id,
+        before=before,
+        after={"state": user.state.value},
+    )
+    await session.flush()
+    return UserOut.model_validate(user)
 
 
 async def recover_professor(session: AsyncSession, *, email: str) -> RecoveryLink:
@@ -775,6 +914,11 @@ async def transfer_professor(
     previous.state = UserState.DEACTIVATED
     previous.deactivated_at = at
     await repository.revoke_sessions_for_user(session, previous.id, at)
+    # The owner is the workspace's break-glass contact (ADR 0011). A transfer moves it; leaving it
+    # on a deactivated account would point the next recovery at someone who has already left.
+    workspace = await session.get(Workspace, workspace_id)
+    if workspace is not None and workspace.owner_id == previous.id:
+        workspace.owner_id = successor.id
     await repository.bump_access_epoch(session, workspace_id)
 
     for target, before, after in (
@@ -830,9 +974,11 @@ async def _issue_recovery_link(
 
 
 def _log_token_link(kind: str, address: str, path: str) -> None:
-    """Development affordance until the notifications module sends these emails (REP-08, step 4).
+    """Development convenience beside the email, which notifications now sends (AUTH-01).
 
-    Outside dev only the fact of the delivery is logged; the token never reaches the log.
+    Kept because a dev stack without SMTP still needs a way in, and because a link in the log is
+    faster to reach than one in Mailpit. Outside dev only the fact of the delivery is logged; the
+    token never reaches the log.
     """
     settings = get_settings()
     if settings.env == "dev":

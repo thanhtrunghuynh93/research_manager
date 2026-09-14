@@ -1404,7 +1404,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Invite a student or a colleague */
+        /** Invite a student, or a colleague as a professor */
         post: operations["invite_user_api_v1_users_invitations_post"];
         delete?: never;
         options?: never;
@@ -1455,7 +1455,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deactivate an account */
+        /** Suspend an account's access */
         post: operations["deactivate_user_api_v1_users__user_id__deactivate_post"];
         delete?: never;
         options?: never;
@@ -1480,7 +1480,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/{user_id}/role": {
+    "/api/v1/users/{user_id}/remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -1489,12 +1489,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Remove a student from the workspace
+         * @description Ends every project membership, then closes the account. Not reversible: a student who
+         *     returns is invited again (ADR 0011). A professor account is refused — that is break-glass.
+         */
+        post: operations["remove_student_api_v1_users__user_id__remove_post"];
         delete?: never;
         options?: never;
         head?: never;
-        /** Change a user's role */
-        patch: operations["set_role_api_v1_users__user_id__role_patch"];
+        patch?: never;
         trace?: never;
     };
 }
@@ -2379,7 +2383,11 @@ export interface components {
          * @enum {string}
          */
         IdentityVerification: "pending" | "verified_oauth" | "confirmed_by_student" | "confirmed_by_prof" | "rejected";
-        /** InvitationIn */
+        /**
+         * InvitationIn
+         * @description `role` is the role the account is created with. A professor may invite a colleague as a
+         *     professor; after acceptance the role no longer moves (ADR 0011).
+         */
         InvitationIn: {
             /** Display Name */
             display_name?: string | null;
@@ -3260,10 +3268,6 @@ export interface components {
          * @enum {string}
          */
         Role: "prof" | "student";
-        /** RolePatch */
-        RolePatch: {
-            role: components["schemas"]["Role"];
-        };
         /** SnapshotItemOut */
         SnapshotItemOut: {
             /**
@@ -6505,7 +6509,7 @@ export interface operations {
             };
         };
     };
-    set_role_api_v1_users__user_id__role_patch: {
+    remove_student_api_v1_users__user_id__remove_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -6514,11 +6518,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RolePatch"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

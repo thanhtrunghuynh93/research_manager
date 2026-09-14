@@ -194,22 +194,38 @@ async def test_accepting_never_activates_a_deactivated_account(
     assert row.state is models.UserState.DEACTIVATED
 
 
-async def test_accepting_an_invitation_keeps_a_role_changed_since_it_was_sent(
+async def test_accepting_an_older_invitation_uses_the_role_reissued_since(
     db: AsyncSession, prof_scope: Scope
 ) -> None:
-    """AUTH-01: the professor's most recent audited decision wins over the invitation's copy."""
-    invited = await service.invite_user(
-        db, prof_scope, email="colleague@example.edu", role=Role.PROF
-    )
+    """AUTH-01: the most recent audited decision wins over an older invitation's copy.
+
+    Re-invitation is now the only thing that moves a role before acceptance (ADR 0011), so the
+    stale link has to follow the user row rather than resurrect the role it was minted with.
+    """
+    stale = await service.invite_user(db, prof_scope, email="colleague@example.edu", role=Role.PROF)
+    await service.invite_user(db, prof_scope, email="colleague@example.edu", role=Role.STUDENT)
+
+    with pytest.raises(ValidationError):
+        await service.accept_invitation(db, token=stale.token, password=PASSWORD)
+
     user = (
         await db.execute(select(models.User).where(models.User.email == "colleague@example.edu"))
     ).scalar_one()
+    assert user.role is Role.STUDENT
 
-    await service.set_role(db, prof_scope, user.id, Role.STUDENT)
-    accepted = await service.accept_invitation(db, token=invited.token, password=PASSWORD)
 
-    assert accepted.role is Role.STUDENT
-    assert accepted.state is models.UserState.ACTIVE
+async def test_a_role_is_fixed_once_the_invitation_is_accepted(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """ADR 0011: before acceptance an invitation is an offer; after it, only break-glass moves the
+    role. Re-inviting an accepted account is refused, which is what makes that boundary real."""
+    invited = await service.invite_user(
+        db, prof_scope, email="colleague@example.edu", role=Role.STUDENT
+    )
+    await service.accept_invitation(db, token=invited.token, password=PASSWORD)
+
+    with pytest.raises(ConflictError):
+        await service.invite_user(db, prof_scope, email="colleague@example.edu", role=Role.PROF)
 
 
 async def test_re_inviting_with_a_different_role_still_applies_that_role(
