@@ -45,19 +45,28 @@ the sending domain, and send one invitation to an external mailbox as part of th
 
 ## 2 Must fix before go-live
 
-**2.1 `RM_SECRET_KEY` is read by nothing.**
-The only match for `secret_key` outside `app/core/config.py` is `s3_secret_key`. Sessions,
+**2.1 `RM_SECRET_KEY` is read by nothing. — CLOSED 14 September 2026 (trunght), fixed.**
+The only match for `secret_key` outside `app/core/config.py` was `s3_secret_key`. Sessions,
 invitations, and reset links are 32-byte `secrets.token_urlsafe` values stored as SHA-256 digests;
-no signing key is involved anywhere in the system.
+no signing key was involved anywhere in the system.
 
-Three documents say otherwise: [.env.example](../../.env.example) ("Changing it invalidates every
+Three documents said otherwise: [.env.example](../../.env.example) ("Changing it invalidates every
 session and every unused invitation and reset link"), [deploy.md](deploy.md) step 2 ("the same as
-having no session protection at all"), and [rotate-secrets.md](rotate-secrets.md) row 1. As it
-stands this is a security control that exists only in prose, which is worse than no control,
-because a reviewer reading the runbook will believe it is there.
+having no session protection at all"), and [rotate-secrets.md](rotate-secrets.md) row 1. Two more
+the audit missed: [repo_layout.md](../repo_layout.md) §3.6 ("Session and token signing") and
+[scripts/run.sh](../../scripts/run.sh), which refused to start real mode on the shipped default
+with the same false explanation.
 
-Fix: either wire it to something real, or delete it from the settings and correct all three
-documents in the same change.
+Resolution: **deleted, not wired up.** The opaque-token design is the stronger one — the row is the
+authority, so revocation is immediate and single use is enforceable, neither of which a signed
+token gives you without consulting the database anyway — and every secret with a real job already
+has its own (webhook HMAC, S3, the App key). Wiring it would have meant inventing a use for a
+variable. The unused `itsdangerous` dependency, the ghost of the intended design, went with it.
+
+The gap the prose was hiding was not a missing key but **missing mass revocation**: the only
+documented way to invalidate everything was a no-op, at a trigger that reads "a suspected leak, or
+an operator leaving". `app.cli identity revoke-all-sessions` now does it for real, and is row 1 of
+[rotate-secrets.md](rotate-secrets.md).
 
 **2.2 No rate limiting on authentication.**
 `POST /api/v1/auth/login`, `/auth/password-reset`, and `/auth/accept-invitation` have no limiter,

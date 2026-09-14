@@ -10,10 +10,8 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
    `https://objects.<domain>` to match.
 1. On the VPS: `cd /opt/research-management && git fetch --tags && git checkout <tag>`.
 2. Confirm `infra/.env` has every variable in `.env.example` (`diff <(grep -o '^[A-Z_]*' .env.example | sort) <(grep -o '^[A-Z_]*' infra/.env | sort)`).
-   That compares *keys*; three of them also have to be non-empty, and an empty value fails
+   That compares *keys*; two of them also have to be non-empty, and an empty value fails
    silently in a different way in each case:
-   - `RM_SECRET_KEY` — the shipped default is `dev-only-change-me`. Leaving it is the same as
-     having no session protection at all.
    - `RM_METRICS_TOKEN` — with `RM_ENV=prod` and no token, `/api/metrics` refuses everybody and
      the api log says so at start-up. Prometheus scrapes the api container directly on the
      internal network; Caddy blocks `/api/metrics` at the edge either way.

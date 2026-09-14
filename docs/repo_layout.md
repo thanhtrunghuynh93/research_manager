@@ -264,7 +264,6 @@ All read once by `core/config.py`. Prefix `RM_`.
 | --- | --- | --- |
 | `RM_ENV` | all | `dev`, `test`, `prod` |
 | `RM_DATABASE_URL` | api, worker | Postgres DSN |
-| `RM_SECRET_KEY` | api | Session and token signing |
 | `RM_PUBLIC_URL` | api, worker | Absolute links in emails |
 | `RM_S3_ENDPOINT`, `RM_S3_BUCKET`, `RM_S3_ACCESS_KEY`, `RM_S3_SECRET_KEY` | api, worker | MinIO |
 | `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL`, `RM_OPENAI_EMBED_MODEL` | worker, api (assistant) | Gateway only |
