@@ -15,3 +15,4 @@ Format: Context, Decision, Consequences. Keep each under a page.
 | [0008](0008-facts-outside-the-model.md) | The assistant computes facts in SQL, never through the model |
 | [0009](0009-access-epoch-for-cached-answers.md) | A counter, not an invalidation sweep, expires cached answers |
 | [0010](0010-presigned-uploads-verified-after-the-fact.md) | Uploads are granted, then verified; extraction has three outcomes |
+| [0011](0011-co-equal-professors.md) | Professors are co-equal; the role is fixed at acceptance |
