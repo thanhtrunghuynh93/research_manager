@@ -65,13 +65,15 @@ test("offers no control that would change a role", async () => {
   expect(selects[0]).toHaveValue("student");
 });
 
-test("gives a colleague no buttons, and says why", async () => {
+test("gives a colleague no buttons", async () => {
+  // ADR 0011: professors are co-equal, so one cannot suspend or remove another from this screen.
+  // The row used to carry a note saying so; the absence of the buttons is the part that matters
+  // and is what this asserts.
   renderPeople([PROF, user({ id: "p2", role: "prof", display_name: "Prof Tran" })]);
   await screen.findByText("Prof Tran");
 
   const professors = screen.getByTestId("professors");
   expect(within(professors).queryByRole("button")).not.toBeInTheDocument();
-  expect(within(professors).getAllByText(/break-glass/i).length).toBeGreaterThan(0);
 });
 
 test("asks again before removing a student, and names the consequence", async () => {

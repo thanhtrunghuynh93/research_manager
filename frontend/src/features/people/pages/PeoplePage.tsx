@@ -57,7 +57,6 @@ export function PeoplePage() {
         {professors.map((user) => (
           <li key={user.id} className="row">
             <Person user={user} isYou={user.id === session.data?.id} />
-            <span className="stamp">{t("people.colleagueNote")}</span>
           </li>
         ))}
         {professors.length === 0 && <Empty>{t("people.noProfessors")}</Empty>}
