@@ -2122,6 +2122,35 @@
         "title": "LoginIn",
         "type": "object"
       },
+      "MailState": {
+        "description": "UI-01: mail that did not arrive, named rather than left silent.\n\nAn invitation that failed is the sharpest case \u2014 enrolment is invitation-only, so the person it\nwas for has no way in at all, and nothing else on this screen would ever mention them.",
+        "properties": {
+          "failed_notifications": {
+            "title": "Failed Notifications",
+            "type": "integer"
+          },
+          "failed_token_emails": {
+            "title": "Failed Token Emails",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "warning",
+          "reason",
+          "failed_notifications",
+          "failed_token_emails"
+        ],
+        "title": "MailState",
+        "type": "object"
+      },
       "MembershipEndIn": {
         "properties": {
           "left_on": {
@@ -2926,6 +2955,9 @@
               }
             ]
           },
+          "mail": {
+            "$ref": "#/components/schemas/MailState"
+          },
           "outstanding": {
             "$ref": "#/components/schemas/Outstanding"
           },
@@ -2957,7 +2989,8 @@
         "required": [
           "as_of",
           "outstanding",
-          "ai_budget"
+          "ai_budget",
+          "mail"
         ],
         "title": "OverviewOut",
         "type": "object"

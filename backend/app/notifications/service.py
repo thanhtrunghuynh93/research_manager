@@ -10,6 +10,7 @@ identity.service; it never queries their tables (docs/repo_layout.md §3.2).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -438,6 +439,51 @@ async def failed_deliveries(session: AsyncSession, scope: Scope) -> int:
     """UI-01: the professor's overview shows a mail-delivery warning rather than silence."""
     scope.require_prof()
     return await repository.failed_delivery_count(session, scope.workspace_id)
+
+
+@dataclass(frozen=True)
+class MailHealth:
+    """What is wrong with mail, split by how it would be noticed.
+
+    The two counts are kept apart because the professor's response differs. A failed notification
+    is an inconvenience — the in-app message is still there and the recipient can still sign in. A
+    failed token email is an enrolment that did not happen: the addressee has no session, no in-app
+    counterpart exists, and there is no other way into an invitation-only system (AUTH-01).
+    """
+
+    failed_notifications: int
+    failed_token_emails: int
+
+    @property
+    def warning(self) -> bool:
+        return bool(self.failed_notifications or self.failed_token_emails)
+
+    @property
+    def reason(self) -> str:
+        if not self.warning:
+            return ""
+        parts = []
+        if self.failed_token_emails:
+            parts.append(
+                f"{self.failed_token_emails} invitation or recovery email(s) were never "
+                "delivered; those people cannot sign in until the link is reissued"
+            )
+        if self.failed_notifications:
+            parts.append(f"{self.failed_notifications} notification email(s) failed to send")
+        return "; ".join(parts)
+
+
+async def mail_health(session: AsyncSession, scope: Scope) -> MailHealth:
+    """UI-01, production-readiness §1.1: mail failure the professor can actually see.
+
+    Before this, a misconfigured relay produced a roll that still read "Invitation sent to …"
+    while the job died in the queue, and nobody learned the student was never contacted.
+    """
+    scope.require_prof()
+    return MailHealth(
+        failed_notifications=await repository.failed_delivery_count(session, scope.workspace_id),
+        failed_token_emails=await repository.failed_token_email_count(session),
+    )
 
 
 # ------------------------------------------------------------------ reactions to other modules

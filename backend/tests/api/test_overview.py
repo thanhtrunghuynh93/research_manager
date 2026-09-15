@@ -155,3 +155,53 @@ async def test_the_overview_surfaces_a_spent_budget_as_a_named_condition(
 
     assert body["ai_budget"]["analysis_delayed"] is True
     assert "budget" in body["ai_budget"]["reason"]
+
+
+async def test_the_overview_is_quiet_about_mail_when_nothing_has_failed(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+) -> None:
+    await _week(db, prof_scope, [student_a])
+    await _login(client, prof)
+
+    body = (await client.get("/api/v1/overview")).json()
+
+    assert body["mail"]["warning"] is False
+    assert body["mail"]["reason"] == ""
+
+
+async def test_an_invitation_that_never_sent_reaches_the_overview(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+) -> None:
+    """production-readiness.md §1.1: the failure used to exist only in the job queue.
+
+    Invitation and recovery emails bypass `email_deliveries` on purpose — a token message has no
+    in-app counterpart and the row would hold a live credential until the next sweep. The cost was
+    that with SMTP misconfigured the job died in `procrastinate_jobs` while the roll still read
+    "Invitation sent to …", and nobody learned the student was never contacted.
+    """
+    from sqlalchemy import text
+
+    await db.execute(
+        text(
+            "INSERT INTO procrastinate_jobs (task_name, status, args, queue_name, lock) "
+            "VALUES ('notifications.send_token_email', 'failed', '{}', 'default', :lock)"
+        ),
+        {"lock": "a-spent-invitation"},
+    )
+    await db.flush()
+    await _login(client, prof)
+
+    body = (await client.get("/api/v1/overview")).json()
+
+    assert body["mail"]["warning"] is True
+    assert body["mail"]["failed_token_emails"] == 1
+    # Named as an enrolment that did not happen, not as a generic mail problem: the person it was
+    # for has no session, no in-app message, and no other way into an invitation-only system.
+    assert "cannot sign in" in body["mail"]["reason"]

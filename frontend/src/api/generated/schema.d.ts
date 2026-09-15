@@ -2458,6 +2458,23 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * MailState
+         * @description UI-01: mail that did not arrive, named rather than left silent.
+         *
+         *     An invitation that failed is the sharpest case — enrolment is invitation-only, so the person it
+         *     was for has no way in at all, and nothing else on this screen would ever mention them.
+         */
+        MailState: {
+            /** Failed Notifications */
+            failed_notifications: number;
+            /** Failed Token Emails */
+            failed_token_emails: number;
+            /** Reason */
+            reason: string;
+            /** Warning */
+            warning: boolean;
+        };
         /** MembershipEndIn */
         MembershipEndIn: {
             /** Left On */
@@ -2786,6 +2803,7 @@ export interface components {
              */
             as_of: string;
             current_period?: components["schemas"]["CurrentPeriod"] | null;
+            mail: components["schemas"]["MailState"];
             outstanding: components["schemas"]["Outstanding"];
             /** Review Queue */
             review_queue?: {

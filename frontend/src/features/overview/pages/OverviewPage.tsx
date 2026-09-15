@@ -28,6 +28,14 @@ export function OverviewPage() {
     review_queue: raw.review_queue ?? [],
     sync_issues: raw.sync_issues ?? [],
     stalled_analyses: raw.stalled_analyses ?? [],
+    // Absent means "this deployment predates the mail section", not "mail is broken". The whole
+    // screen is the professor's week; it must not go blank over a field it did not get.
+    mail: raw.mail ?? {
+      warning: false,
+      reason: "",
+      failed_notifications: 0,
+      failed_token_emails: 0,
+    },
   };
   const period = data.current_period;
 
@@ -53,6 +61,18 @@ export function OverviewPage() {
             budget
           </span>
           <span>{data.ai_budget.reason}</span>
+        </p>
+      )}
+
+      {/* An invitation that never sent is an enrolment that did not happen, and nothing else on
+          this screen would ever mention the person it was for: they have no session, no in-app
+          message, and no other way into an invitation-only system. */}
+      {data.mail.warning && (
+        <p className="notice-warn mt-6 flex gap-3" data-testid="mail-warning">
+          <span className="font-mono text-[10px] uppercase leading-relaxed tracking-[0.12em]">
+            mail
+          </span>
+          <span>{data.mail.reason}</span>
         </p>
       )}
 
