@@ -198,12 +198,9 @@ async def set_reminder_offsets(
     wanted = sorted(set(offsets_hours), reverse=True)
     for hours in wanted:
         session.add(ReminderRule(workspace_id=scope.workspace_id, offset_minutes=hours * 60))
-    actor_id, actor_kind = scope.audit_actor
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=actor_id,
-        actor_kind=actor_kind,
+        scope=scope,
         action="workspace.reminder_offsets_set",
         target_table="reminder_rules",
         target_id=scope.workspace_id,

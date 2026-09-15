@@ -881,8 +881,7 @@ def _audit(
 ) -> None:
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action=action,
         target_table=table,
         target_id=target_id,

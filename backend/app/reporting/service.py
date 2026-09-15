@@ -99,8 +99,7 @@ async def configure_calendar(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="calendar.configured",
         target_table="calendar_configs",
         target_id=config.id,
@@ -1011,8 +1010,7 @@ def _audit(
 ) -> None:
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action=action,
         target_table=table,
         target_id=target_id,

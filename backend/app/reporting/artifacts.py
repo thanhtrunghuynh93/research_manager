@@ -263,8 +263,7 @@ async def confirm_upload(
     artifact.current_version_no = version.version_no
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="artifact.uploaded",
         target_table="artifact_versions",
         target_id=version.id,

@@ -135,8 +135,7 @@ async def connect_repository(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="repository.connected",
         target_table="repositories",
         target_id=repository.id,
@@ -174,8 +173,7 @@ async def link_project(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="repository.linked_project",
         target_table="project_repositories",
         target_id=link.id,
@@ -579,8 +577,10 @@ async def record_force_push(
     )
     write_audit(
         session,
+        scope=scope,
+        # The repository's own workspace rather than the scope's: a force push is recorded against
+        # the workspace that owns the repository, which is the record being changed.
         workspace_id=repository.workspace_id,
-        actor_id=scope.user_id,
         action="repository.force_push_recorded",
         target_table="repositories",
         target_id=repository_id,
@@ -656,8 +656,7 @@ async def map_identity(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="developer_identity.mapped",
         target_table="developer_identities",
         target_id=identity.id,
@@ -696,8 +695,7 @@ async def confirm_identity(session: AsyncSession, scope: Scope, identity_id: UUI
     identity.confirmed_by = scope.user_id
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="developer_identity.confirmed",
         target_table="developer_identities",
         target_id=identity.id,

@@ -149,8 +149,7 @@ async def set_ai_budgets(
     after = await repository.set_ai_budgets(session, scope.workspace_id, budgets)
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="workspace.ai_budgets_set",
         target_table="workspaces",
         target_id=scope.workspace_id,
@@ -179,6 +178,16 @@ async def system_scope(session: AsyncSession, workspace_id: UUID) -> Scope:
     professors = await repository.professor_ids(session, workspace_id)
     return Scope(
         workspace_id=workspace_id,
+        # No active professor is an ordinary state, not an error: it is what a workspace looks like
+        # between bootstrap and the professor opening their invitation, and the calendar tasks must
+        # still run through it. There is no user to borrow then, and `user_id` is not nullable —
+        # eighty-odd call sites read it, several into non-null columns — so the workspace's own id
+        # stands in as a value that resolves to no user.
+        #
+        # What makes that safe is that it can no longer be mistaken for an author: `is_system` sends
+        # every audit row through `audit_actor`, which records SYSTEM and a null actor. Before
+        # write_audit took a Scope this value reached the audit_events table directly, where it
+        # named a user that does not exist.
         user_id=professors[0] if professors else workspace_id,
         role=Role.PROF,
         project_ids=frozenset(),
@@ -263,8 +272,7 @@ async def invite_user(
     session.add(invitation)
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="user.invited",
         target_table="users",
         target_id=user.id,
@@ -489,8 +497,7 @@ async def deactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) ->
     await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="user.deactivated",
         target_table="users",
         target_id=user.id,
@@ -520,8 +527,7 @@ async def reactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) ->
     await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="user.reactivated",
         target_table="users",
         target_id=user.id,
@@ -569,8 +575,7 @@ async def remove_student(session: AsyncSession, scope: Scope, user_id: UUID) -> 
     await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="user.removed",
         target_table="users",
         target_id=user.id,
@@ -599,8 +604,7 @@ async def update_profile(
         user.display_name = display_name
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="user.profile_updated",
         target_table="users",
         target_id=user.id,
