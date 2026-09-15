@@ -21,8 +21,19 @@ layout. Update it in the pull request that changes what it describes.
 | 9 | The seams: assessment triggering, the periodic tasks, the repository API | Done |
 | 10 | A full review of the branch, and the defects it found | Done |
 
-At the time of writing: 710 backend tests, 60 frontend tests, 91.3 % backend coverage, fifteen
+At the time of writing: 794 backend tests, 105 frontend tests, 91.3 % backend coverage, fifteen
 migrations, and all five import-linter contracts holding. Every one of the nineteen acceptance scenarios has a test.
+
+**15 September 2026 — first deployment preparation.** §1 and §2 of
+[production-readiness.md](runbooks/production-readiness.md) are closed bar mail deliverability.
+Two of those findings turned out to be understated in the same way, and the shape is the one this
+document keeps recording: *the fix as prescribed would not have worked*. `RM_ACME_EMAIL` was
+missing from `.env.example`, and also from the caddy service, which has no `env_file` — so setting
+it correctly would still have changed nothing. Failed token emails were said to miss the mail
+warning on the professor's overview; there was no mail warning, and `failed_deliveries()` had no
+callers at all. A dead worker or a wrong SMTP credential is now a `readyz` failure rather than a
+deployment that answers `ready` and enrols nobody, and `RM_ENV=prod` refuses to start on any
+shipped development default instead of trusting an operator to read a checklist.
 
 **Version 0.2 of this document claimed the MVP was complete. It was not**, and the error is worth
 recording because of its shape: every module was built and tested, and three of the seams between

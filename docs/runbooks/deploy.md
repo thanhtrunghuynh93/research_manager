@@ -9,9 +9,17 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
    student has already chosen it, and `RM_S3_PUBLIC_ENDPOINT` in `infra/.env` must be
    `https://objects.<domain>` to match.
 1. On the VPS: `cd /opt/research-management && git fetch --tags && git checkout <tag>`.
-2. Confirm `infra/.env` has every variable in `.env.example` (`diff <(grep -o '^[A-Z_]*' .env.example | sort) <(grep -o '^[A-Z_]*' infra/.env | sort)`).
-   That compares *keys*; two of them also have to be non-empty, and an empty value fails
-   silently in a different way in each case:
+2. Run `scripts/preflight.sh`. It compares the keys in `infra/.env` against `.env.example` and
+   then checks the things a key comparison structurally cannot see: an empty value, a variable
+   that never reaches the container that reads it, a bind-mounted file that does not exist (Docker
+   creates those as *directories*, and the backup container then fails on its first nightly run),
+   whether both DNS names resolve, and whether `RM_PUBLIC_URL` and `RM_S3_PUBLIC_ENDPOINT` agree
+   with `RM_DOMAIN`. It exits non-zero on anything blocking.
+
+   The application enforces its own half: with `RM_ENV=prod` it refuses to start on any shipped
+   development default and names all of them at once (`app/core/config.py`). Between the two, the
+   variables below are checked rather than remembered — they are documented here because knowing
+   *why* each one matters is what makes a preflight failure readable:
    - `RM_METRICS_TOKEN` — with `RM_ENV=prod` and no token, `/api/metrics` refuses everybody and
      the api log says so at start-up. Prometheus scrapes the api container directly on the
      internal network; Caddy blocks `/api/metrics` at the edge either way.
@@ -47,6 +55,16 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
    `worker starting`; the professor overview loads. If `RM_OPENAI_API_KEY` is unset the api log
    says so at start-up and assessments run on the deterministic fake gateway — which is a valid
    way to run a pilot, but it should be a decision rather than a surprise.
+
+   `readyz` now carries four checks, and `worker` is the one to read closely on a first deploy:
+   ```json
+   {"status":"ready","checks":{"database":"ok","object_storage":"ok","worker":"skipped","smtp":"ok"}}
+   ```
+   `worker: skipped` means the queue is empty and nothing has run yet, which is correct for the
+   first few minutes and stops being correct after that — the seam check below is what turns it
+   into `ok`. `worker: fail` means jobs are waiting and nothing is consuming them. `smtp: fail`
+   means no invitation will ever arrive, which on an invitation-only system means nobody can sign
+   in; it is checked at most once a minute, so give it that long after fixing the relay.
 
    Then verify the seam, because a healthy api and a running worker do not prove they are joined:
    submit a report as a student (or `POST /api/v1/admin/assessments/retry`) and confirm a row
