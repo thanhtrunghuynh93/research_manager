@@ -1,0 +1,12 @@
+# Backups are encrypted to these age public keys (one per line). backup.sh passes this file to
+# `age -R`, so an empty or missing file means every nightly dump fails to encrypt.
+#
+# Generate the pair on a machine that is NOT this host:
+#
+#   age-keygen -o rm-backup-identity.key
+#
+# The command prints the public key; put it here. The private key is what restores a backup, so
+# it must live somewhere the restore drill can reach it and nowhere a compromise of this host
+# would — if both sit on the VPS, encrypting the backups protects against nothing.
+#
+# age1................................................................
