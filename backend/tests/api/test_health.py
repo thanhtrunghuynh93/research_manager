@@ -57,18 +57,19 @@ async def test_an_empty_queue_is_not_a_dead_worker(client: AsyncClient, monkeypa
     assert state in ("ok", "skipped")
 
 
-async def test_unreachable_smtp_makes_the_deployment_unready(
+async def test_rejected_credentials_make_the_deployment_unready(
     client: AsyncClient,
     monkeypatch,  # type: ignore[no-untyped-def]
 ) -> None:
+    """The relay answered and refused us: the configuration is wrong and waiting will not fix it."""
     import smtplib
 
     from app.api.v1 import health
 
-    def _refuse(_: object) -> None:
-        raise smtplib.SMTPConnectError(421, "nope")
+    def _reject(_: object) -> None:
+        raise smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted")
 
-    monkeypatch.setattr(health, "_smtp_connect", _refuse)
+    monkeypatch.setattr(health, "_smtp_connect", _reject)
     monkeypatch.setattr(health, "_smtp_cached", None)
 
     response = await client.get("/api/readyz")
@@ -76,6 +77,33 @@ async def test_unreachable_smtp_makes_the_deployment_unready(
     assert response.json()["checks"]["smtp"] == "fail"
     assert response.status_code == 503
     assert response.json()["status"] == "degraded"
+
+
+async def test_a_busy_relay_does_not_make_the_deployment_unready(
+    client: AsyncClient,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    """A timeout says the relay was busy for ten seconds, not that this deployment cannot send.
+
+    Treating the two alike made readiness flap between ok and fail against a relay whose
+    credentials were provably good, and an amber light that comes on by itself is one people learn
+    to ignore.
+    """
+    import smtplib
+
+    from app.api.v1 import health
+
+    def _timeout(_: object) -> None:
+        raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed: read timed out")
+
+    monkeypatch.setattr(health, "_smtp_connect", _timeout)
+    monkeypatch.setattr(health, "_smtp_cached", None)
+
+    response = await client.get("/api/readyz")
+
+    assert response.json()["checks"]["smtp"] == "skipped"
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
 
 
 async def test_the_smtp_result_is_reused_between_polls(monkeypatch) -> None:  # type: ignore[no-untyped-def]

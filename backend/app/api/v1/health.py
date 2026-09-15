@@ -32,7 +32,15 @@ WORKER_SILENT_AFTER = timedelta(minutes=15)
 
 # An SMTP relay is a third party with its own opinion about how often it may be connected to, and
 # readiness is polled. The result is reused for this long rather than reconnecting per request.
-SMTP_CHECK_TTL = timedelta(seconds=60)
+# Ten minutes rather than one: a full login against Gmail every minute is enough traffic for the
+# relay to start closing connections, which made readiness flap between ok and fail on a healthy
+# deployment — the check was reporting on how often it ran, not on whether mail works.
+SMTP_CHECK_TTL = timedelta(minutes=10)
+
+# Long enough for a STARTTLS handshake and a login to a public relay that is in no hurry. At five
+# seconds Gmail timed out often enough to look broken.
+SMTP_TIMEOUT_SECONDS = 10
+
 _smtp_cached: tuple[datetime, CheckState] | None = None
 
 # `?fresh=1` runs the full observability query set. One operator watching a stalled worker is the
@@ -127,32 +135,49 @@ async def _check_worker() -> CheckState:
 
 
 def _smtp_connect(settings: Settings) -> None:
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=5) as client:
+    with smtplib.SMTP(
+        settings.smtp_host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS
+    ) as client:
         client.ehlo()
         if settings.smtp_user:
             # Only meaningful once the relay has been told who we are: a relay that accepts the
             # connection and rejects the credential is the configuration that sends nothing.
             client.starttls()
+            client.ehlo()
             client.login(settings.smtp_user, settings.smtp_password.get_secret_value())
 
 
 async def _check_smtp(settings: Settings) -> CheckState:
-    """Whether the mail relay accepts us, checked outside prod only as far as connecting.
+    """Whether the mail relay accepts us.
 
     Wrong SMTP credentials produce a deployment that answers `ready`, accepts reports, and tells
     nobody anything — including the students it never invited (production-readiness.md §1.2, §1.3).
+    That is the failure this exists to catch, and it is a property of the configuration: it will
+    not fix itself, and it should stop a deploy.
+
+    A relay that times out or drops the connection is a different thing. It says the relay was busy
+    for ten seconds, not that this deployment cannot send mail, and treating the two alike made the
+    check report `fail` on a deployment whose credentials were provably good — an amber light that
+    comes on by itself is one people learn to ignore. So a rejected credential fails, and anything
+    transient is `skipped`: recorded in the log, visible in the response, and not a reason to call
+    the deployment unready.
     """
     global _smtp_cached
     at = now()
     if _smtp_cached is not None and at - _smtp_cached[0] < SMTP_CHECK_TTL:
         return _smtp_cached[1]
 
+    state: CheckState
     try:
         await asyncio.to_thread(_smtp_connect, settings)
-        state: CheckState = "ok"
-    except (smtplib.SMTPException, OSError) as exc:
-        log.warning("smtp readiness check failed: %s", exc)
+        state = "ok"
+    except (smtplib.SMTPAuthenticationError, smtplib.SMTPNotSupportedError) as exc:
+        # The relay answered and refused us. No amount of waiting changes that.
+        log.error("smtp readiness: the relay rejected our credentials: %s", exc)
         state = "fail"
+    except (smtplib.SMTPException, OSError) as exc:
+        log.warning("smtp readiness: could not reach the relay this time: %s", exc)
+        state = "skipped"
     _smtp_cached = (at, state)
     return state
 
