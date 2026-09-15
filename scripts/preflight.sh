@@ -49,7 +49,7 @@ echo
 echo "Values that must not be empty"
 
 # Empty here fails silently and differently in each case, which is why each gets its own line.
-for required in RM_DOMAIN RM_PUBLIC_URL RM_METRICS_TOKEN RM_S3_PUBLIC_ENDPOINT RM_MAIL_FROM; do
+for required in RM_DOMAIN RM_PUBLIC_URL RM_METRICS_TOKEN RM_S3_PUBLIC_ENDPOINT RM_SMTP_HOST RM_MAIL_FROM; do
   if [ -z "$(value "$required")" ]; then
     fail "$required is empty"
   else

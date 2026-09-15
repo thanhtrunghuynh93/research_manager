@@ -60,6 +60,10 @@ def test_development_defaults_are_untouched_outside_production() -> None:
         ({"mail_from": "research-management@example.edu"}, "RM_MAIL_FROM is still"),
         ({"smtp_host": "mailpit"}, "ever receive an invitation"),
         ({"smtp_host": "localhost"}, "ever receive an invitation"),
+        # Empty is not the shipped default, so comparing only against the defaults let it pass —
+        # a relay nobody has chosen yet sends exactly as much mail as one that swallows it.
+        ({"smtp_host": ""}, "RM_SMTP_HOST is empty"),
+        ({"mail_from": ""}, "RM_MAIL_FROM is empty"),
         ({"github_app_id": "12345"}, "webhook endpoint returns 503"),
     ],
 )

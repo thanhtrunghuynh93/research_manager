@@ -109,9 +109,18 @@ class Settings(BaseSettings):
         if not self.metrics_token.get_secret_value():
             bad.append("RM_METRICS_TOKEN is empty, which makes /api/metrics refuse everybody")
 
-        if self.mail_from == _DEV_MAIL_FROM:
+        # Empty is checked separately from the development values, and neither is the other's
+        # special case: `mailpit` sends nothing while looking configured, and empty is a relay
+        # nobody has chosen yet. Both end with a student who was never contacted, and an earlier
+        # version of this validator let empty through because it only compared against the
+        # shipped defaults.
+        if not self.mail_from:
+            bad.append("RM_MAIL_FROM is empty")
+        elif self.mail_from == _DEV_MAIL_FROM:
             bad.append(f"RM_MAIL_FROM is still {_DEV_MAIL_FROM}")
-        if self.smtp_host in _DEV_SMTP_HOSTS:
+        if not self.smtp_host:
+            bad.append("RM_SMTP_HOST is empty; no invitation or recovery email can be sent")
+        elif self.smtp_host in _DEV_SMTP_HOSTS:
             bad.append(
                 f"RM_SMTP_HOST is {self.smtp_host}, which accepts every message and delivers "
                 "none; no student would ever receive an invitation"
