@@ -8,6 +8,7 @@ A supervision workspace for one professor and their students: weekly report pack
 - [Architecture](docs/architecture.md) — how it is built
 - [Repository layout](docs/repo_layout.md) — where things live and the conventions
 - [Implementation status](docs/implementation_status.md) — what is built, what is left, and why
+- [Use cases](docs/use_cases.md) — what each role can do, and which of it has a screen
 - [ADRs](docs/adr/) — decisions and their reasons
 - [Runbooks](docs/runbooks/) — operate it
 
