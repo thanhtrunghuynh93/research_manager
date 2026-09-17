@@ -198,7 +198,7 @@ function Periods({ configured }: { configured: boolean }) {
           type="button"
           disabled={!configured || ensure.isPending}
           onClick={() => ensure.mutate(through)}
-          className="btn-secondary"
+          className="btn-ghost"
         >
           {t("calendar.open")}
         </button>

@@ -162,7 +162,11 @@ test("a student member is offered the way out, posting to their own membership",
     }),
   );
 
-  await userEvent.click(await screen.findByTestId("leave-project"));
+  const done = await screen.findByTestId("leave-project");
+  // The copy is the student's: finishing their part, not abandoning something.
+  expect(done).toHaveTextContent(/done this project/i);
+
+  await userEvent.click(done);
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   // Their own membership, not the co-member's, which the page also lists.

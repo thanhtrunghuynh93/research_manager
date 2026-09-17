@@ -258,8 +258,8 @@
     "noStudents": "No students in this workspace yet — invite one on",
     "openToJoin": "Open to joining",
     "openToJoinNote": "A student can put themselves on an open project without being assigned. Being on a project shows them its plan, milestones, tasks and decisions, and who else works on it.",
-    "leave": "Leave this project",
-    "leaveNote": "You stop owing a report for this project from next week. The week already in progress still counts, and what you have submitted stays on the record.",
+    "leave": "Done this project",
+    "leaveNote": "This ends your part in it. You stop owing a weekly report for this project from next week, what you have already submitted stays on the record, and the project itself carries on for whoever else is on it.",
     "saveFields": "Save"
   },
   "student": {

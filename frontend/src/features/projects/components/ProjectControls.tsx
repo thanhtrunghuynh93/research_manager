@@ -110,17 +110,17 @@ export function MembershipControls({ project }: { project: Project }) {
   if (!mine) return null;
 
   return (
-    <div className="mt-4 border-t border-border pt-3" data-testid="membership-controls">
+    <div className="mt-4 border-t border-border pt-4" data-testid="membership-controls">
       <button
         type="button"
         disabled={leave.isPending}
         onClick={() => leave.mutate(mine.id)}
-        className="btn-secondary"
+        className="btn-primary"
         data-testid="leave-project"
       >
         {t("project.leave")}
       </button>
-      <p className="stamp mt-2">{t("project.leaveNote")}</p>
+      <p className="stamp mt-2 max-w-xl">{t("project.leaveNote")}</p>
       <Failure error={leave.error} />
     </div>
   );
@@ -196,7 +196,7 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
             ))}
           </select>
         </label>
-        <button type="submit" disabled={update.isPending} className="btn-secondary">
+        <button type="submit" disabled={update.isPending} className="btn-ghost">
           {t("project.saveFields")}
         </button>
       </div>
@@ -290,7 +290,7 @@ export function AddMemberForm({ project }: { project: Project }) {
             className="input"
           />
         </label>
-        <button type="submit" disabled={add.isPending} className="btn-secondary">
+        <button type="submit" disabled={add.isPending} className="btn-ghost">
           {t("project.assign")}
         </button>
       </div>

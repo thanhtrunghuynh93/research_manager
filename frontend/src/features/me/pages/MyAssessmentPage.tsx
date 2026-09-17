@@ -125,7 +125,7 @@ function FeedbackThread({ assessmentId }: { assessmentId: string }) {
           />
         </label>
         <div className="mt-3 flex items-center gap-4">
-          <button type="submit" disabled={correction.isPending} className="btn-secondary">
+          <button type="submit" disabled={correction.isPending} className="btn-ghost">
             {t("myAssessment.correctionSend")}
           </button>
           {correction.isSuccess ? (

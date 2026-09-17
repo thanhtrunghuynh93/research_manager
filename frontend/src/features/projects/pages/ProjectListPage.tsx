@@ -133,7 +133,7 @@ function JoinablePanel() {
               type="button"
               disabled={join.isPending}
               onClick={() => join.mutate(project.id)}
-              className="btn-secondary"
+              className="btn-ghost"
               data-testid="join-project"
             >
               {t("projects.join")}

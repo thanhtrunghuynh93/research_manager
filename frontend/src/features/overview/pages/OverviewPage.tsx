@@ -211,7 +211,7 @@ function DeriveObligations({ periodId }: { periodId?: string }) {
         type="button"
         disabled={ensure.isPending}
         onClick={() => ensure.mutate(periodId)}
-        className="btn-secondary"
+        className="btn-ghost"
         data-testid="derive-obligations"
       >
         {t("overview.deriveObligations")}
