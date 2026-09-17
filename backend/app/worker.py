@@ -14,18 +14,22 @@ from app.ai import bootstrap as ai_bootstrap
 from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.db import init_engine
-from app.core.jobs import TASK_MODULES, procrastinate_app
+from app.core.jobs import SUBSCRIBER_MODULES, TASK_MODULES, procrastinate_app
 
 log = logging.getLogger(__name__)
 
 
 def bootstrap(settings: Settings) -> None:
-    """Import the task modules and open the database engine.
+    """Import the task and subscriber modules, and open the database engine.
 
     The API does the second half in its lifespan; the worker has no lifespan, and its tasks call
     the same services, so it does it here.
+
+    The subscriber modules are imported for their side effect. A job that emits a domain event in a
+    process where nothing subscribed does not fail — it succeeds having done nothing, which is the
+    worst shape a bug can take.
     """
-    for module in TASK_MODULES:
+    for module in (*TASK_MODULES, *SUBSCRIBER_MODULES):
         importlib.import_module(module)
     init_engine(settings)
     # The worker makes every model call the pipeline needs, so it installs the provider too.
