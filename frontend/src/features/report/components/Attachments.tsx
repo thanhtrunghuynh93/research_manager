@@ -56,12 +56,17 @@ export function Attachments({
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
+  // What is in flight, purely so the screen can say so. The file input cannot hold it: its value
+  // is cleared on selection (see the change handler), and a disabled input showing nothing for the
+  // several seconds this takes is indistinguishable from a broken one.
+  const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claim, setClaim] = useState("");
   const [link, setLink] = useState("");
 
   async function upload(file: File) {
     setBusy(true);
+    setSending(file.name);
     setError(null);
     try {
       const grant = await api.post<Grant>("/api/v1/artifacts/uploads", {
@@ -87,6 +92,7 @@ export function Attachments({
       setError(problem instanceof ApiError ? problem.problem.detail : String(problem));
     } finally {
       setBusy(false);
+      setSending(null);
     }
   }
 
@@ -160,14 +166,22 @@ export function Attachments({
             <input
               type="file"
               disabled={busy}
+              aria-busy={busy}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) void upload(file);
+                // Cleared so that choosing the same file again still fires a change — after a
+                // failure that is exactly what someone does. The name is shown below instead.
                 event.target.value = "";
               }}
               className="file-input"
             />
           </label>
+          {sending && (
+            <p className="stamp" role="status" data-testid="attachment-sending">
+              {t("report.attachments.sending", { name: sending })}
+            </p>
+          )}
           <label className="block">
             <span className="field-label">{t("report.attachments.link")}</span>
             <span className="mt-2 flex gap-2">

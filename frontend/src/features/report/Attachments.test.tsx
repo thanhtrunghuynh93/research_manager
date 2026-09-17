@@ -141,3 +141,37 @@ test("the panel says what the claim field is for", async () => {
 
   expect(screen.getByText(/Recorded as your claim, not as a finding/i)).toBeInTheDocument();
 });
+
+test("while a file is in flight the panel names it, rather than going quiet", async () => {
+  // On the live stack the grant took 1.5s and the confirmation 4.6s, because confirming reads the
+  // text out of the file. For those six seconds the input is disabled and — since the change
+  // handler clears its value so the same file can be chosen again — shows no filename either. A
+  // disabled control showing nothing is indistinguishable from a broken one, which is what it was
+  // taken for.
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.post("/api/v1/artifacts/uploads", () => HttpResponse.json(GRANT, { status: 201 })),
+    http.put("https://objects.example/upload/a1", () => new HttpResponse(null, { status: 200 })),
+    http.post("/api/v1/artifacts/a1/confirm", async () => {
+      await held;
+      return HttpResponse.json(attachment());
+    }),
+  );
+  const { onAttached } = renderPanel();
+
+  await userEvent.upload(
+    screen.getByLabelText(/attach a file/i),
+    new File(["# notes"], "notes.md", { type: "text/markdown" }),
+  );
+
+  const sending = await screen.findByTestId("attachment-sending");
+  expect(sending).toHaveTextContent(/notes\.md/);
+  expect(screen.getByLabelText(/attach a file/i)).toBeDisabled();
+
+  release?.();
+  await waitFor(() => expect(onAttached).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByTestId("attachment-sending")).not.toBeInTheDocument());
+});

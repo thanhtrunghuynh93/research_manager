@@ -108,7 +108,8 @@
         "ok": "Text extracted",
         "failed": "Could not be read",
         "unsupported": "Stored, no text"
-      }
+      },
+      "sending": "Sending {{name}} — this takes a few seconds while the text is read out of it."
     }
   },
   "overview": {
