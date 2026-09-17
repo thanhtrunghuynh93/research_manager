@@ -49,6 +49,8 @@ async def logout(
 
 @router.get("/me", summary="The signed-in user")
 async def me(request_context: ContextDep) -> UserOut:
+    # `workspace_id` is the single answer to which workspace this account is in: joining moves the
+    # account itself, so there is no second, session-level answer to reconcile (ADR 0014).
     return request_context.user
 
 

@@ -1,4 +1,10 @@
-"""UI-07: in-app notifications, their visibility, and what a user may mute."""
+"""UI-07: the notification records jobs raise, and who each one belongs to.
+
+Use cases v0.3 retired reading notifications in the app, so there is no service read path left to
+test. What survives is what the records are for: a job raises one, it belongs to exactly one
+person, and the visibility policy still says so. These read through `repository` because that is
+now the only reader besides the delivery path.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +14,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
-from app.core.errors import ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import ForbiddenError
 from app.core.types import Role
 from app.identity import models as identity_models
 from app.identity import service as identity_service
-from app.notifications import service
+from app.notifications import repository, service
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
 
@@ -53,7 +59,7 @@ async def test_submitting_a_report_notifies_the_professor(
         entries=[{"project_id": project.id, "stage": "implementation", "work_performed": "Did it"}],
     )
 
-    notifications = await service.list_notifications(db, prof_scope)
+    notifications = await repository.list_notifications(db, prof_scope)
     assert [n.kind for n in notifications] == [service.REPORT_SUBMITTED]
     assert notifications[0].recipient_id == prof.id
 
@@ -75,114 +81,9 @@ async def test_a_student_sees_only_their_own_notifications(
     )
     scope_b = await identity_service.scope_for(db, student_b)
 
-    assert await service.list_notifications(db, scope_b) == []
+    assert await repository.list_notifications(db, scope_b) == []
     scope_a = await identity_service.scope_for(db, student_a)
-    assert len(await service.list_notifications(db, scope_a)) == 1
-
-
-async def test_a_notification_can_be_marked_read_once(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    created = await service.notify(
-        db,
-        workspace_id=prof_scope.workspace_id,
-        recipient_id=student_a.id,
-        kind=service.REVISION_REQUESTED,
-        subject_table="weekly_reports",
-        subject_id=student_a.id,
-        payload={},
-    )
-    assert created is not None
-    scope = await identity_service.scope_for(db, student_a)
-
-    read = await service.mark_read(db, scope, created.id)
-
-    assert read.read_at is not None
-    assert (await service.unread_count(db, scope)) == 0
-
-
-async def test_a_student_cannot_read_someone_elses_notification(
-    db: AsyncSession,
-    prof_scope: Scope,
-    student_a: identity_models.User,
-    student_b: identity_models.User,
-) -> None:
-    created = await service.notify(
-        db,
-        workspace_id=prof_scope.workspace_id,
-        recipient_id=student_a.id,
-        kind=service.REVISION_REQUESTED,
-        subject_table="weekly_reports",
-        subject_id=student_a.id,
-        payload={},
-    )
-    assert created is not None
-    scope_b = await identity_service.scope_for(db, student_b)
-
-    with pytest.raises(NotFoundError):
-        await service.mark_read(db, scope_b, created.id)
-
-
-async def test_muting_a_category_stops_those_notifications(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    scope = await identity_service.scope_for(db, student_a)
-    await service.mute(db, scope, kind=service.DEADLINE_APPROACHING)
-
-    created = await service.notify(
-        db,
-        workspace_id=prof_scope.workspace_id,
-        recipient_id=student_a.id,
-        kind=service.DEADLINE_APPROACHING,
-        subject_table="reporting_periods",
-        subject_id=student_a.id,
-        payload={},
-    )
-
-    assert created is None
-    assert await service.list_notifications(db, scope) == []
-
-
-async def test_unmuting_restores_them(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    scope = await identity_service.scope_for(db, student_a)
-    await service.mute(db, scope, kind=service.DEADLINE_APPROACHING)
-    await service.unmute(db, scope, kind=service.DEADLINE_APPROACHING)
-
-    created = await service.notify(
-        db,
-        workspace_id=prof_scope.workspace_id,
-        recipient_id=student_a.id,
-        kind=service.DEADLINE_APPROACHING,
-        subject_table="reporting_periods",
-        subject_id=student_a.id,
-        payload={},
-    )
-
-    assert created is not None
-
-
-@pytest.mark.parametrize("kind", [service.MISSED_DEADLINE, service.REVISION_REQUESTED])
-async def test_critical_categories_cannot_be_muted(
-    db: AsyncSession, student_a: identity_models.User, kind: str
-) -> None:
-    scope = await identity_service.scope_for(db, student_a)
-
-    with pytest.raises(ValidationError):
-        await service.mute(db, scope, kind=kind)
-
-
-async def test_a_user_cannot_mute_on_behalf_of_someone_else(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    # Preferences belong to the person they silence.
-    scope = await identity_service.scope_for(db, student_a)
-    await service.mute(db, scope, kind=service.DEADLINE_APPROACHING)
-
-    preferences = await service.list_preferences(db, prof_scope)
-
-    assert preferences == [], "the professor has muted nothing of their own"
+    assert len(await repository.list_notifications(db, scope_a)) == 1
 
 
 async def test_pre_deadline_reminders_fire_once_per_offset(
@@ -297,7 +198,7 @@ async def test_a_second_revision_request_in_a_week_still_reaches_the_student(
 
     sent = [
         n
-        for n in await service.list_notifications(db, scope)
+        for n in await repository.list_notifications(db, scope)
         if n.kind == service.REVISION_REQUESTED
     ]
     assert len(sent) == 2

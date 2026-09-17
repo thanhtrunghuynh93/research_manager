@@ -29,7 +29,7 @@ def _in_scope(
 ) -> ColumnElement[bool]:
     """The project a row belongs to must be one the caller may see."""
     project_column = Project.id if model is Project else model.project_id  # type: ignore[union-attr]
-    same_workspace: ColumnElement[bool] = model.workspace_id == scope.workspace_id
+    same_workspace: ColumnElement[bool] = scope.within(model.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, project_column.in_(scope.project_ids))
@@ -58,7 +58,7 @@ def research_decision_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(ProjectMembership)
 def membership_visible_to(scope: Scope) -> ColumnElement[bool]:
     """UI-03: members of a project see who else works on it, including past members."""
-    same_workspace = ProjectMembership.workspace_id == scope.workspace_id
+    same_workspace = scope.within(ProjectMembership.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -73,7 +73,7 @@ def membership_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(PlanBaseline)
 def plan_baseline_visible_to(scope: Scope) -> ColumnElement[bool]:
     """A student sees the plan they are assessed against; the professor sees every plan."""
-    same_workspace = PlanBaseline.workspace_id == scope.workspace_id
+    same_workspace = scope.within(PlanBaseline.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(

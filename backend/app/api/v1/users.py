@@ -17,7 +17,13 @@ from fastapi import APIRouter, Query, status
 from app.api.deps import ProfScopeDep, ScopeDep, SessionDep
 from app.core.pagination import Page
 from app.identity import service
-from app.identity.schemas import InvitationIn, InvitationOut, ProfilePatch, UserOut
+from app.identity.schemas import (
+    InvitationIn,
+    InvitationOut,
+    MoveStudentIn,
+    ProfilePatch,
+    UserOut,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -29,6 +35,8 @@ async def list_users(
     limit: int | None = Query(default=None, ge=1, le=200),
     cursor: str | None = None,
 ) -> Page[UserOut]:
+    """Every account in every workspace the caller belongs to; each row carries its own
+    `workspace_id` (ADR 0016). For a student, who belongs to one, that is themselves."""
     return await service.list_users(session, scope, limit=limit, cursor=cursor)
 
 
@@ -53,6 +61,7 @@ async def invite_user(
         email=payload.email,
         display_name=payload.display_name,
         role=payload.role,
+        workspace_id=payload.workspace_id,
     )
     return invited.invitation
 
@@ -67,6 +76,15 @@ async def remove_student(user_id: UUID, scope: ProfScopeDep, session: SessionDep
     """Ends every project membership, then closes the account. Not reversible: a student who
     returns is invited again (ADR 0011). A professor account is refused — that is break-glass."""
     return await service.remove_student(session, scope, user_id)
+
+
+@router.post("/{user_id}/workspace", summary="Move a student to another workspace")
+async def move_student(
+    user_id: UUID, payload: MoveStudentIn, scope: ProfScopeDep, session: SessionDep
+) -> UserOut:
+    """Only a student who has not started work: their history is pinned to the workspace it was
+    written in, and the database refuses the move rather than dragging it along (ADR 0014)."""
+    return await service.move_student(session, scope, user_id, workspace_id=payload.workspace_id)
 
 
 @router.post("/{user_id}/deactivate", summary="Suspend an account's access")

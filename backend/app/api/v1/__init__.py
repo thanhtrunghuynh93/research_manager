@@ -10,7 +10,6 @@ from app.api.v1 import (
     assessments,
     assistant,
     auth,
-    exports,
     health,
     milestones,
     notifications,
@@ -19,6 +18,7 @@ from app.api.v1 import (
     reports,
     repositories,
     users,
+    workspaces,
 )
 
 API_PREFIX = "/api"
@@ -31,6 +31,7 @@ def include_routers(app: FastAPI) -> None:
     v1 = APIRouter(prefix=V1_PREFIX)
     v1.include_router(auth.router)
     v1.include_router(users.router)
+    v1.include_router(workspaces.router)
     v1.include_router(projects.router)
     v1.include_router(milestones.router)
     v1.include_router(reports.router)
@@ -40,7 +41,6 @@ def include_routers(app: FastAPI) -> None:
     v1.include_router(overview.router)
     v1.include_router(notifications.router)
     v1.include_router(assistant.router)
-    v1.include_router(exports.router)
     v1.include_router(admin.router)
     # ...
     app.include_router(v1)

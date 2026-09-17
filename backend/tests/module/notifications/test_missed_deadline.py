@@ -15,10 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
 from app.core.clock import now
-from app.core.errors import ValidationError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
-from app.notifications import models, service
+from app.notifications import models, repository, service
 from app.projects import service as projects_service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
@@ -198,7 +197,7 @@ async def test_the_professor_is_told_in_app_who_is_outstanding(
 
     await service.dispatch_missed_deadline(db, week.period.id)
 
-    professor_notifications = await service.list_notifications(db, prof_scope)
+    professor_notifications = await repository.list_notifications(db, prof_scope)
     summary = next(n for n in professor_notifications if n.kind == service.UNFULFILLED_OBLIGATIONS)
     assert summary.recipient_id == prof.id
     assert summary.payload["students"][0]["student_id"] == str(student_a.id)
@@ -251,14 +250,16 @@ async def test_scanning_dispatches_every_period_whose_reminder_is_due(
     assert await service.scan_due_reminders(db) == [], "a dispatched period is not picked up twice"
 
 
-async def test_a_missed_deadline_notification_cannot_be_muted(
+async def test_a_missed_deadline_notification_cannot_be_suppressed(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    # A student must not be able to silence the one message that says they owe work.
+    """A student must not be able to silence the one message that says they owe work.
+
+    Until use cases v0.3 this was a rule — `missed_deadline` was in `UNMUTABLE_KINDS` and `mute`
+    refused it. Preferences are gone, so it is now a property of the code: `notify` consults
+    nothing before it writes, and there is no suppression path left to test against.
+    """
     week = await _week(db, prof_scope, [student_a])
-    scope = await identity_service.scope_for(db, student_a)
-    with pytest.raises(ValidationError):
-        await service.mute(db, scope, kind=service.MISSED_DEADLINE)
 
     sent = await service.dispatch_missed_deadline(db, week.period.id)
 

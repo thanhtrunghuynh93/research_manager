@@ -66,7 +66,7 @@ async def test_the_professor_sees_the_outstanding_list_in_app_and_gets_no_email(
     """REP-08: the professor is told in-app, at the same moment, and is not mailed."""
     from app.identity import service as identity_service
     from app.identity.models import User
-    from app.notifications import service as notifications
+    from app.notifications import repository as notifications_repository
     from app.seed import PROF_EMAIL
 
     await load_demo(db)
@@ -77,7 +77,7 @@ async def test_the_professor_sees_the_outstanding_list_in_app_and_gets_no_email(
 
     professor = (await db.execute(select(User).where(User.email == PROF_EMAIL))).scalar_one()
     prof_scope = await identity_service.scope_for(db, professor)
-    inbox = await notifications.list_notifications(db, prof_scope)
+    inbox = await notifications_repository.list_notifications(db, prof_scope)
 
     assert any(item.kind == "unfulfilled_obligations" for item in inbox)
     assert PROF_EMAIL not in recorded.to

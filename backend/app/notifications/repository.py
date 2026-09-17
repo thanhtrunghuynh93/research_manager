@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
@@ -12,7 +12,6 @@ from app.notifications.models import (
     DeliveryState,
     EmailDelivery,
     Notification,
-    NotificationPreference,
     ReminderRule,
 )
 
@@ -30,73 +29,9 @@ async def list_notifications(
     return list((await session.execute(statement)).scalars().all())
 
 
-async def get_notification(
-    session: AsyncSession, scope: Scope, notification_id: UUID
-) -> Notification | None:
-    return (
-        await session.execute(
-            select(Notification).where(
-                Notification.id == notification_id, visible_to(scope, Notification)
-            )
-        )
-    ).scalar_one_or_none()
-
-
 async def notification_row(session: AsyncSession, notification_id: UUID) -> Notification | None:
     """Job-level read: the sender acts for the system and has no Scope."""
     return await session.get(Notification, notification_id)
-
-
-async def unread_count(session: AsyncSession, scope: Scope) -> int:
-    return (
-        await session.execute(
-            select(func.count(Notification.id)).where(
-                visible_to(scope, Notification), Notification.read_at.is_(None)
-            )
-        )
-    ).scalar_one()
-
-
-async def is_muted(session: AsyncSession, user_id: UUID, kind: str) -> bool:
-    return bool(
-        (
-            await session.execute(
-                select(
-                    exists().where(
-                        NotificationPreference.user_id == user_id,
-                        NotificationPreference.kind == kind,
-                    )
-                )
-            )
-        ).scalar_one()
-    )
-
-
-async def get_preference(
-    session: AsyncSession, scope: Scope, kind: str
-) -> NotificationPreference | None:
-    return (
-        await session.execute(
-            select(NotificationPreference).where(
-                NotificationPreference.kind == kind,
-                visible_to(scope, NotificationPreference),
-            )
-        )
-    ).scalar_one_or_none()
-
-
-async def list_preferences(session: AsyncSession, scope: Scope) -> list[NotificationPreference]:
-    return list(
-        (
-            await session.execute(
-                select(NotificationPreference)
-                .where(visible_to(scope, NotificationPreference))
-                .order_by(NotificationPreference.kind)
-            )
-        )
-        .scalars()
-        .all()
-    )
 
 
 async def reminder_rules(session: AsyncSession, workspace_id: UUID) -> list[ReminderRule]:

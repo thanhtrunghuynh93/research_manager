@@ -51,6 +51,19 @@ def key_for(scope: Scope, question: str, scope_key: str) -> CacheKey:
     )
 
 
+def read_set_digest(scope: Scope) -> str:
+    """What the answer was allowed to see, and how current that was, in one value.
+
+    Since ADR 0016 an answer can rest on records from any workspace the asker belongs to, so the
+    anchor's epoch alone is not enough to say whether it is still valid: ending a membership in the
+    *other* workspace advances that workspace's counter and leaves the anchor's untouched. Hashing
+    every (workspace, epoch) pair the read spanned makes any of them moving a miss (AUTH-03).
+    """
+    return _digest(
+        "|".join(f"{workspace_id}:{epoch}" for workspace_id, epoch in sorted(scope.access_epochs))
+    )
+
+
 async def get(
     session: AsyncSession, scope: Scope, key: CacheKey, *, still_visible: object = None
 ) -> AnswerOut | None:
@@ -62,6 +75,11 @@ async def get(
     row = (
         await session.execute(
             select(AnswerCache).where(
+                # The anchor is part of the entitlement and is not in the key: the same professor
+                # asking the same question is answered from different records depending on which
+                # workspace they are working in, so a row written under one must not be served
+                # under another (ADR 0016).
+                AnswerCache.workspace_id == scope.workspace_id,
                 AnswerCache.user_id == key.user_id,
                 AnswerCache.question_hash == key.question_hash,
                 AnswerCache.scope_hash == key.scope_hash,
@@ -71,8 +89,9 @@ async def get(
     if row is None:
         return None
 
-    if row.access_epoch != scope.access_epoch:
-        # AUTH-03: something changed who may see what. The answer is gone, not re-checked.
+    if row.epoch_fingerprint != read_set_digest(scope):
+        # AUTH-03: something changed who may see what, in any workspace this read spans. The answer
+        # is gone, not re-checked.
         log.debug("cached answer discarded: access epoch moved")
         await session.delete(row)
         await session.flush()
@@ -104,6 +123,7 @@ async def put(session: AsyncSession, scope: Scope, key: CacheKey, answer: Answer
             question_hash=key.question_hash,
             scope_hash=key.scope_hash,
             access_epoch=scope.access_epoch,
+            epoch_fingerprint=read_set_digest(scope),
             answer=answer.model_dump(mode="json"),
             created_at=now(),
         )
@@ -111,6 +131,7 @@ async def put(session: AsyncSession, scope: Scope, key: CacheKey, answer: Answer
             constraint="uq_answer_cache_key",
             set_={
                 "access_epoch": scope.access_epoch,
+                "epoch_fingerprint": read_set_digest(scope),
                 "answer": answer.model_dump(mode="json"),
                 "created_at": now(),
             },

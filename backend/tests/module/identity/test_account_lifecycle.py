@@ -17,7 +17,7 @@ from app.core.audit import AuditEvent
 from app.core.authz import Scope
 from app.core.errors import ForbiddenError, NotFoundError
 from app.core.types import Role
-from app.identity import models, service
+from app.identity import models, repository, service
 from tests.factories import DEFAULT_PASSWORD
 
 pytestmark = pytest.mark.module
@@ -123,6 +123,46 @@ async def test_reactivation_restores_login(
     assert user.deactivated_at is None
     logged_in = await service.login(db, email=student_a.email, password=DEFAULT_PASSWORD)
     assert logged_in.user.id == student_a.id
+
+
+async def test_restoring_a_removed_student_puts_them_back_on_the_roll(
+    db: AsyncSession, prof_scope: Scope, student_a: models.User
+) -> None:
+    """Removal deletes the membership; suspension does not. Restoring has to put it back.
+
+    Since ADR 0015 the roll is keyed by `workspace_members`, so an account restored without one is
+    active and invisible: absent from the roll, unable to read its own record, and refused a fresh
+    invitation because the address is taken.
+    """
+    await service.remove_student(db, prof_scope, student_a.id)
+
+    await service.reactivate_user(db, prof_scope, student_a.id)
+
+    assert await repository.membership(db, student_a.workspace_id, student_a.id) is not None
+    roll = await service.list_users(db, prof_scope, limit=50)
+    assert student_a.id in {person.id for person in roll.items}, "restored, and back on the roll"
+    # And visible to themselves: `scope_for` compiles against the membership-keyed predicate.
+    own = await service.get_user(db, await service.scope_for(db, student_a), student_a.id)
+    assert own.id == student_a.id
+
+
+async def test_restoring_a_merely_suspended_account_leaves_its_membership_alone(
+    db: AsyncSession, prof_scope: Scope, student_a: models.User
+) -> None:
+    """`add_membership` is idempotent, so the restore path is the same one either way."""
+    await service.deactivate_user(db, prof_scope, student_a.id)
+
+    await service.reactivate_user(db, prof_scope, student_a.id)
+
+    rows = (
+        await db.execute(
+            select(models.WorkspaceMember).where(
+                models.WorkspaceMember.user_id == student_a.id,
+                models.WorkspaceMember.workspace_id == student_a.workspace_id,
+            )
+        )
+    ).scalars()
+    assert len(list(rows)) == 1, "one membership, not a duplicate"
 
 
 async def test_a_role_cannot_be_changed_through_the_service(db: AsyncSession) -> None:

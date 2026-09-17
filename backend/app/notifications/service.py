@@ -1,4 +1,4 @@
-"""Notification use cases: in-app messages, preferences, reminders, and the missed-deadline email.
+"""Notification use cases: message records, reminders, and the missed-deadline email.
 
 Requirements REP-07, REP-08, UI-07. Everything here is idempotent on a unique key, because the
 worker may run any of it twice: a retried job must send nothing more (AC-19).
@@ -15,12 +15,11 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
-from app.core.authz import Scope, visible_to
+from app.core.authz import Scope
 from app.core.clock import now, to_utc
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
@@ -34,10 +33,9 @@ from app.notifications.models import (
     DeliveryState,
     EmailDelivery,
     Notification,
-    NotificationPreference,
     ReminderRule,
 )
-from app.notifications.schemas import NotificationOut, PreferenceOut
+from app.notifications.schemas import NotificationOut
 from app.reporting import service as reporting_service
 
 log = logging.getLogger(__name__)
@@ -53,10 +51,6 @@ ASSESSMENT_RELEASED = "assessment_released"
 MILESTONE_OVERDUE = "milestone_overdue"
 SYNC_FAILED = "sync_failed"
 
-# A student must not be able to silence the message saying they owe work, nor the one saying the
-# professor is waiting on a revision (architecture §13).
-UNMUTABLE_KINDS = frozenset({MISSED_DEADLINE, REVISION_REQUESTED, UNFULFILLED_OBLIGATIONS})
-
 MISSED_DEADLINE_TEMPLATE = "missed_deadline"
 # AUTH-01: the two messages that carry a credential rather than news.
 INVITATION_TEMPLATE = "invitation"
@@ -64,7 +58,7 @@ PASSWORD_RESET_TEMPLATE = "password_reset"  # noqa: S105 - a template name, not 
 MAX_EMAIL_ATTEMPTS = 5
 
 
-# ------------------------------------------------------------------ in-app notifications
+# ------------------------------------------------------------------ notification records
 
 
 async def notify(
@@ -78,14 +72,15 @@ async def notify(
     period_id: UUID | None = None,
     payload: dict[str, Any] | None = None,
 ) -> NotificationOut | None:
-    """Insert one notification, or return None when it is muted or already present.
+    """Insert one notification, or return None when the same one already exists.
 
     Called from jobs and event handlers that have no Scope of their own, so the recipient is named
     explicitly rather than derived from a caller.
-    """
-    if kind not in UNMUTABLE_KINDS and await repository.is_muted(session, recipient_id, kind):
-        return None
 
+    There is no mute check: use cases v0.3 retired preferences, so every notification a job raises
+    is recorded. Whether it also leaves the building is the delivery layer's question, not this
+    one's.
+    """
     created = (
         await session.execute(
             insert(Notification)
@@ -107,68 +102,6 @@ async def notify(
         return None  # the same message already exists; a retry adds nothing
     await session.flush()
     return NotificationOut.model_validate(created)
-
-
-async def list_notifications(
-    session: AsyncSession, scope: Scope, *, unread_only: bool = False
-) -> list[NotificationOut]:
-    rows = await repository.list_notifications(session, scope, unread_only=unread_only)
-    return [NotificationOut.model_validate(row) for row in rows]
-
-
-async def unread_count(session: AsyncSession, scope: Scope) -> int:
-    return await repository.unread_count(session, scope)
-
-
-async def mark_read(session: AsyncSession, scope: Scope, notification_id: UUID) -> NotificationOut:
-    notification = await repository.get_notification(session, scope, notification_id)
-    if notification is None:
-        raise NotFoundError("notification not found")
-    if notification.read_at is None:
-        notification.read_at = now()
-        await session.flush()
-    return NotificationOut.model_validate(notification)
-
-
-async def mark_all_read(session: AsyncSession, scope: Scope) -> int:
-    result = await session.execute(
-        update(Notification)
-        .where(visible_to(scope, Notification), Notification.read_at.is_(None))
-        .values(read_at=now())
-        .returning(Notification.id)
-    )
-    await session.flush()
-    return len(result.scalars().all())
-
-
-# ------------------------------------------------------------------ preferences (UI-07)
-
-
-async def mute(session: AsyncSession, scope: Scope, *, kind: str) -> PreferenceOut:
-    if kind in UNMUTABLE_KINDS:
-        raise ValidationError(f"{kind} notifications cannot be muted")
-    existing = await repository.get_preference(session, scope, kind)
-    if existing is not None:
-        return PreferenceOut.model_validate(existing)
-
-    preference = NotificationPreference(
-        workspace_id=scope.workspace_id, user_id=scope.user_id, kind=kind
-    )
-    session.add(preference)
-    await session.flush()
-    return PreferenceOut.model_validate(preference)
-
-
-async def unmute(session: AsyncSession, scope: Scope, *, kind: str) -> None:
-    existing = await repository.get_preference(session, scope, kind)
-    if existing is not None:
-        await session.delete(existing)
-        await session.flush()
-
-
-async def list_preferences(session: AsyncSession, scope: Scope) -> list[PreferenceOut]:
-    rows = await repository.list_preferences(session, scope)
-    return [PreferenceOut.model_validate(row) for row in rows]
 
 
 # ------------------------------------------------------------------ reminders (REP-07)

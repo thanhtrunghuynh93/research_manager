@@ -7,7 +7,10 @@ Every module registers one predicate builder per aggregate in its policies.py:
         return true() if scope.role is Role.PROF else WeeklyReport.student_id == scope.user_id
 
 Repository functions then write  select(WeeklyReport).where(visible_to(scope, WeeklyReport)).
-Search, downloads, exports, and AI retrieval reuse the same predicates (architecture §6.1).
+Search, downloads, and AI retrieval reuse the same predicates (architecture §6.1).
+
+`Scope.within(column)` is the workspace half of every one of those predicates, and the only place
+that compares against the read-set (ADR 0016).
 """
 
 from __future__ import annotations
@@ -34,14 +37,46 @@ _project_ids_loader: ProjectIdsLoader | None = None
 
 @dataclass(frozen=True, slots=True)
 class Scope:
+    # Where a write goes, and the workspace a request is "in". Always one, always a member of
+    # `workspace_ids`. Creating a project, configuring a calendar, inviting someone: each needs
+    # exactly one destination, and this is it.
     workspace_id: UUID
     user_id: UUID
     role: Role
     project_ids: frozenset[UUID]
     access_epoch: int
+    # What a read may see: every workspace this account belongs to (ADR 0016). A student has one
+    # membership, so for them this is `{workspace_id}` and nothing about their access changed.
+    # Empty means "not set" and is filled in by __post_init__ with `{workspace_id}`, which keeps
+    # a hand-built Scope — a job's, a test's — single-workspace unless it says otherwise.
+    workspace_ids: frozenset[UUID] = frozenset()
+    # The epoch of every workspace in `workspace_ids`, as (workspace_id, epoch) pairs.
+    # `access_epoch` above stays the anchor's, because a snapshot is built for one workspace and is
+    # right to key off it. A *read* that spans has to be validated against everything it spanned,
+    # or ending a membership in one workspace leaves an answer resting on it cached under another
+    # (ADR 0016, AUTH-03). Empty means "not set", filled in by __post_init__ as `workspace_ids` is.
+    access_epochs: frozenset[tuple[UUID, int]] = frozenset()
     # True when a scheduled task built this Scope by borrowing a user's identity rather than
     # resolving a session. The identity is a lens, not an author: see `audit_actor` (ADR 0011).
     is_system: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.workspace_ids:
+            object.__setattr__(self, "workspace_ids", frozenset({self.workspace_id}))
+        if not self.access_epochs:
+            object.__setattr__(
+                self, "access_epochs", frozenset({(self.workspace_id, self.access_epoch)})
+            )
+
+    def within(self, column: Any) -> ColumnElement[bool]:
+        """The workspace test every visibility predicate is built on.
+
+        One place rather than thirty-three, because widening what a read may see is the single
+        most consequential change anyone can make to this system, and it should be visible in one
+        diff rather than spread across every module's policies.py.
+        """
+        predicate: ColumnElement[bool] = column.in_(self.workspace_ids)
+        return predicate
 
     @property
     def is_prof(self) -> bool:

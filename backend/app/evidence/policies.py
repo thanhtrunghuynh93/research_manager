@@ -25,7 +25,7 @@ from app.evidence.models import (
 @register_policy(Repository)
 def repository_visible_to(scope: Scope) -> ColumnElement[bool]:
     """A student sees a repository connected to a project they are on (UI-03)."""
-    same_workspace = Repository.workspace_id == scope.workspace_id
+    same_workspace = scope.within(Repository.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -40,7 +40,7 @@ def repository_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(ProjectRepository)
 def project_link_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = ProjectRepository.workspace_id == scope.workspace_id
+    same_workspace = scope.within(ProjectRepository.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, ProjectRepository.project_id.in_(scope.project_ids))
@@ -48,7 +48,7 @@ def project_link_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(SyncRun)
 def sync_run_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = SyncRun.workspace_id == scope.workspace_id
+    same_workspace = scope.within(SyncRun.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -60,7 +60,7 @@ def sync_run_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(RepositoryEvent)
 def event_visible_to(scope: Scope) -> ColumnElement[bool]:
     """The professor sees every event; a student sees the ones attributed to them (REPO-04)."""
-    same_workspace = RepositoryEvent.workspace_id == scope.workspace_id
+    same_workspace = scope.within(RepositoryEvent.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -73,7 +73,7 @@ def event_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(Contribution)
 def contribution_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = Contribution.workspace_id == scope.workspace_id
+    same_workspace = scope.within(Contribution.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, Contribution.student_id == scope.user_id)
@@ -82,7 +82,7 @@ def contribution_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(DeveloperIdentity)
 def identity_visible_to(scope: Scope) -> ColumnElement[bool]:
     """REPO-04: each student can see the identity mappings attributed to them."""
-    same_workspace = DeveloperIdentity.workspace_id == scope.workspace_id
+    same_workspace = scope.within(DeveloperIdentity.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, DeveloperIdentity.student_id == scope.user_id)
@@ -96,7 +96,7 @@ def evidence_reference_visible_to(scope: Scope) -> ColumnElement[bool]:
     what `index.retrieval.visible_chunks` says — stated once more here because `visible_to` fails
     closed, and without a policy the citation-open endpoint cannot run at all.
     """
-    same_workspace: ColumnElement[bool] = EvidenceReference.workspace_id == scope.workspace_id
+    same_workspace: ColumnElement[bool] = scope.within(EvidenceReference.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
