@@ -55,11 +55,9 @@
     "noPeriod": "No reporting period has been configured yet.",
     "startWeek": "Start this week",
     "openWeek": "Open this week",
-    "released": "Released this week",
-    "noReleased": "Nothing released for this week yet.",
     "releasedNote": "An assessment appears here once your professor has approved it.",
     "pastWeeks": "Earlier weeks",
-    "toProfile": "See every week and your progress per project."
+    "toProfile": "Your assessments and your progress on every project →"
   },
   "report": {
     "title": "Weekly package",

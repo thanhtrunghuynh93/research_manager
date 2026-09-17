@@ -82,8 +82,8 @@ dead end rather than about security.
 | `/accept-invitation` | public | the invitation email — the token is the credential | Set a password, then the role's home |
 | `/reset-password` | public | the reset email | Request, and confirm |
 | `/status` | public | typed | Readiness of database, object store, worker, mail relay |
-| `/me` | student | nav, and the student's home | The deadline set as a figure, the report's state, obligations per project, the assessments released this week, and earlier weeks |
-| `/me/profile` | student | a link at the foot of `/me` — it is not on the navigation bar | Trajectory per project, every released assessment |
+| `/me` | student | nav, and the student's home | The deadline set as a figure, the report's state, obligations per project, earlier weeks, and the way through to the released record |
+| `/me/profile` | student | a link on `/me` — it is not on the navigation bar, and `/me` no longer lists assessments itself | Trajectory per project, every released assessment |
 | `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: ratings, rationales, feedback, and a correction request |
 | `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments and links; submit |
 | `/overview` | professor | nav, and the professor's home | Budget and mail warnings, outstanding reports, review queue, sync issues, stalled analyses |
@@ -448,10 +448,13 @@ hand.
 | See contributions attributed to them | `GET /contributions` | ⚙️ |
 | Search the evidence they can see | `GET /evidence/search` | ⚙️ |
 
-The student's surface was two screens and is now four: `/me` gained the assessments released for
-the week and a list of earlier ones, `/me/profile` is the trajectory and the whole released record,
-and `/me/assessments/:id` is one assessment in full. The route `/me/profile` is the one
-architecture.md §4.2 had named — "permitted subset at `/me/profile`" — since the table was written.
+The student's surface was two screens and is now four: `/me` is the week — what is owed, when it is
+due, the weeks before it, and one link onward — `/me/profile` is the trajectory and the whole
+released record, and `/me/assessments/:id` is one assessment in full. The route `/me/profile` is the
+one architecture.md §4.2 had named — "permitted subset at `/me/profile`" — since the table was
+written. It carries the released assessments alone: `/me` listed them too until the week's screen
+was cut back to the week, and with My progress off the navigation bar the link on `/me` is the only
+way in.
 
 Nothing about the API changed for the assessment half of that. Every endpoint there was already
 `ScopeDep`, and `assessment/policies.py` already restricted a student to their own assessments and

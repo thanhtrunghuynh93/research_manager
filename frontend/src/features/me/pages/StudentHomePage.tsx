@@ -1,9 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
-import { useAssessments } from "@/features/assessments/queries";
-import { useSession } from "@/features/auth/queries";
 import {
   currentPeriod,
   useObligations,
@@ -81,61 +78,16 @@ export function StudentHomePage() {
         )}
       </ul>
 
-      <ReleasedThisWeek periodId={period.id} titleOf={titleOf} />
-      <PastWeeks currentPeriodId={period.id} />
-    </section>
-  );
-}
-
-/**
- * The assessments published for this week, and the reason this screen exists at all.
- *
- * The professor's approve button says "Published to the student"; until this block there was no
- * screen on which a student could read what was published. The policy already restricts this to
- * their own approved assessments, so there is nothing to filter here.
- */
-function ReleasedThisWeek({
-  periodId,
-  titleOf,
-}: {
-  periodId: string;
-  titleOf: (projectId: string) => string;
-}) {
-  const { t } = useTranslation();
-  const session = useSession();
-  const released = useAssessments({ studentId: session.data?.id, periodId });
-
-  return (
-    <>
-      <h2 className="section-title mt-8">{t("me.released")}</h2>
-      <ul className="panel mt-2.5" data-testid="released-assessments">
-        {released.data?.map((one) => (
-          <li key={one.id} className="row">
-            <Link to={`/me/assessments/${one.id}`} className="link">
-              {titleOf(String(one.project_id))}
-            </Link>
-            <span className="flex items-center gap-2.5">
-              <ProgressIndex value={one.progress_index} />
-              <ConfidenceBadge
-                confidence={one.confidence}
-                reasons={(one.confidence_reasons ?? []).map(String)}
-              />
-            </span>
-          </li>
-        ))}
-        {released.data?.length === 0 && (
-          <li className="px-4 py-2.5 text-sm text-muted-foreground">{t("me.noReleased")}</li>
-        )}
-      </ul>
-      <p className="stamp mt-2">
-        {t("me.releasedNote")}{" "}
-        {/* The only way in since My progress left the menu. A route nothing links to is a route
-            nobody opens, which is the failure this codebase has already had twice. */}
+      {/* The only way into the released record since this screen stopped carrying it, and the
+          only inbound link to /me/profile anywhere in the app. */}
+      <p className="stamp mt-3">
         <Link to="/me/profile" className="link" data-testid="to-my-progress">
           {t("me.toProfile")}
         </Link>
       </p>
-    </>
+
+      <PastWeeks currentPeriodId={period.id} />
+    </section>
   );
 }
 
