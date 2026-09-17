@@ -83,13 +83,13 @@ dead end rather than about security.
 | `/reset-password` | public | the reset email | Request, and confirm |
 | `/status` | public | typed | Readiness of database, object store, worker, mail relay |
 | `/me` | student | nav, and the student's home | The deadline set as a figure, the report's state, obligations per project, the assessments released this week, and earlier weeks |
-| `/me/profile` | student | nav | Trajectory per project, every released assessment |
+| `/me/profile` | student | a link at the foot of `/me` — it is not on the navigation bar | Trajectory per project, every released assessment |
 | `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: ratings, rationales, feedback, and a correction request |
 | `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments and links; submit |
 | `/overview` | professor | nav, and the professor's home | Budget and mail warnings, outstanding reports, review queue, sync issues, stalled analyses |
 | `/people` | professor | nav | Everyone in every workspace they belong to, grouped by workspace; invite, move, suspend / restore / remove |
 | `/workspaces` | professor | nav | The workspaces they belong to or own; join, leave, create, archive. The reporting calendar, and the weeks it opens |
-| `/projects` | signed in | nav (both roles since PROJ-07); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
+| `/projects` | signed in | nav (both roles since PROJ-07; a student's bar is their week, then this); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
 | `/students/:id` | professor | a name on `/people`, or on the overview's outstanding list | Approved assessments, trajectory per project, downloadable materials |
 | `/review/:assessmentId` | professor | the overview's review queue, or a student's profile | Ratings per dimension, confidence, the evidence snapshot, approve with a rationale |
 | `/assistant` | professor | nav | Facts, synthesis, citations, gaps |

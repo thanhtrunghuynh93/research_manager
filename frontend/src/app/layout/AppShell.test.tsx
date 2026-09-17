@@ -114,8 +114,9 @@ test("a student is offered their own progress, and never the professor's screens
 
   await screen.findByTestId("greeting");
 
-  expect(screen.getByRole("link", { name: /my progress/i })).toHaveAttribute("href", "/me/profile");
-  // Projects is reachable for a student since PROJ-07: they start their own, and join open ones.
-  expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute("href", "/projects");
-  expect(screen.queryByRole("link", { name: /^people$/i })).not.toBeInTheDocument();
+  // The student's menu is their week, then the projects it is about. My progress is not on it;
+  // the student's home links to it instead.
+  const links = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+  expect(links.filter((href) => href !== "/")).toEqual(["/me", "/projects"]);
+  expect(screen.queryByRole("link", { name: /my progress/i })).not.toBeInTheDocument();
 });

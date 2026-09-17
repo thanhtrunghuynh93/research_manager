@@ -58,7 +58,8 @@
     "released": "Released this week",
     "noReleased": "Nothing released for this week yet.",
     "releasedNote": "An assessment appears here once your professor has approved it.",
-    "pastWeeks": "Earlier weeks"
+    "pastWeeks": "Earlier weeks",
+    "toProfile": "See every week and your progress per project."
   },
   "report": {
     "title": "Weekly package",

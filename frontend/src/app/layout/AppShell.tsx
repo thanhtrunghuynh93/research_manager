@@ -89,11 +89,11 @@ export function AppShell() {
               {t("people.title")}
             </NavLink>
           )}
-          {/* Signed-in, not professor-only: the route always was, and since PROJ-07 a student has
-              something to do there — start a project, or join one that is open. */}
-          <NavLink to="/projects" className={item}>
-            {t("projects.title")}
-          </NavLink>
+          {isProf && (
+            <NavLink to="/projects" className={item}>
+              {t("projects.title")}
+            </NavLink>
+          )}
           {isProf && (
             <NavLink to="/workspaces" className={item}>
               {t("workspaces.title")}
@@ -109,9 +109,12 @@ export function AppShell() {
               {t("me.title")}
             </NavLink>
           )}
+          {/* Listed per role rather than once for both: since PROJ-07 a student has something to
+              do here too, but the two menus order it differently — a student's week comes before
+              the projects it is about, and a professor's projects sit with the other records. */}
           {user && !isProf && (
-            <NavLink to="/me/profile" className={item}>
-              {t("myProfile.title")}
+            <NavLink to="/projects" className={item}>
+              {t("projects.title")}
             </NavLink>
           )}
         </nav>

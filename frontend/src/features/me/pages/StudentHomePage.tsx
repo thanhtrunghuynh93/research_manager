@@ -127,7 +127,14 @@ function ReleasedThisWeek({
           <li className="px-4 py-2.5 text-sm text-muted-foreground">{t("me.noReleased")}</li>
         )}
       </ul>
-      <p className="stamp mt-2">{t("me.releasedNote")}</p>
+      <p className="stamp mt-2">
+        {t("me.releasedNote")}{" "}
+        {/* The only way in since My progress left the menu. A route nothing links to is a route
+            nobody opens, which is the failure this codebase has already had twice. */}
+        <Link to="/me/profile" className="link" data-testid="to-my-progress">
+          {t("me.toProfile")}
+        </Link>
+      </p>
     </>
   );
 }

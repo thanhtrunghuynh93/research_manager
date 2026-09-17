@@ -197,3 +197,14 @@ test("no draft assessment is ever implied on the student's own screen", async ()
 
   expect(screen.queryByText(/draft/i)).not.toBeInTheDocument();
 });
+
+test("the week links on to the whole record, which nothing else does", async () => {
+  // My progress left the navigation bar, so this is the only way into /me/profile. A route
+  // nothing links to is a route nobody opens.
+  server.use(...handlers());
+  renderPage();
+
+  const link = await screen.findByTestId("to-my-progress");
+
+  expect(link).toHaveAttribute("href", "/me/profile");
+});
