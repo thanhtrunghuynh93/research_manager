@@ -49,4 +49,10 @@ infra/data/
 *.log
 
 # Claude Code local settings
-.claude/
+.claude/*
+# `.claude/*` rather than `.claude/`: git does not descend into an excluded directory, so a
+# negation under one never matches. Everything in it stays ignored except the shared hook
+# configuration. `settings.local.json` stays ignored — it is personal and
+# on this host it allows Bash(*), which is why nothing refused `docker compose down -v` against
+# production. The guard it wires up is only useful if it survives a fresh clone.
+!.claude/settings.json

@@ -2,6 +2,18 @@
 
 Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
 
+> **Never `down -v` on this host.** `infra/.env` line 1 says PRODUCTION; the volumes it would
+> remove are `pgdata` and `objects` — the database and every uploaded attachment. Stopping the
+> stack is `docker compose ... down`, with no `-v`, which leaves both alone. This happened on
+> 16 September 2026 and cost the data between the 02:00Z dump and that evening;
+> `scripts/guard_docker_volumes.py` now refuses the command through a PreToolUse hook
+> (`.claude/settings.json`), but the hook only binds agents working in this repository — a person
+> at a shell is on their own.
+>
+> Backups are encrypted to a key this host does not hold, which is correct and also means recovery
+> is not something that can be done from here. `RM_OFFSITE_REMOTE` is currently empty, so the only
+> copies are in the `backups` volume on this disk.
+
 0. First deploy only: point **two** A records at the VPS — `<domain>` and `objects.<domain>`.
    Attachments go from the browser straight to the object store and back, never through the API
    (REP-04), so the store is published on its own subdomain and Caddy obtains a certificate for
