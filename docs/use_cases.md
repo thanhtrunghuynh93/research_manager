@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.11 — 16 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.5, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.12 — 17 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -58,10 +58,13 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 95 endpoints, 46 of them called by a screen, and nothing left marked ◻️.**
+**As of this version: 97 endpoints, 49 of them called by a screen, and nothing left marked ◻️.**
 v0.4 removed ten — seven notification routes and three export routes, with `PUT
 /notifications/reminder-offsets` surviving because it configures email delivery (§7) — and v0.5 to
 v0.9 added eight for workspaces and one for moving a student, every one of them behind a screen.
+v0.12 added two, `GET /projects/joinable` and `POST /projects/{id}/join`, and opened three more
+to students: creating a project, patching one they created, and ending their own membership
+(PROJ-07, AUTH-07).
 
 The second number is not the whole answer even so, because reachability is per role:
 `GET /periods/{id}/report` is 🖥️ for the student who writes the report and 🚧 for the professor who
@@ -86,11 +89,11 @@ dead end rather than about security.
 | `/overview` | professor | nav, and the professor's home | Budget and mail warnings, outstanding reports, review queue, sync issues, stalled analyses |
 | `/people` | professor | nav | Everyone in every workspace they belong to, grouped by workspace; invite, move, suspend / restore / remove |
 | `/workspaces` | professor | nav | The workspaces they belong to or own; join, leave, create, archive. The reporting calendar, and the weeks it opens |
-| `/projects` | signed in | nav (professor); a project title on `/me` (student) | Every project the caller may see; create one |
+| `/projects` | signed in | nav (both roles since PROJ-07); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
 | `/students/:id` | professor | a name on `/people`, or on the overview's outstanding list | Approved assessments, trajectory per project, downloadable materials |
 | `/review/:assessmentId` | professor | the overview's review queue, or a student's profile | Ratings per dimension, confidence, the evidence snapshot, approve with a rationale |
 | `/assistant` | professor | nav | Facts, synthesis, citations, gaps |
-| `/projects/:id` | signed in | the list at `/projects`, a title on `/me`, a member row | Research questions, weighted progress, members, milestones, dated decisions. Activate the project; assign a student |
+| `/projects/:id` | signed in | the list at `/projects`, a title on `/me`, a member row | Research questions, weighted progress, members, milestones, dated decisions. Activate the project, open it to joining, assign a student (professor); edit the record (its creator); leave it (a student on it) |
 
 v0.4 removed two rows, `/notifications` and `/exports`, and they were the two either role could
 open; v0.5 added `/workspaces`. What is left is a professor's six and a student's two, meeting
@@ -253,17 +256,19 @@ user in another workspace with the same "a user with this email already exists" 
 local duplicate, so a second invitation is not how a student moves — and §2.1 explains why nothing
 else is either.
 
-### 2.3 Projects (PROJ-01..06)
+### 2.3 Projects (PROJ-01..07)
 
 | Use case | Endpoint | |
 | --- | --- | --- |
 | Read a project, its members, decisions and weighted progress | `GET /projects`, `/projects/{id}`, `/{id}/members`, `/{id}/decisions`, `/{id}/progress` | 🖥️ |
 | Read a project's milestones | `GET /projects/{id}/milestones` | 🖥️ |
 | Read a milestone's retained baselines | `GET /milestones/{id}/revisions` | ⚙️ |
-| **Create a project** | `POST /projects` | 🖥️ |
-| **Update a project** — title, research questions, stage, status | `PATCH /projects/{id}` | 🖥️ |
+| **Create a project** | `POST /projects` | 🖥️ both roles |
+| **Update a project** — title, research questions, stage, status | `PATCH /projects/{id}` | 🖥️ — a professor sets any field; the creator sets the record but not its standing |
 | **Assign a student to a project** | `POST /projects/{id}/members` | 🖥️ |
-| End a membership, keeping its history | `POST /projects/{id}/members/{membership_id}/end` | ⚙️ |
+| End a membership, keeping its history | `POST /projects/{id}/members/{membership_id}/end` | 🖥️ for the student leaving their own; ⚙️ for the professor ending anyone's |
+| **List the projects open to joining** | `GET /projects/joinable` | 🖥️ student |
+| **Join a project that is open** | `POST /projects/{id}/join` | 🖥️ student |
 | Record a dated research decision and its rationale | `POST /projects/{id}/decisions` | ⚙️ |
 | Create a milestone; update its scope or weight | `POST /projects/{id}/milestones`, `PATCH /milestones/{id}` | ⚙️ |
 | Create a task | `POST /projects/{id}/tasks` | ⚙️ |
@@ -279,9 +284,21 @@ student produces nothing until it is activated. The screen makes that a button o
 than one value in a status dropdown, because everything else about the sequence looks like it
 worked.
 
-What is left ⚙️ is deliberate for now: milestones, decisions and ending a membership are the rest
-of the workbench rather than the chain that makes a report due, and tasks (PROJ-03) are a feature
-rather than a seam.
+Since PROJ-07 the first half of that chain is no longer only the professor's. A student creates a
+project and is on it at once, and the project is `active` rather than `proposed` — there is no
+second party whose assent activation would record, and a proposed project would owe nothing. A
+student may also join a project the professor has marked open to joining, which is a flag that
+defaults closed: membership is the whole grant of access to a project's plan, milestones, tasks,
+decisions and member list, so opening one is a disclosure decision rather than a convenience
+([ADR 0017](adr/0017-students-own-their-projects.md)).
+
+Joining part-way through a week owes from the *next* week, which is the one place the two ways of
+acquiring a membership behave differently: a professor assigning someone on a Saturday means that
+Saturday's week is owed, and a student joining then does not.
+
+What is left ⚙️ is deliberate for now: milestones, decisions and a professor ending someone else's
+membership are the rest of the workbench rather than the chain that makes a report due, and tasks
+(PROJ-03) are a feature rather than a seam.
 
 ### 2.4 The reporting calendar (REP-01, REP-06)
 
@@ -416,6 +433,10 @@ hand.
 | Attach a link | `POST /artifacts/links` | 🖥️ |
 | Submit the weekly package | `POST /periods/{id}/report/submit` | 🖥️ |
 | Read their own projects, milestones, decisions and progress | `GET /projects/...` | 🖥️ |
+| **Start their own project, active from the moment it exists** | `POST /projects` | 🖥️ |
+| **Edit the record of a project they started** | `PATCH /projects/{id}` | 🖥️ |
+| **See which projects are open to joining, and join one** | `GET /projects/joinable`, `POST /projects/{id}/join` | 🖥️ |
+| **Leave a project, keeping the history** | `POST /projects/{id}/members/{membership_id}/end` | 🖥️ |
 | Read every week they have been in, not only the current one | `GET /periods` | 🖥️ |
 | **Read an approved assessment** | `GET /assessments`, `/assessments/{id}` | 🖥️ |
 | **Read the feedback on it** | `GET /assessments/{id}/feedback` | 🖥️ |
@@ -432,9 +453,15 @@ the week and a list of earlier ones, `/me/profile` is the trajectory and the who
 and `/me/assessments/:id` is one assessment in full. The route `/me/profile` is the one
 architecture.md §4.2 had named — "permitted subset at `/me/profile`" — since the table was written.
 
-Nothing about the API changed for any of it. Every endpoint above was already `ScopeDep`, and
-`assessment/policies.py` already restricted a student to their own assessments and only once a
-review had approved them. What was missing was a caller.
+Nothing about the API changed for the assessment half of that. Every endpoint there was already
+`ScopeDep`, and `assessment/policies.py` already restricted a student to their own assessments and
+only once a review had approved them. What was missing was a caller.
+
+The project rows are a different kind of change and should not be read as the same one. Those
+endpoints *were* professor-only, and AUTH-01 said so; PROJ-07 and AUTH-07 amended the requirement
+and the guards moved with it. `POST /projects/{id}/members` did not: a student speaks for
+themselves and for no other account, so assigning somebody is still the professor's alone, and so
+is ending anybody else's membership.
 
 `GET /assessments/{id}/evidence` stays ⚙️ **by choice, not by omission**. It would answer for a
 student, but `snapshot_items` is unscoped and each item carries its own visibility; UI-02 does not
@@ -659,7 +686,38 @@ it exists. A workspace is not an attribute of a user; it is part of their identi
 visible from any route inventory, any screen, or any requirement — only from trying it, which is
 the argument for this document being compiled from the code rather than written beside it.
 
-### 8.4 The shape
+### 8.4 What opening a project costs
+
+PROJ-07 let a student join a project without being assigned to it. The code change is small; what
+it moves is not, and the reason is that **a membership is the entire grant of access to a project**.
+`_in_scope` is `same_workspace AND project_id IN scope.project_ids`, with no second gate and no
+status test, so inserting the row is the whole decision.
+
+A student who joins an open project can therefore read, for that project: the record, its
+milestones with their retained baselines and the professor's reasons for moving a target, its tasks
+— including the free-text `blocker` and `completion_reason` another student wrote about their own
+work — its dated decisions and rationales, its repositories and their sync errors, its shared
+evidence, and the member list including past members. That last one matters more than it looks:
+`user_visible_to` restricts a student to their own account, and `MembershipOut.student_name` is the
+only route by which one student learns another's name. Joining every open project in turn is how a
+roster gets enumerated.
+
+What it does *not* reach was checked policy by policy and is the more important half. Reports,
+report versions, attachments, obligations, assessments, reviews, feedback, corrections, supervision
+notes, evidence snapshots and plan baselines are keyed to a `student_id`, never to a `project_id`.
+Joining a project tells you what the work is. It tells you nothing about how anyone on it is doing.
+
+Two mitigations, and one deliberate refusal. The flag: `open_to_join` defaults closed and is the
+professor's per project, so nothing became joinable when this shipped and the exposure is bounded
+by decisions somebody took. The projection: `GET /projects/joinable` serves title, stage, status
+and a member count, and not the research questions — though since joining is unilateral and
+instant, that is about keeping a directory a directory rather than about confidentiality. The
+refusal: a student leaving still advances the workspace-wide access epoch, which discards every
+cached assistant answer in it. Not bumping was considered and rejected — the leaver's own cached
+answers were computed with access they no longer hold — so the cost is carried by a rate limit on
+the route instead.
+
+### 8.5 The shape
 
 §8.1 and §8.2 are the failure shape [implementation_status.md](implementation_status.md) §1 names
 twice — *"a step marked Done means its module is done, and the question worth asking separately is

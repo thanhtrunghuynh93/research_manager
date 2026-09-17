@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import type {
   Decision,
+  JoinableProject,
   MembershipIn,
   Milestone,
   Project,
@@ -96,9 +97,9 @@ export function useCreateProject() {
 }
 
 /**
- * The one that matters most: a project is created `proposed`, and an obligation only derives from
- * a membership whose project is `active`. Until this is called nothing a student is assigned to
- * can ever come due.
+ * The one that matters most for a professor's project: it is created `proposed`, and an obligation
+ * only derives from a membership whose project is `active`. Until this is called nothing a student
+ * is assigned to can ever come due. A student's own project is already active when it is created.
  */
 export function useUpdateProject(id: string) {
   return useProjectWrite(
@@ -112,4 +113,46 @@ export function useAddMember(id: string) {
     (payload: MembershipIn) => api.post<ProjectMember>(`/api/v1/projects/${id}/members`, payload),
     id,
   );
+}
+
+export const joinableKey = ["projects", "joinable"] as const;
+
+/** PROJ-07: the projects a professor has opened, which is a narrower read than the project. */
+export function useJoinableProjects(enabled: boolean) {
+  return useQuery({
+    queryKey: joinableKey,
+    queryFn: () => api.get<JoinableProject[]>("/api/v1/projects/joinable"),
+    enabled,
+  });
+}
+
+export function useJoinProject() {
+  return useProjectWrite((id: string) =>
+    api.post<ProjectMember>(`/api/v1/projects/${id}/join`, {}),
+  );
+}
+
+/**
+ * Leaving stops future weeks being owed; it does not clear an obligation already derived for this
+ * one, which is the professor's to excuse. `obligationsKey` is invalidated because the student's
+ * home is where that shows.
+ */
+export function useLeaveProject(projectId: string) {
+  const queryClient = useQueryClient();
+  const write = useProjectWrite(
+    (membershipId: string) =>
+      api.post<ProjectMember>(
+        `/api/v1/projects/${projectId}/members/${membershipId}/end`,
+        {},
+      ),
+    projectId,
+  );
+  return {
+    ...write,
+    mutate: (membershipId: string) =>
+      write.mutate(membershipId, {
+        // The prefix, not one period: leaving changes what is owed for every week still open.
+        onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["obligations"] }),
+      }),
+  };
 }

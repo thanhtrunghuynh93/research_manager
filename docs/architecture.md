@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.3 — 16 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.5
+Version 0.3 — 16 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.6
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -604,12 +604,14 @@ class EmailSender(Protocol):
 | AUTH-04 | 5.1 (`workspaces`), 6.5 |
 | AUTH-05 | 6.1 (`Scope.within`), 5.1 (`workspace_members`), 6.5 |
 | AUTH-06 | 5.1 (the four-and-four foreign-key split), 6.5 |
+| AUTH-07 | 5.1 (`projects.created_by`), 6.3 |
 | PROJ-01 | 5.1 |
 | PROJ-02 | 5.2 (`project_memberships`), 7.1 |
 | PROJ-03 | 5.1 (`milestones`, `tasks`), 5.5 |
 | PROJ-04 | 5.2 (`plan_baselines`), 5.5 |
 | PROJ-05 | 9.3, 9.4 (`rubric_versions.stage_applicability`) |
 | PROJ-06 | 4.2 (`/projects/:id`), 5.5, 9.5 |
+| PROJ-07 | 5.1 (`projects.open_to_join`, `project_memberships.origin`), 6.3, 4.2 (`/projects`) |
 | REP-01 | 5.2 (`calendar_configs`, `reporting_periods`), 7.1 |
 | REP-02 | 5.2 (`weekly_reports`, `project_report_entries`), 14 |
 | REP-03 | 5.2 (`project_report_entries`), 14 |

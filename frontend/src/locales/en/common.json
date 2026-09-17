@@ -256,7 +256,12 @@
     "responsibility": "Responsibility",
     "joinedOn": "Joined on",
     "assign": "Assign",
-    "noStudents": "No students in this workspace yet — invite one on"
+    "noStudents": "No students in this workspace yet — invite one on",
+    "openToJoin": "Open to joining",
+    "openToJoinNote": "A student can put themselves on an open project without being assigned. Being on a project shows them its plan, milestones, tasks and decisions, and who else works on it.",
+    "leave": "Leave this project",
+    "leaveNote": "You stop owing a report for this project from next week. The week already in progress still counts, and what you have submitted stays on the record.",
+    "saveFields": "Save"
   },
   "student": {
     "title": "Research profile",
@@ -363,7 +368,13 @@
     "createNote": "A new project is proposed. Nothing is owed on it until it is active and a student is assigned — both on the project's own page.",
     "none": "No projects yet.",
     "filter": "Status",
-    "all": "All"
+    "all": "All",
+    "createNoteStudent": "Your project is active as soon as you create it, and you are on it — so a report for it is owed from next week.",
+    "joinable": "Projects you can join",
+    "joinableNote": "Your professor has opened these. Joining puts a weekly report for the project on your plate from next week.",
+    "join": "Join",
+    "memberCount_one": "{{count}} member",
+    "memberCount_other": "{{count}} members"
   },
   "myAssessment": {
     "title": "Released assessment",

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.projects.models import BaselineState as BaselineState
+from app.projects.models import MembershipOrigin as MembershipOrigin
 from app.projects.models import MilestoneStatus as MilestoneStatus
 from app.projects.models import ProjectStatus as ProjectStatus
 from app.projects.models import ResearchStage as ResearchStage
@@ -33,7 +34,27 @@ class ProjectOut(BaseModel):
     venue_target: str | None = None
     shared_resources: dict[str, Any]
     ai_restricted: bool
+    open_to_join: bool
+    # AUTH-07: the client decides who may edit from this, so it has to travel with the record.
+    created_by: UUID | None = None
     created_at: datetime
+
+
+class JoinableProjectOut(BaseModel):
+    """What a student may see about a project *before* joining it (PROJ-07).
+
+    Deliberately not `ProjectOut`. Research questions, intended contributions, the venue target and
+    the shared resources are the substance of an unpublished research programme, and someone who
+    has not joined has no claim on them. This is the directory entry, not the record.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    stage: ResearchStage
+    status: ProjectStatus
+    member_count: int = 0
 
 
 class ProjectIn(BaseModel):
@@ -60,6 +81,11 @@ class ProjectPatch(BaseModel):
     venue_target: str | None = None
     shared_resources: dict[str, Any] | None = None
     ai_restricted: bool | None = None
+    open_to_join: bool | None = None
+
+
+class JoinIn(BaseModel):
+    responsibility: str = ""
 
 
 class MembershipOut(BaseModel):
@@ -73,6 +99,7 @@ class MembershipOut(BaseModel):
     # student to their own account, and asking it for a co-member fails closed.
     student_name: str = ""
     responsibility: str
+    origin: MembershipOrigin
     joined_on: date
     left_on: date | None = None
     planned_allocation: Decimal | None = None

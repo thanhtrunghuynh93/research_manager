@@ -910,6 +910,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/joinable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projects a student may join */
+        get: operations["list_joinable_api_v1_projects_joinable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -940,6 +957,23 @@ export interface paths {
         put?: never;
         /** Record a research decision and its rationale */
         post: operations["record_decision_api_v1_projects__project_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join a project that is open to joining */
+        post: operations["join_project_api_v1_projects__project_id__join_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2357,6 +2391,38 @@ export interface components {
             id: string;
             role: components["schemas"]["Role"];
         };
+        /** JoinIn */
+        JoinIn: {
+            /**
+             * Responsibility
+             * @default
+             */
+            responsibility: string;
+        };
+        /**
+         * JoinableProjectOut
+         * @description What a student may see about a project *before* joining it (PROJ-07).
+         *
+         *     Deliberately not `ProjectOut`. Research questions, intended contributions, the venue target and
+         *     the shared resources are the substance of an unpublished research programme, and someone who
+         *     has not joined has no claim on them. This is the directory entry, not the record.
+         */
+        JoinableProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Member Count
+             * @default 0
+             */
+            member_count: number;
+            stage: components["schemas"]["ResearchStage"];
+            status: components["schemas"]["ProjectStatus"];
+            /** Title */
+            title: string;
+        };
         /** LinkProjectIn */
         LinkProjectIn: {
             /** Path Rules */
@@ -2432,6 +2498,18 @@ export interface components {
              */
             student_id: string;
         };
+        /**
+         * MembershipOrigin
+         * @description How a membership came to exist (PROJ-07).
+         *
+         *     It is not bookkeeping. A professor assigning a student mid-week means the student owes that
+         *     week — the professor knows what they are asking for. A student joining mid-week does not, so
+         *     the derivation reads this column to decide which weeks a membership owes
+         *     (`repository.memberships_active_in_range`). It is also how the audit trail distinguishes the
+         *     two, since the actor alone cannot: the professor's scope writes both kinds today.
+         * @enum {string}
+         */
+        MembershipOrigin: "assigned" | "self_joined";
         /** MembershipOut */
         MembershipOut: {
             /**
@@ -2451,6 +2529,7 @@ export interface components {
             joined_on: string;
             /** Left On */
             left_on?: string | null;
+            origin: components["schemas"]["MembershipOrigin"];
             /** Planned Allocation */
             planned_allocation?: string | null;
             /**
@@ -2860,6 +2939,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Created By */
+            created_by?: string | null;
             /** Description */
             description: string;
             /**
@@ -2869,6 +2950,8 @@ export interface components {
             id: string;
             /** Intended Contributions */
             intended_contributions: string[];
+            /** Open To Join */
+            open_to_join: boolean;
             /** Research Questions */
             research_questions: string[];
             /** Shared Resources */
@@ -2899,6 +2982,8 @@ export interface components {
             description?: string | null;
             /** Intended Contributions */
             intended_contributions?: string[] | null;
+            /** Open To Join */
+            open_to_join?: boolean | null;
             /** Research Questions */
             research_questions?: string[] | null;
             /** Shared Resources */
@@ -5177,6 +5262,26 @@ export interface operations {
             };
         };
     };
+    list_joinable_api_v1_projects_joinable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinableProjectOut"][];
+                };
+            };
+        };
+    };
     get_project_api_v1_projects__project_id__get: {
         parameters: {
             query?: never;
@@ -5296,6 +5401,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResearchDecisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_project_api_v1_projects__project_id__join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipOut"];
                 };
             };
             /** @description Validation Error */

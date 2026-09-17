@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
+from app.core.clock import now
 from app.core.errors import ForbiddenError, NotFoundError
 from app.identity import models as identity_models
 from app.projects import service as projects_service
@@ -354,3 +355,75 @@ async def test_a_student_may_read_the_calendar(
     current = await service.current_calendar(db, student_a_scope)
 
     assert current is not None and current.timezone == TZ
+
+
+async def test_a_student_who_starts_a_project_owes_a_report_without_the_professor(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_a_scope: Scope,
+) -> None:
+    """PROJ-07, and the point of the whole change: the chain closes without a professor in it.
+
+    The calendar is anchored so the current period began three days ago whatever today's weekday
+    is, rather than to a fixed date — the rule under test is about joining part-way through a week,
+    so the test must not depend on which day it is run.
+    """
+    today = now().date()
+    started = today - timedelta(days=3)
+    await _calendar(db, prof_scope, effective_from=started, week_start_weekday=started.weekday())
+    await projects_service.create_project(db, student_a_scope, title="Mine", stage="implementation")
+    periods = await service.ensure_periods(db, prof_scope, through=today + timedelta(days=10))
+
+    this_week = await service.ensure_obligations(db, prof_scope, periods[0].id)
+    next_week = await service.ensure_obligations(db, prof_scope, periods[1].id)
+
+    assert this_week == [], "the week was already running when they started the project"
+    assert [o.student_id for o in next_week] == [student_a.id]
+
+
+async def test_joining_mid_week_does_not_owe_the_week_that_is_ending(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_a_scope: Scope,
+) -> None:
+    # Otherwise a student who joins on a Saturday is late by Sunday night, for a week they were
+    # not on the project for — a missed-deadline email they caused by joining.
+    today = now().date()
+    started = today - timedelta(days=3)
+    await _calendar(db, prof_scope, effective_from=started, week_start_weekday=started.weekday())
+    project = await projects_service.create_project(
+        db, prof_scope, title="Open", stage="implementation"
+    )
+    await projects_service.update_project(
+        db, prof_scope, project.id, status="active", open_to_join=True
+    )
+    periods = await service.ensure_periods(db, prof_scope, through=today + timedelta(days=10))
+    await projects_service.join_project(db, student_a_scope, project.id)
+
+    this_week = await service.ensure_obligations(db, prof_scope, periods[0].id)
+    next_week = await service.ensure_obligations(db, prof_scope, periods[1].id)
+
+    assert this_week == []
+    assert [o.student_id for o in next_week] == [student_a.id]
+
+
+async def test_the_professor_assigning_mid_week_still_owes_that_week(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    # The rule above is about joining, not about mid-week membership. A professor who assigns
+    # someone on a Saturday knows what they are asking for, and that behaviour is unchanged.
+    today = now().date()
+    started = today - timedelta(days=3)
+    await _calendar(db, prof_scope, effective_from=started, week_start_weekday=started.weekday())
+    project = await projects_service.create_project(
+        db, prof_scope, title="Assigned", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    periods = await service.ensure_periods(db, prof_scope, through=today + timedelta(days=10))
+
+    assert [
+        o.student_id for o in await service.ensure_obligations(db, prof_scope, periods[0].id)
+    ] == [student_a.id]

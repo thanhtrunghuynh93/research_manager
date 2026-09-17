@@ -13,6 +13,8 @@ import { Badge } from "@/components/evidence/Badges";
 import { useSession } from "@/features/auth/queries";
 import {
   AddMemberForm,
+  MembershipControls,
+  ProjectFieldsForm,
   StatusControls,
 } from "@/features/projects/components/ProjectControls";
 import {
@@ -49,6 +51,9 @@ export function ProjectPage() {
     return <p className="text-sm text-muted-foreground">{t("project.unavailable")}</p>;
 
   const data = project.data;
+  // AUTH-07: whoever started the project may keep its description right, for as long as it
+  // exists. Its standing — status, who may join, the AI restriction — stays the professor's.
+  const isCreator = Boolean(session.data && data.created_by === session.data.id);
   // PROJ-06 reports a 0–1 fraction (`accepted_completion` is Numeric(3, 2)), and Decimal crosses
   // the wire as a string — so 87.5% complete arrives as "0.8750". Scale it once, here: read as a
   // percentage it showed "0.875%", and a meter driven by it would sit almost empty.
@@ -70,6 +75,8 @@ export function ProjectPage() {
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink2">{data.description}</p>
         )}
         {isProf ? <StatusControls project={data} /> : null}
+        {isProf || isCreator ? <ProjectFieldsForm project={data} /> : null}
+        {!isProf ? <MembershipControls project={data} /> : null}
       </header>
 
       <div className="mt-7 grid gap-7 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">

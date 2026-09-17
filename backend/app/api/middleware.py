@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections import defaultdict
 from uuid import uuid4
@@ -38,6 +39,16 @@ def auth_rate_limits() -> dict[str, tuple[int, int]]:
         "/api/v1/auth/password-reset": (3600, 5),
         "/api/v1/auth/accept-invitation": (3600, 10),
     }
+
+
+# Authenticated paths that are cheap to call and expensive to serve, keyed by pattern because they
+# carry identifiers. Joining and leaving are the pair that matters (PROJ-07): leaving advances the
+# workspace's access epoch, which discards every cached assistant answer for everyone in it, so a
+# join/leave loop turns one student's clicking into the workspace's model spend. The cap is far
+# above deliberate use — nobody joins thirty projects in an hour — and the epoch bump itself is not
+# negotiable, because the leaver's own cached answers were computed with access they no longer have.
+MEMBERSHIP_PATHS = re.compile(r"^/api/v1/projects/[^/]+/(join|members/[^/]+/end)$")
+MEMBERSHIP_LIMIT = (3600, 30)
 
 
 class RequestIdFilter(logging.Filter):
@@ -91,8 +102,12 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         self._limits = auth_rate_limits()
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.method != "POST":
+            return await call_next(request)
         limit = self._limits.get(request.url.path)
-        if limit is None or request.method != "POST":
+        if limit is None and MEMBERSHIP_PATHS.match(request.url.path):
+            limit = MEMBERSHIP_LIMIT
+        if limit is None:
             return await call_next(request)
 
         window, allowed = limit
@@ -131,7 +146,7 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         """
         if len(self._hits) < 1024:
             return
-        longest = max(window for window, _ in self._limits.values())
+        longest = max(window for window, _ in [*self._limits.values(), MEMBERSHIP_LIMIT])
         self._hits = defaultdict(
             list,
             {

@@ -7,7 +7,8 @@
  * be a project path.
  *
  * `GET /projects` is signed-in rather than professor-only, so a student sees the projects they are
- * on. What is gated is the create form, not the list.
+ * on. Since PROJ-07 the create form is not gated either: a student starts their own project, and
+ * the panel below the list offers the ones a professor has opened to joining.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,7 +17,12 @@ import { Link } from "react-router-dom";
 import { Badge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { useSession } from "@/features/auth/queries";
-import { useCreateProject, useProjectList } from "@/features/projects/queries";
+import {
+  useCreateProject,
+  useJoinableProjects,
+  useJoinProject,
+  useProjectList,
+} from "@/features/projects/queries";
 import { STAGES, STATUSES, type ResearchStage } from "@/features/projects/types";
 import { formatLocalDate } from "@/lib/dates";
 
@@ -35,7 +41,7 @@ export function ProjectListPage() {
         <p className="stamp mt-2">{t("projects.intro")}</p>
       </header>
 
-      {isProf ? <CreateForm /> : null}
+      <CreateForm isProf={isProf} />
 
       <div className="mt-8 flex items-end gap-4">
         <label className="block">
@@ -87,16 +93,66 @@ export function ProjectListPage() {
           <p className="stamp mt-4">{t("projects.none")}</p>
         )
       ) : null}
+
+      {!isProf && session.data ? <JoinablePanel /> : null}
     </section>
   );
 }
 
 /**
- * A new project is `proposed`, and nothing becomes due on a proposed project — the obligation
- * query requires `active`. That is the trap this form has to name, because everything else about
- * assigning a student looks like it worked.
+ * The projects a professor has opened to joining (PROJ-07).
+ *
+ * Deliberately thin — title, stage, how many people are on it. A student who has not joined has no
+ * claim on the research questions, and the endpoint behind this does not serve them. Hidden when
+ * empty rather than shown as an empty state: in a workspace where the professor opens nothing, an
+ * empty panel would advertise a feature that will never do anything here.
  */
-function CreateForm() {
+function JoinablePanel() {
+  const { t } = useTranslation();
+  const joinable = useJoinableProjects(true);
+  const join = useJoinProject();
+
+  if (!joinable.data?.length) return null;
+
+  return (
+    <section className="mt-8" data-testid="joinable">
+      <h2 className="section-title">{t("projects.joinable")}</h2>
+      <p className="stamp mt-1">{t("projects.joinableNote")}</p>
+      <ul className="panel mt-3">
+        {joinable.data.map((project) => (
+          <li key={project.id} className="row">
+            <div className="min-w-0">
+              <p className="font-medium">{project.title}</p>
+              <p className="stamp mt-0.5">
+                {t(`project.stage.${project.stage}`, { defaultValue: project.stage })}
+                {" · "}
+                {t("projects.memberCount", { count: project.member_count })}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={join.isPending}
+              onClick={() => join.mutate(project.id)}
+              className="btn-secondary"
+              data-testid="join-project"
+            >
+              {t("projects.join")}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <Failure error={join.error} />
+    </section>
+  );
+}
+
+/**
+ * A professor's new project is `proposed`, and nothing becomes due on a proposed project — the
+ * obligation query requires `active`. That is the trap this form has to name, because everything
+ * else about assigning a student looks like it worked. A student's own project is active from the
+ * moment they create it and they are on it, so their note says the opposite thing.
+ */
+function CreateForm({ isProf }: { isProf: boolean }) {
   const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [stage, setStage] = useState<ResearchStage>("implementation");
@@ -185,7 +241,9 @@ function CreateForm() {
         </button>
         <Failure error={create.error} />
       </div>
-      <p className="stamp mt-3">{t("projects.createNote")}</p>
+      <p className="stamp mt-3">
+        {isProf ? t("projects.createNote") : t("projects.createNoteStudent")}
+      </p>
     </form>
   );
 }

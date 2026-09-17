@@ -11,6 +11,19 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 export const PROF = { email: "prof@example.edu", password: "demo-password-change-me" };
 export const STUDENT = { email: "an.nguyen@example.edu", password: "demo-password-change-me" };
 
+/**
+ * A student no other spec depends on.
+ *
+ * Specs share one seeded dataset, so a spec that changes what a student is on changes what every
+ * other spec sees — `submit-weekly-package` counts An Nguyen's report tabs, and giving her another
+ * project is how that spec starts failing only when the suite runs in order. Anything that adds a
+ * project or a membership uses this account instead.
+ */
+export const STUDENT_SOLO = {
+  email: "farid.haddad@example.edu",
+  password: "demo-password-change-me",
+};
+
 /** Mailpit's HTTP API, so a delivered email can be read without a mailbox. */
 export const MAILPIT = process.env.E2E_MAILPIT_URL ?? "http://localhost:8025";
 

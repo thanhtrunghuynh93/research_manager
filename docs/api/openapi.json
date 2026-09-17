@@ -2023,6 +2023,50 @@
         "title": "InvitationOut",
         "type": "object"
       },
+      "JoinIn": {
+        "properties": {
+          "responsibility": {
+            "default": "",
+            "title": "Responsibility",
+            "type": "string"
+          }
+        },
+        "title": "JoinIn",
+        "type": "object"
+      },
+      "JoinableProjectOut": {
+        "description": "What a student may see about a project *before* joining it (PROJ-07).\n\nDeliberately not `ProjectOut`. Research questions, intended contributions, the venue target and\nthe shared resources are the substance of an unpublished research programme, and someone who\nhas not joined has no claim on them. This is the directory entry, not the record.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/ResearchStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectStatus"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "stage",
+          "status"
+        ],
+        "title": "JoinableProjectOut",
+        "type": "object"
+      },
       "LinkProjectIn": {
         "properties": {
           "path_rules": {
@@ -2207,6 +2251,15 @@
         "title": "MembershipIn",
         "type": "object"
       },
+      "MembershipOrigin": {
+        "description": "How a membership came to exist (PROJ-07).\n\nIt is not bookkeeping. A professor assigning a student mid-week means the student owes that\nweek \u2014 the professor knows what they are asking for. A student joining mid-week does not, so\nthe derivation reads this column to decide which weeks a membership owes\n(`repository.memberships_active_in_range`). It is also how the audit trail distinguishes the\ntwo, since the actor alone cannot: the professor's scope writes both kinds today.",
+        "enum": [
+          "assigned",
+          "self_joined"
+        ],
+        "title": "MembershipOrigin",
+        "type": "string"
+      },
       "MembershipOut": {
         "properties": {
           "created_at": {
@@ -2235,6 +2288,9 @@
               }
             ],
             "title": "Left On"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MembershipOrigin"
           },
           "planned_allocation": {
             "anyOf": [
@@ -2273,6 +2329,7 @@
           "project_id",
           "student_id",
           "responsibility",
+          "origin",
           "joined_on",
           "created_at"
         ],
@@ -3198,6 +3255,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -3213,6 +3282,10 @@
             },
             "title": "Intended Contributions",
             "type": "array"
+          },
+          "open_to_join": {
+            "title": "Open To Join",
+            "type": "boolean"
           },
           "research_questions": {
             "items": {
@@ -3288,6 +3361,7 @@
           "status",
           "shared_resources",
           "ai_restricted",
+          "open_to_join",
           "created_at"
         ],
         "title": "ProjectOut",
@@ -3330,6 +3404,17 @@
               }
             ],
             "title": "Intended Contributions"
+          },
+          "open_to_join": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open To Join"
           },
           "research_questions": {
             "anyOf": [
@@ -7539,6 +7624,31 @@
         ]
       }
     },
+    "/api/v1/projects/joinable": {
+      "get": {
+        "operationId": "list_joinable_api_v1_projects_joinable_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JoinableProjectOut"
+                  },
+                  "title": "Response List Joinable Api V1 Projects Joinable Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Projects a student may join",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}": {
       "get": {
         "operationId": "get_project_api_v1_projects__project_id__get",
@@ -7726,6 +7836,59 @@
           }
         },
         "summary": "Record a research decision and its rationale",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/join": {
+      "post": {
+        "operationId": "join_project_api_v1_projects__project_id__join_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Join a project that is open to joining",
         "tags": [
           "projects"
         ]

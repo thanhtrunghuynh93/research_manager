@@ -48,11 +48,11 @@ const PROJECT = {
   created_at: "2026-09-01T00:00:00Z",
 };
 
-function renderPage(me: object = PROF, project: object = PROJECT) {
+function renderPage(me: object = PROF, project: object = PROJECT, members: object[] = []) {
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json(me)),
     http.get("/api/v1/projects/p1", () => HttpResponse.json(project)),
-    http.get("/api/v1/projects/p1/members", () => HttpResponse.json([])),
+    http.get("/api/v1/projects/p1/members", () => HttpResponse.json(members)),
     http.get("/api/v1/projects/p1/milestones", () => HttpResponse.json([])),
     http.get("/api/v1/projects/p1/decisions", () => HttpResponse.json([])),
     http.get("/api/v1/projects/p1/progress", () =>
@@ -121,11 +121,50 @@ test("the student picker offers only students of the workspace being worked in",
   expect(picker).not.toHaveTextContent("Other Lab");
 });
 
-test("a student viewing the project is offered no write controls", async () => {
+test("a student on the project is offered no professor controls, and no edit they may not make", async () => {
+  // Someone else's project: they may read it, and that is all. The status controls and the member
+  // picker are the professor's, and the fields form belongs to whoever started it.
   renderPage(STUDENT);
 
   await screen.findByText("Retrieval baselines");
 
   expect(screen.queryByTestId("project-status-controls")).not.toBeInTheDocument();
   expect(screen.queryByTestId("add-member")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("project-fields")).not.toBeInTheDocument();
+});
+
+test("the student who started the project may edit its record but not its standing", async () => {
+  renderPage(STUDENT, { ...PROJECT, created_by: STUDENT.id, status: "active" });
+
+  await screen.findByText("Retrieval baselines");
+
+  expect(screen.getByTestId("project-fields")).toBeInTheDocument();
+  // AUTH-07 stops short of the project's standing: status and open-to-joining stay the
+  // professor's, so the creator never sees the control that would change them.
+  expect(screen.queryByTestId("project-status-controls")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("open-to-join")).not.toBeInTheDocument();
+});
+
+test("a student member is offered the way out, posting to their own membership", async () => {
+  const ended: string[] = [];
+  renderPage(STUDENT, PROJECT, [
+    { id: "m1", project_id: "p1", student_id: STUDENT.id, student_name: "An", responsibility: "",
+      origin: "self_joined", joined_on: "2026-09-14", left_on: null, planned_allocation: null,
+      created_at: "2026-09-14T00:00:00Z" },
+    { id: "m2", project_id: "p1", student_id: "someone-else", student_name: "Bao",
+      responsibility: "", origin: "assigned", joined_on: "2026-09-14", left_on: null,
+      planned_allocation: null, created_at: "2026-09-14T00:00:00Z" },
+  ]);
+  server.use(
+    http.post("/api/v1/projects/p1/members/:membershipId/end", ({ params }) => {
+      ended.push(String(params.membershipId));
+      return HttpResponse.json({});
+    }),
+  );
+
+  await userEvent.click(await screen.findByTestId("leave-project"));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  // Their own membership, not the co-member's, which the page also lists.
+  expect(ended).toEqual(["m1"]);
 });

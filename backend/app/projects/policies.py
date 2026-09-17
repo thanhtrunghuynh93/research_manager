@@ -37,7 +37,19 @@ def _in_scope(
 
 @register_policy(Project)
 def project_visible_to(scope: Scope) -> ColumnElement[bool]:
-    return _in_scope(Project, scope)
+    """AUTH-07: the creator keeps the record they started, whether or not they are still on it.
+
+    The extra term is on `Project` alone and not in `_in_scope`, which `Milestone`, `Task` and
+    `ResearchDecision` share: widening it there would hand a non-member every milestone and every
+    decision in the workspace in the same edit. Here it grants exactly one row — the project whose
+    fields its creator is entitled to change, which they must be able to read to change.
+    """
+    if scope.is_prof:
+        return scope.within(Project.workspace_id)
+    return and_(
+        scope.within(Project.workspace_id),
+        or_(Project.id.in_(scope.project_ids), Project.created_by == scope.user_id),
+    )
 
 
 @register_policy(Milestone)

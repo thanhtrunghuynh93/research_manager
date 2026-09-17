@@ -50,6 +50,20 @@ class ProjectStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+class MembershipOrigin(StrEnum):
+    """How a membership came to exist (PROJ-07).
+
+    It is not bookkeeping. A professor assigning a student mid-week means the student owes that
+    week — the professor knows what they are asking for. A student joining mid-week does not, so
+    the derivation reads this column to decide which weeks a membership owes
+    (`repository.memberships_active_in_range`). It is also how the audit trail distinguishes the
+    two, since the actor alone cannot: the professor's scope writes both kinds today.
+    """
+
+    ASSIGNED = "assigned"
+    SELF_JOINED = "self_joined"
+
+
 class MilestoneStatus(StrEnum):
     PLANNED = "planned"
     IN_PROGRESS = "in_progress"
@@ -88,6 +102,7 @@ def _enum(enum_type: type[StrEnum], name: str) -> Enum:
 
 STAGE_ENUM = _enum(ResearchStage, "research_stage")
 PROJECT_STATUS_ENUM = _enum(ProjectStatus, "project_status")
+MEMBERSHIP_ORIGIN_ENUM = _enum(MembershipOrigin, "membership_origin")
 MILESTONE_STATUS_ENUM = _enum(MilestoneStatus, "milestone_status")
 TASK_STATUS_ENUM = _enum(TaskStatus, "task_status")
 BASELINE_STATE_ENUM = _enum(BaselineState, "baseline_state")
@@ -131,6 +146,10 @@ class Project(UUIDPrimaryKeyMixin, Base):
     # Architecture §10: every model step is skipped for a restricted project; the professor rates
     # it by hand and the pipeline records "Not rated — restricted".
     ai_restricted: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # PROJ-07: whether a student may put themselves on this project without being assigned.
+    # Default closed, and only a professor may open it: a membership is the whole grant of access
+    # to a project's records, so opening one is a disclosure decision, not a convenience.
+    open_to_join: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_by: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
@@ -182,6 +201,11 @@ class ProjectMembership(UUIDPrimaryKeyMixin, Base):
     project_id: Mapped[UUID]
     student_id: Mapped[UUID]
     responsibility: Mapped[str] = mapped_column(Text, default="")
+    origin: Mapped[MembershipOrigin] = mapped_column(
+        MEMBERSHIP_ORIGIN_ENUM,
+        default=MembershipOrigin.ASSIGNED,
+        server_default=MembershipOrigin.ASSIGNED.value,
+    )
     joined_on: Mapped[date]
     # Exclusive: the first day the student is no longer a member. Ending a membership today
     # therefore revokes access today (AUTH-03).

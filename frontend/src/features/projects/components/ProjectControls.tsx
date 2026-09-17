@@ -18,8 +18,19 @@ import { Link } from "react-router-dom";
 import { Failure } from "@/components/Failure";
 import { useSession } from "@/features/auth/queries";
 import { usePeople } from "@/features/people/queries";
-import { useAddMember, useUpdateProject } from "@/features/projects/queries";
-import { STATUSES, type Project, type ProjectStatus } from "@/features/projects/types";
+import {
+  useAddMember,
+  useLeaveProject,
+  useMembers,
+  useUpdateProject,
+} from "@/features/projects/queries";
+import {
+  STAGES,
+  STATUSES,
+  type Project,
+  type ProjectStatus,
+  type ResearchStage,
+} from "@/features/projects/types";
 import { todayLocal } from "@/lib/dates";
 
 export function StatusControls({ project }: { project: Project }) {
@@ -63,8 +74,125 @@ export function StatusControls({ project }: { project: Project }) {
         <Failure error={update.error} />
       </div>
 
+      <label className="mt-3 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={project.open_to_join}
+          onChange={(event) => update.mutate({ open_to_join: event.target.checked })}
+          data-testid="open-to-join"
+        />
+        <span className="text-sm">{t("project.openToJoin")}</span>
+      </label>
+      <p className="stamp mt-1">{t("project.openToJoinNote")}</p>
+
       {proposed ? <p className="stamp mt-2">{t("project.activateNote")}</p> : null}
     </div>
+  );
+}
+
+/**
+ * What a student may do to their own standing on a project (PROJ-07).
+ *
+ * Leaving is the counterpart of joining and is deliberately not dressed up as an undo: it stops
+ * future weeks being owed and keeps the history, and it does not clear a report already owed for
+ * the week in progress. The copy has to say so, or a student will leave on Sunday evening and
+ * expect the deadline to go with them.
+ */
+export function MembershipControls({ project }: { project: Project }) {
+  const { t } = useTranslation();
+  const session = useSession();
+  const members = useMembers(project.id);
+  const leave = useLeaveProject(project.id);
+
+  const mine = (members.data ?? []).find(
+    (member) => member.student_id === session.data?.id && !member.left_on,
+  );
+  if (!mine) return null;
+
+  return (
+    <div className="mt-4 border-t border-border pt-3" data-testid="membership-controls">
+      <button
+        type="button"
+        disabled={leave.isPending}
+        onClick={() => leave.mutate(mine.id)}
+        className="btn-secondary"
+        data-testid="leave-project"
+      >
+        {t("project.leave")}
+      </button>
+      <p className="stamp mt-2">{t("project.leaveNote")}</p>
+      <Failure error={leave.error} />
+    </div>
+  );
+}
+
+/**
+ * The project's own description, editable by whoever started it (AUTH-07).
+ *
+ * The fields here are exactly the ones the API lets a creator change. Status, whether the project
+ * is open to joining, and the AI restriction are absent on purpose: those are decisions about the
+ * project's standing rather than its description, and they stay with the professor.
+ */
+export function ProjectFieldsForm({ project }: { project: Project }) {
+  const { t } = useTranslation();
+  const update = useUpdateProject(project.id);
+
+  const [title, setTitle] = useState(project.title);
+  const [description, setDescription] = useState(project.description);
+  const [stage, setStage] = useState<ResearchStage>(project.stage);
+
+  return (
+    <form
+      className="mt-4 border-t border-border pt-3"
+      data-testid="project-fields"
+      onSubmit={(event) => {
+        event.preventDefault();
+        update.mutate({ title, description, stage });
+      }}
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block min-w-[14rem] flex-1">
+          <span className="field-label">{t("projects.titleField")}</span>
+          <input
+            type="text"
+            required
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="input"
+          />
+        </label>
+        <label className="block min-w-[14rem] flex-1">
+          <span className="field-label">{t("projects.description")}</span>
+          <input
+            type="text"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className="input"
+          />
+        </label>
+        <label className="block">
+          <span className="field-label">{t("projects.stage")}</span>
+          <select
+            aria-label={t("projects.stage")}
+            value={stage}
+            onChange={(event) => setStage(event.target.value as ResearchStage)}
+            className="select"
+          >
+            {STAGES.map((value) => (
+              <option key={value} value={value}>
+                {t(`project.stage.${value}`, { defaultValue: value })}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" disabled={update.isPending} className="btn-secondary">
+          {t("project.saveFields")}
+        </button>
+      </div>
+      <p className="mt-2">
+        <Failure error={update.error} />
+      </p>
+    </form>
   );
 }
 

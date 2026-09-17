@@ -24,3 +24,4 @@ that silently stops is worse than no index — a reader takes the last row for t
 | [0014](0014-joining-and-leaving-a-workspace.md) | An account joins and leaves a workspace; four identity foreign keys cascade (supersedes 0013) |
 | [0015](0015-plural-workspace-membership.md) | Belonging to a workspace is plural; working in one is singular |
 | [0016](0016-reads-span-membership.md) | Reads span every workspace you belong to; writes go to one |
+| [0017](0017-students-own-their-projects.md) | A student starts and joins their own projects; the professor keeps the gate |

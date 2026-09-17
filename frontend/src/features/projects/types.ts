@@ -9,6 +9,7 @@ export type ProjectProgress = components["schemas"]["ProjectProgressOut"];
 export type ProjectIn = components["schemas"]["ProjectIn"];
 export type ProjectPatch = components["schemas"]["ProjectPatch"];
 export type MembershipIn = components["schemas"]["MembershipIn"];
+export type JoinableProject = components["schemas"]["JoinableProjectOut"];
 export type ProjectPage = components["schemas"]["Page_ProjectOut_"];
 export type ResearchStage = components["schemas"]["ResearchStage"];
 export type ProjectStatus = components["schemas"]["ProjectStatus"];

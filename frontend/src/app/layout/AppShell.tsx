@@ -89,11 +89,11 @@ export function AppShell() {
               {t("people.title")}
             </NavLink>
           )}
-          {isProf && (
-            <NavLink to="/projects" className={item}>
-              {t("projects.title")}
-            </NavLink>
-          )}
+          {/* Signed-in, not professor-only: the route always was, and since PROJ-07 a student has
+              something to do there — start a project, or join one that is open. */}
+          <NavLink to="/projects" className={item}>
+            {t("projects.title")}
+          </NavLink>
           {isProf && (
             <NavLink to="/workspaces" className={item}>
               {t("workspaces.title")}

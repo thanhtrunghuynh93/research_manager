@@ -191,6 +191,10 @@ async def _projects(session: AsyncSession, prof_scope: Any) -> list[Any]:
         await projects_service.update_project(session, prof_scope, project.id, status="active")
         projects.append(project)
 
+    # One project stands open, so the joinable list demonstrates something rather than an empty
+    # panel (PROJ-07). The rest stay closed, which is the default and the safer half of the rule.
+    await projects_service.update_project(session, prof_scope, projects[-1].id, open_to_join=True)
+
     # A dated decision, so the project workspace has something real to show (PROJ-01).
     await projects_service.record_decision(
         session,
