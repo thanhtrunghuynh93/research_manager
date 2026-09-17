@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.4 — 12 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.3, [architecture.md](architecture.md), and [repo_layout.md](repo_layout.md)
+Version 0.5 — 16 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.5, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.11
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -13,16 +13,30 @@ layout. Update it in the pull request that changes what it describes.
 | 1 | Repository skeleton, `core/`, health endpoints, dev Compose, CI | Done |
 | 2 | `identity/`: users, invitations, sessions, authz, break-glass | Done |
 | 3 | `projects/` and `reporting/`: periods, obligations, drafts, submission, versions, plan baselines, artifacts; student frontend | Done |
-| 4 | `notifications/`: scheduler tasks, missed-deadline email, in-app messages | Done |
+| 4 | `notifications/`: scheduler tasks, missed-deadline email, notification records | Done |
 | 5 | `evidence/`: connectors, identity mapping, indexing and retrieval | Done |
 | 6 | `assessment/`: snapshot, metrics, pipeline, review | Done |
 | 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Done |
-| 8 | `assistant/`, exports, professor overview, backup drill, release | Done |
+| 8 | `assistant/`, professor overview, backup drill, release | Done |
 | 9 | The seams: assessment triggering, the periodic tasks, the repository API | Done |
 | 10 | A full review of the branch, and the defects it found | Done |
+| 11 | Deployment preparation: readiness checks, production config refusal, auth rate limits, mail warnings | Done |
+| 12 | `workspaces/`: ownership, joining and leaving, plural membership, reads that span it | Done |
 
-At the time of writing: 794 backend tests, 105 frontend tests, 91.3 % backend coverage, fifteen
-migrations, and all five import-linter contracts holding. Every one of the nineteen acceptance scenarios has a test.
+Counted from the tree rather than remembered, and checked by `scripts/check_docs.py`:
+
+| Counted | Value |
+| --- | --- |
+| Alembic migrations | 22 |
+| `/api/v1` endpoints | 94 (92 in the schema, 2 `include_in_schema=False`) |
+| ADRs | 16 |
+| Acceptance scenarios with a test | 19 of 19 |
+| Import-linter contracts holding | 5 of 5 |
+
+Test counts and coverage are deliberately not recorded here. A number in prose goes stale the week
+after it is written — the previous version of this section claimed 794 backend tests and 91.3 %
+coverage, and both had drifted by the time anyone read them. Section 6 says how to obtain the
+current figures, and CI enforces the 85 % gate rather than a sentence.
 
 **15 September 2026 — first deployment preparation.** §1 and §2 of
 [production-readiness.md](runbooks/production-readiness.md) are closed bar mail deliverability.
@@ -82,8 +96,8 @@ Invitation-based enrollment with single-use tokens stored only as digests; Argon
 server-side sessions with a 12-hour idle and 30-day absolute expiry; password recovery; and the
 audited break-glass procedure the runbook describes, reachable only from a host shell.
 
-One predicate decides every read of a user record, and search, downloads and exports compile the
-same one — there is no second permission model. Deactivation, role change, and password reset each
+One predicate decides every read of a user record, and search and downloads compile the same one —
+there is no second permission model. Deactivation, role change, and password reset each
 revoke every session and advance `workspaces.access_epoch` in the same transaction, which is what
 later lets a cached answer be refused.
 
@@ -118,8 +132,10 @@ project, autosave, attachments, and an idempotent submit.
 
 The missed-deadline job reads obligations at the moment it sends, so a submission at 23:59 receives
 nothing. Every write is keyed, so a retried job sends no duplicate. The professor sees the
-outstanding list in-app at the same time and receives no email. In-app notifications carry
-per-recipient visibility and mutable preferences, with the critical categories unmutable.
+outstanding list in-app at the same time and receives no email — on the overview, since use cases
+v0.4 retired the notifications screen. Notification records carry per-recipient visibility. They
+carry no preferences: muting went with the screen, and the table went with it, because an
+unclearable mute is worse than none.
 
 The procrastinate schema ships as a migration, so a deploy still runs only `alembic upgrade head`.
 
@@ -184,7 +200,7 @@ run on every CI pass against the deterministic gateway; agreement with the profe
 provider and is reported rather than asserted, because a threshold invented before anyone has seen
 real disagreement is a number to hit rather than a decision to make.
 
-### Step 8 — `assistant/`, exports, overview, operations (QA-01..07, UI-01, UI-06)
+### Step 8 — `assistant/`, overview, operations (QA-01..07, UI-01)
 
 The assistant runs one flow in a fixed order, because the order is the safety property: route,
 resolve entities against the database, compute facts, retrieve, re-check, generate, validate
@@ -198,10 +214,6 @@ actually retrieved; an invented one is dropped and the drop is stated.
 Confidentiality is structural rather than instructed: supervision notes live in a table nothing
 indexes and are read through a function the student branch never calls. The answer cache is keyed by
 the asker as well as the question and dies with the access epoch it was written under.
-
-Exports assemble a bundle through the owning modules' services, so "export authorization must match
-interactive access" holds by construction. Asking for a kind you may not export is refused rather
-than answered with an empty list, because an empty list is a claim that there is nothing there.
 
 The professor overview is built from the same fact functions the assistant uses, so the number on
 the dashboard and the number in an answer cannot disagree.
@@ -233,6 +245,38 @@ whether the delivery matched anything, because one landing nowhere looks identic
 `/api/metrics` serves the series requirements §11 names. The assistant gained the SSE stream its
 client helper was already written against.
 
+### Step 12 — `workspaces/` (AUTH-04..06, UI-08)
+
+A workspace was always the tenant boundary; what was missing was any relation saying which of them
+a professor may administer, and then — once there were several — which they may be in.
+
+- **Ownership is the administration relation** (ADR 0012, amending ADR 0011). `workspaces.owner_id`
+  already existed as the break-glass contact; making it load-bearing meant nothing else had to
+  change. It decides create, rename and archive.
+- **Belonging is separate, and plural** (ADR 0015, migration 0021). `workspace_members` records it;
+  `users.workspace_id` keeps its other job as the anchor every composite foreign key points at.
+  Three checks moved onto membership as a result: archiving counts memberships, the roll is keyed by
+  membership, and leaving your only membership is refused.
+- **Reads span the set, writes land in one** (ADR 0016). `Scope` gained `workspace_ids`, and the
+  comparison moved into `Scope.within(column)` so that all thirty-three predicates widened in one
+  diff rather than thirty-three. The `across_workspaces` flag that a narrower design needed went
+  with it — a second, wider variant of a narrow predicate is the shape a permission bug grows in.
+- **The session was the wrong place for it.** ADR 0013 put the active workspace on the session and
+  migration 0019 added the column; ADR 0014 superseded it two migrations later and 0020 dropped it.
+  Paying the schema cost instead — `ON UPDATE CASCADE` on the four identity foreign keys — removed
+  the second source of truth rather than adding a re-check on every request to keep it honest.
+- **What the schema refuses, it refuses in the database.** The four history foreign keys do not
+  cascade, so `move_student` catches an `IntegrityError` inside a savepoint and explains it rather
+  than duplicating the constraint in Python where it could drift (AUTH-06).
+
+The review of this work found three defects worth recording, because they share a shape: each was a
+place where the *old* singular assumption survived the widening. `join_workspace` still gated on
+ownership, so a colleague could not enter a workspace the screen offered them; `reactivate_user`
+did not restore the membership `remove_student` deletes, so a restored account was active and
+invisible to every membership-keyed read; and the answer cache was still validated against the
+anchor's `access_epoch` alone, which ADR 0016's last bullet had predicted in writing. The third
+needed migration 0022 and is now keyed to the whole read-set.
+
 ## 3 What is deliberately not built
 
 | Gap | Requirement | Why |
@@ -243,6 +287,9 @@ client helper was already written against.
 | Student-side assistant | §2, §12 | Next release; the retrieval path and the predicate are already shared, so it is a surface rather than a rebuild |
 | Rubric calibration | ASSESS-03, §13 | Needs the professor's own ratings on real weeks. The harness and the protocol are ready for them |
 | Retention and authorized deletion | §11 "Data control" | `retention_sweep` expires the answer cache, which has a defined lifetime. Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
+| Moving a student who has written history | AUTH-06 | Four composite foreign keys refuse it, by design rather than by omission. The two ways out — cascade the history into the new workspace, or make the move a new account — both change what "the workspace a record was written in" means, and neither is worth doing before someone needs it (use_cases.md §2.1) |
+| Pre-deadline reminders reaching anyone | REP-07 | The rows are written every fifteen minutes and nothing reads them: use cases v0.4 withdrew the in-app surface and only `missed_deadline` is emailed. The offsets endpoint has no screen either. Kept rather than deleted because the unique key is what makes a retried dispatch a no-op |
+| Professor-authored feedback | REP-07 | `FeedbackKind.PROFESSOR_COMMENT` exists in the enum and no code path writes one. What a student can read today is the approved assessment and their own correction thread |
 | Performance benchmarks | §11, §15 | `scripts/bench/` is empty. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured against the 100k-chunk corpus the seed script can build |
 
 ### Acceptance scenarios
@@ -272,7 +319,7 @@ produced something wrong. Each is reflected in the code and in the document it c
 | Full-text search uses the `simple` configuration | Reports are written in English and Vietnamese; English stemming distorts the latter. Revisit with the retrieval benchmark |
 | Report entries and attachments are indexed by `evidence` reacting to events | Reporting stays unaware of evidence, which is the layer direction the architecture sets. `ArtifactExtracted` uses the same seam `ReportSubmitted` does |
 | Deadlines render as 23:59 rather than 11:59 PM | The requirement states the rule in 24-hour time, and the workspace's timezone convention matches |
-| `app.exports` is a bounded context, not just a router | A bundle spans reporting, projects and assessment; assembling it through those modules' services is what makes export authorization identical to interactive access rather than a second implementation of it |
+| ~~`app.exports` is a bounded context, not just a router~~ — retired in use cases v0.4 | A bundle spanned reporting, projects and assessment; assembling it through those modules' services is what made export authorization identical to interactive access rather than a second implementation of it. The module is gone; the reasoning applies to the next context that spans modules |
 | Model prices live in a table in `ai/cost.py`, and an unknown model records a null cost | A guessed price would be believed. The tokens are the fact; the money is arithmetic over a published rate |
 | A spent budget is a distinct run state, not a `partial` | The professor's response to "the money ran out" is different from their response to "the model failed", so the record distinguishes them |
 | The assistant resolves entity names against records the caller can already see | A model asked about a name will produce a plausible id. Matching against the caller's own visible set means a wrong guess finds nothing rather than reaching a record |

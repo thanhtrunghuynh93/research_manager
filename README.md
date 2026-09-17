@@ -1,10 +1,12 @@
 # Research Management System
 
-A supervision workspace for one professor and their students: weekly report packages, optional repository evidence, professor-approved progress assessments, and a cited research assistant.
+A supervision workspace for professors and their students: weekly report packages, optional repository evidence, professor-approved progress assessments, and a cited research assistant.
+
+Professors are co-equal inside a workspace ([ADR 0011](docs/adr/0011-co-equal-professors.md)) and a professor may belong to several, reading across them and writing into the one they are working in ([ADR 0016](docs/adr/0016-reads-span-membership.md)).
 
 ## Documents
 
-- [Requirements](docs/research_management_requirements.md) — what the system must do (v0.3)
+- [Requirements](docs/research_management_requirements.md) — what the system must do
 - [Architecture](docs/architecture.md) — how it is built
 - [Repository layout](docs/repo_layout.md) — where things live and the conventions
 - [Implementation status](docs/implementation_status.md) — what is built, what is left, and why
@@ -40,8 +42,9 @@ make test         # backend tests (needs Docker for testcontainers)
 ```
 
 `make bootstrap` prints a single-use invitation link; open it to set the professor's password.
-In development the api logs the invitation and recovery links for every account until the
-notifications module sends them by email.
+Every later invitation and recovery link travels by email — in development to mailpit, which the
+mock stack serves on http://localhost:8025, because a link nobody receives is an account nobody
+can reach (AUTH-01).
 
 API health: `http://localhost:8021/api/healthz`. Interactive API docs: `http://localhost:8021/api/docs`.
 
