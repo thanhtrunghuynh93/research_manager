@@ -11,10 +11,12 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from app.core.config import get_settings
 from app.core.context import bind_request_id, current_request_id, reset_request_id
 
 access_log = logging.getLogger("app.access")
 log = logging.getLogger(__name__)
+
 
 # The three unauthenticated paths that do work on a caller's behalf, with a window in seconds and
 # the number of requests allowed in it, per client address (production-readiness.md §2.2).
@@ -23,11 +25,19 @@ log = logging.getLogger(__name__)
 # aimed at the two things that are: password brute-force against login, and using the reset
 # endpoint to flood a known mailbox. Both limits are far above what a person doing the thing
 # honestly would ever reach — a student mistyping a password five times in a minute is unaffected.
-AUTH_RATE_LIMITS: dict[str, tuple[int, int]] = {
-    "/api/v1/auth/login": (300, 10),
-    "/api/v1/auth/password-reset": (3600, 5),
-    "/api/v1/auth/accept-invitation": (3600, 10),
-}
+def auth_rate_limits() -> dict[str, tuple[int, int]]:
+    """Read at construction rather than at import, so a test can build an app with its own cap.
+
+    Only the login cap is configurable, and only downward in practice: the end-to-end suite signs
+    in as several people from one address and would otherwise be throttled by a defence it is not
+    testing. The reset and invitation limits guard a mailbox rather than a password and no caller
+    needs them relaxed.
+    """
+    return {
+        "/api/v1/auth/login": (300, get_settings().auth_login_attempts),
+        "/api/v1/auth/password-reset": (3600, 5),
+        "/api/v1/auth/accept-invitation": (3600, 10),
+    }
 
 
 class RequestIdFilter(logging.Filter):
@@ -78,9 +88,10 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: object) -> None:
         super().__init__(app)  # type: ignore[arg-type]
         self._hits: dict[tuple[str, str], list[float]] = defaultdict(list)
+        self._limits = auth_rate_limits()
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        limit = AUTH_RATE_LIMITS.get(request.url.path)
+        limit = self._limits.get(request.url.path)
         if limit is None or request.method != "POST":
             return await call_next(request)
 
@@ -120,7 +131,7 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         """
         if len(self._hits) < 1024:
             return
-        longest = max(window for window, _ in AUTH_RATE_LIMITS.values())
+        longest = max(window for window, _ in self._limits.values())
         self._hits = defaultdict(
             list,
             {

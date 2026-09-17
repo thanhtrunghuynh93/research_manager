@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
-from app.api.middleware import AUTH_RATE_LIMITS, AuthRateLimitMiddleware
+from app.api.middleware import AuthRateLimitMiddleware, auth_rate_limits
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +33,7 @@ def _limiters(client: AsyncClient) -> list[AuthRateLimitMiddleware]:
 
 async def test_repeated_sign_in_attempts_are_eventually_refused(client: AsyncClient) -> None:
     """The limit is well above what a person mistyping a password would ever reach."""
-    _, allowed = AUTH_RATE_LIMITS["/api/v1/auth/login"]
+    _, allowed = auth_rate_limits()["/api/v1/auth/login"]
     body = {"email": "nobody@example.org", "password": "wrong-password"}
 
     for _ in range(allowed):
@@ -49,7 +49,7 @@ async def test_repeated_sign_in_attempts_are_eventually_refused(client: AsyncCli
 
 
 async def test_the_reset_endpoint_cannot_be_used_to_flood_a_mailbox(client: AsyncClient) -> None:
-    _, allowed = AUTH_RATE_LIMITS["/api/v1/auth/password-reset"]
+    _, allowed = auth_rate_limits()["/api/v1/auth/password-reset"]
     body = {"email": "a-real-student@example.org"}
 
     for _ in range(allowed):
@@ -60,7 +60,7 @@ async def test_the_reset_endpoint_cannot_be_used_to_flood_a_mailbox(client: Asyn
 
 async def test_the_limit_is_per_path(client: AsyncClient) -> None:
     """Spending the login budget must not lock a student out of accepting their invitation."""
-    _, allowed = AUTH_RATE_LIMITS["/api/v1/auth/login"]
+    _, allowed = auth_rate_limits()["/api/v1/auth/login"]
     for _ in range(allowed + 1):
         await client.post(
             "/api/v1/auth/login", json={"email": "nobody@example.org", "password": "wrong"}
@@ -74,5 +74,5 @@ async def test_the_limit_is_per_path(client: AsyncClient) -> None:
 
 async def test_ordinary_traffic_is_untouched(client: AsyncClient) -> None:
     """Only the three listed paths are limited, and only POST to them."""
-    for _ in range(AUTH_RATE_LIMITS["/api/v1/auth/login"][1] + 5):
+    for _ in range(auth_rate_limits()["/api/v1/auth/login"][1] + 5):
         assert (await client.get("/api/healthz")).status_code == 200

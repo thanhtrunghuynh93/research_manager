@@ -11,7 +11,7 @@ import { signIn, STUDENT } from "./helpers";
 test("a student sees this week, opens it, drafts it, and submits once", async ({ page }) => {
   await signIn(page, STUDENT);
 
-  await expect(page.getByRole("heading", { name: /this week/i })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /this week/i })).toBeVisible();
   // REP-01: the deadline is stated in the workspace timezone, at 23:59.
   await expect(page.getByTestId("next-deadline")).toContainText("23:59");
 

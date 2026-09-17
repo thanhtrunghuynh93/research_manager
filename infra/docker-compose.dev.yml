@@ -20,6 +20,11 @@ services:
       - "8021:8000"
     environment:
       RM_ENV: dev
+      # The end-to-end suite signs in as several people from one address, which the production cap
+      # of ten per five minutes throttles — it is testing the product, not the brute-force
+      # defence, and `tests/api/test_auth_rate_limit.py` covers the limiter itself. Dev only:
+      # production sets nothing and keeps the default.
+      RM_AUTH_LOGIN_ATTEMPTS: "100"
 
   worker:
     build:

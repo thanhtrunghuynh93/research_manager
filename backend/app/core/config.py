@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     upload_max_file_mb: int = Field(default=25, ge=1)
     worker_concurrency: int = Field(default=4, ge=1)
 
+    # How many sign-in attempts one address may make in five minutes. The default is the
+    # production limit and nothing in a deployment should raise it; it is a setting only so that
+    # the end-to-end suite, which signs in as several people from one address, is not throttled by
+    # the defence it is not testing. The dev compose file raises it, prod never sets it.
+    auth_login_attempts: int = Field(default=10, ge=1)
+
     @model_validator(mode="after")
     def _refuse_development_defaults_in_production(self) -> Settings:
         """Refuse to start a production deployment that is still wearing its development clothes.
