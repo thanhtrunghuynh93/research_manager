@@ -2252,10 +2252,11 @@
         "type": "object"
       },
       "MembershipOrigin": {
-        "description": "How a membership came to exist (PROJ-07).\n\nIt is not bookkeeping. A professor assigning a student mid-week means the student owes that\nweek \u2014 the professor knows what they are asking for. A student joining mid-week does not, so\nthe derivation reads this column to decide which weeks a membership owes\n(`repository.memberships_active_in_range`). It is also how the audit trail distinguishes the\ntwo, since the actor alone cannot: the professor's scope writes both kinds today.",
+        "description": "How a membership came to exist (PROJ-07).\n\nIt is not bookkeeping. The derivation reads this column to decide which weeks a membership owes\n(`repository.memberships_active_in_range`), and it is how the audit trail tells the three apart,\nsince the actor alone cannot.\n\n`assigned` and `created` owe the week they land in: a professor assigning a student mid-week\nknows what they are asking for, and a student who starts a project is asking for it themselves.\n`self_joined` owes from the following week \u2014 joining an existing project on a Saturday should\nnot be a report due that Sunday for a week spent off the project.",
         "enum": [
           "assigned",
-          "self_joined"
+          "self_joined",
+          "created"
         ],
         "title": "MembershipOrigin",
         "type": "string"
@@ -5580,6 +5581,43 @@
           }
         },
         "summary": "Ask permission to upload one file",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}": {
+      "delete": {
+        "description": "REP-04: the student's own correction. Refused once the week has been submitted.",
+        "operationId": "remove_artifact_api_v1_artifacts__artifact_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove a file you attached, while the week is still a draft",
         "tags": [
           "artifacts"
         ]

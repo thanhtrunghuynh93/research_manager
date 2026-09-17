@@ -46,11 +46,14 @@ export function Attachments({
   projectId,
   periodId,
   attachments,
+  submitted = false,
   onAttached,
 }: {
   projectId: string;
   periodId: string;
   attachments: Attachment[];
+  /** Once the week is in, its attachments are part of the record; the API refuses to remove one. */
+  submitted?: boolean;
   /** Called after anything is attached, so the caller can refetch the list from the server. */
   onAttached: () => void;
 }) {
@@ -96,6 +99,20 @@ export function Attachments({
     }
   }
 
+  async function remove(artifactId: string, filename: string) {
+    if (!window.confirm(t("report.attachments.removeConfirm", { name: filename }))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.delete(`/api/v1/artifacts/${artifactId}`);
+      onAttached();
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.problem.detail : String(problem));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function attachLink() {
     if (!link.trim()) return;
     setBusy(true);
@@ -122,6 +139,12 @@ export function Attachments({
       <h3 className="section-title">{t("report.attachments.title")}</h3>
       <p className="stamp mt-1.5">{t("report.attachments.limit")}</p>
 
+      {submitted && (
+        <p className="stamp mt-1.5" data-testid="attachments-locked">
+          {t("report.attachments.locked")}
+        </p>
+      )}
+
       <ul className="panel mt-3.5" data-testid="attachment-list">
         {attachments.map((attachment) => (
           <li
@@ -138,6 +161,17 @@ export function Attachments({
               >
                 {t("report.attachments.download")}
               </button>
+              {!submitted && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void remove(attachment.artifact_id, attachment.filename)}
+                  className="btn-quiet"
+                  data-testid="remove-attachment"
+                >
+                  {t("report.attachments.remove")}
+                </button>
+              )}
             </span>
           </li>
         ))}

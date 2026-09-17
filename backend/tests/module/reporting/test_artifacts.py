@@ -15,7 +15,7 @@ from datetime import date
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ForbiddenError, ValidationError
+from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.storage import InMemoryObjectStore, sha256_of
 from app.identity import models as identity_models
 from app.identity import service as identity_service
@@ -702,3 +702,134 @@ async def test_an_attachment_with_no_text_is_a_no_op_for_the_retry(
     assert (
         await evidence_service.index_artifact_version(db, uploaded.version_id, store=store) is False
     )
+
+
+# ------------------------------------------------------------------ removal (REP-04, §11)
+
+
+async def _upload_for_week(
+    db: AsyncSession, scope, store: InMemoryObjectStore, project, period
+) -> object:
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        period_id=period.id,
+        filename="notes.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
+    return await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+
+
+async def test_removing_a_file_takes_it_out_of_storage_and_out_of_the_index(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """§11: deletion propagates to file storage, searchable indexes and answer caches."""
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, scope, store, project, period)
+
+    indexed = await _evidence_reference_count(db, version.version_id)
+    assert indexed == 1, "the attachment is searchable before it is removed"
+    assert _stored_keys(store, version.artifact_id), "its bytes are in the store"
+
+    await artifacts.remove_artifact(db, scope, version.artifact_id, store=store)
+
+    assert await _evidence_reference_count(db, version.version_id) == 0
+    assert _stored_keys(store, version.artifact_id) == []
+    assert await _artifact_exists(db, version.artifact_id) is False
+
+
+async def test_a_submitted_week_keeps_its_attachments(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    # Before submission the file is part of a draft; afterwards it is part of a record the
+    # professor may have read and an assessment may cite, and unpicking that is not the
+    # student's to do.
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, scope, store, project, period)
+
+    await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Ran the ablation",
+                "results": "No improvement over the baseline.",
+                "deviations": "",
+                "next_plan": {"outcomes": ["Try the length control"]},
+                "questions": "",
+            }
+        ],
+    )
+
+    with pytest.raises(ValidationError):
+        await artifacts.remove_artifact(db, scope, version.artifact_id, store=store)
+
+    assert await _artifact_exists(db, version.artifact_id) is True
+
+
+async def test_a_co_member_cannot_even_see_the_file_to_remove_it(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    period, project = await _project(db, prof_scope, student_a)
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_b.id, joined_on=date(2026, 9, 1)
+    )
+    owner = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, owner, store, project, period)
+
+    # Not forbidden — not found. `artifact_visible_to` restricts attachments to the student who
+    # attached them, so a co-member on the same project never sees the file at all, and the
+    # ownership check inside `remove_artifact` is the second lock rather than the first.
+    co_member = await identity_service.scope_for(db, student_b)
+    with pytest.raises(NotFoundError):
+        await artifacts.remove_artifact(db, co_member, version.artifact_id, store=store)
+
+    assert await _artifact_exists(db, version.artifact_id) is True
+
+
+def _stored_keys(store: InMemoryObjectStore, artifact_id) -> list[str]:
+    """Both keys the attachment owns: the uploaded bytes and the text extracted beside them."""
+    return [key for key in store.stored_keys() if str(artifact_id) in key]
+
+
+async def _evidence_reference_count(db: AsyncSession, version_id) -> int:
+    from sqlalchemy import func, select
+
+    from app.evidence.models import EvidenceReference
+
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(EvidenceReference)
+            .where(EvidenceReference.source_id == version_id)
+        )
+    ).scalar_one()
+
+
+async def _artifact_exists(db: AsyncSession, artifact_id) -> bool:
+    from sqlalchemy import select
+
+    from app.reporting.models import Artifact
+
+    return (
+        await db.execute(select(Artifact.id).where(Artifact.id == artifact_id))
+    ).scalar_one_or_none() is not None

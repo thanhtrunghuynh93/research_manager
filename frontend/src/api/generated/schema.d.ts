@@ -182,6 +182,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a file you attached, while the week is still a draft
+         * @description REP-04: the student's own correction. Refused once the week has been submitted.
+         */
+        delete: operations["remove_artifact_api_v1_artifacts__artifact_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/artifacts/{artifact_id}/confirm": {
         parameters: {
             query?: never;
@@ -2502,14 +2522,17 @@ export interface components {
          * MembershipOrigin
          * @description How a membership came to exist (PROJ-07).
          *
-         *     It is not bookkeeping. A professor assigning a student mid-week means the student owes that
-         *     week — the professor knows what they are asking for. A student joining mid-week does not, so
-         *     the derivation reads this column to decide which weeks a membership owes
-         *     (`repository.memberships_active_in_range`). It is also how the audit trail distinguishes the
-         *     two, since the actor alone cannot: the professor's scope writes both kinds today.
+         *     It is not bookkeeping. The derivation reads this column to decide which weeks a membership owes
+         *     (`repository.memberships_active_in_range`), and it is how the audit trail tells the three apart,
+         *     since the actor alone cannot.
+         *
+         *     `assigned` and `created` owe the week they land in: a professor assigning a student mid-week
+         *     knows what they are asking for, and a student who starts a project is asking for it themselves.
+         *     `self_joined` owes from the following week — joining an existing project on a Saturday should
+         *     not be a report due that Sunday for a week spent off the project.
          * @enum {string}
          */
-        MembershipOrigin: "assigned" | "self_joined";
+        MembershipOrigin: "assigned" | "self_joined" | "created";
         /** MembershipOut */
         MembershipOut: {
             /**
@@ -3915,6 +3938,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UploadGrantOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_artifact_api_v1_artifacts__artifact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

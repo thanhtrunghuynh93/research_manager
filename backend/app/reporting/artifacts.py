@@ -39,6 +39,7 @@ from app.core.storage import (
     sha256_of,
     storage_key,
 )
+from app.identity import service as identity_service
 from app.reporting import events, extraction, links
 from app.reporting.models import (
     Artifact,
@@ -565,6 +566,97 @@ async def _open_artifact(
     session.add(artifact)
     await session.flush()
     return artifact
+
+
+async def remove_artifact(
+    session: AsyncSession,
+    scope: Scope,
+    artifact_id: UUID,
+    *,
+    store: ObjectStore | None = None,
+) -> None:
+    """REP-04: the student takes back a file they attached, while the week is still theirs.
+
+    Bounded by submission rather than by time. Before the week is submitted the attachment is part
+    of a draft and removing it is correcting a mistake; afterwards it is part of a record the
+    professor may have read and an assessment may cite, and unpicking that is not a student's to
+    do. The refusal says which it is, because "you cannot remove this" without the reason reads as
+    a bug.
+
+    A real deletion, not a hidden row (requirements §11): the stored object, the extracted text
+    beside it, the evidence references indexed from every version, and the cached answers that
+    could still quote it. All of it inside one transaction, so a failure anywhere leaves the
+    attachment whole rather than half-gone.
+    """
+    artifact = await _require_artifact(session, scope, artifact_id)
+    if artifact.owner_student_id != scope.user_id:
+        raise ForbiddenError("only the student who attached this file may remove it")
+    if await _week_is_submitted(session, artifact):
+        raise ValidationError(
+            "this week has been submitted, so its attachments are part of the record; "
+            "ask your professor to remove it"
+        )
+
+    versions = list(
+        (
+            await session.execute(
+                select(ArtifactVersion).where(ArtifactVersion.artifact_id == artifact.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Evidence first, and it is allowed to fail the whole removal: a reference left behind is a
+    # file the assistant can still quote after the student took it back.
+    await events.emit(
+        events.ArtifactRemoved(
+            workspace_id=artifact.workspace_id,
+            artifact_id=artifact.id,
+            version_ids=tuple(version.id for version in versions),
+        ),
+        session,
+    )
+
+    active = store or current_store()
+    for version in versions:
+        for key in (version.storage_key, version.extracted_text_key):
+            if key:
+                await active.delete(key)
+
+    write_audit(
+        session,
+        scope=scope,
+        action="artifact.removed",
+        target_table="artifacts",
+        target_id=artifact.id,
+        before={"filename": artifact.filename, "versions": len(versions)},
+    )
+    # Only the artifact: `artifact_versions` carries an ON DELETE CASCADE onto it, so deleting
+    # the versions here as well asks the database to remove rows it has already removed.
+    await session.delete(artifact)
+    # AUTH-03: an answer cached while the file was readable must not outlive it.
+    await identity_service.advance_access_epoch(session, artifact.workspace_id)
+    await session.flush()
+
+
+async def _week_is_submitted(session: AsyncSession, artifact: Artifact) -> bool:
+    """Has the owner already submitted the week this attachment belongs to?
+
+    A file attached outside any period — which the upload form does not produce, but the API
+    allows — has no week to be part of, so there is nothing to protect.
+    """
+    if artifact.period_id is None:
+        return False
+    submitted = (
+        await session.execute(
+            select(WeeklyReport.current_version_id).where(
+                WeeklyReport.student_id == artifact.owner_student_id,
+                WeeklyReport.period_id == artifact.period_id,
+            )
+        )
+    ).scalar_one_or_none()
+    return submitted is not None
 
 
 async def _require_artifact(session: AsyncSession, scope: Scope, artifact_id: UUID) -> Artifact:

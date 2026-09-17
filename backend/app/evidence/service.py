@@ -1374,12 +1374,31 @@ def _defer_reindex_artifact(session: AsyncSession, version_id: UUID) -> None:
         log.exception("could not queue the re-index of artifact version %s", version_id)
 
 
+async def _on_artifact_removed(event: Any, session: AsyncSession) -> None:
+    """Take the withdrawn attachment out of the evidence index (requirements §11).
+
+    Not best-effort, unlike indexing: a reference left behind is a file the assistant can still
+    quote and cite after the student removed it, which is the failure this handler exists to
+    prevent. Reporting deletes the objects and the rows in the same transaction, so if this raises
+    the whole removal is refused and the attachment stays — visible and searchable together,
+    rather than gone from one and answerable from the other.
+    """
+    forgotten = await repo.forget_sources(
+        session,
+        workspace_id=event.workspace_id,
+        source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+        source_ids=event.version_ids,
+    )
+    log.info("forgot %d evidence reference(s) for artifact %s", forgotten, event.artifact_id)
+
+
 def register_subscriptions() -> None:
     """Called on import, like the visibility policies, so any process that ingests has it wired."""
     from app.reporting import events as reporting_events
 
     reporting_events.subscribe(reporting_events.ReportSubmitted, _on_report_submitted)
     reporting_events.subscribe(reporting_events.ArtifactExtracted, _on_artifact_extracted)
+    reporting_events.subscribe(reporting_events.ArtifactRemoved, _on_artifact_removed)
 
 
 register_subscriptions()

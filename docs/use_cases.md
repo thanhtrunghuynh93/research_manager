@@ -58,7 +58,7 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 97 endpoints, 49 of them called by a screen, and nothing left marked ◻️.**
+**As of this version: 98 endpoints, 50 of them called by a screen, and nothing left marked ◻️.**
 v0.4 removed ten — seven notification routes and three export routes, with `PUT
 /notifications/reminder-offsets` surviving because it configures email delivery (§7) — and v0.5 to
 v0.9 added eight for workspaces and one for moving a student, every one of them behind a screen.
@@ -430,6 +430,7 @@ hand.
 | See their week — period, deadline, what they owe | `GET /periods`, `/periods/{id}/obligations` | 🖥️ |
 | Write the weekly report, a tab per required project, autosaving | `PATCH /periods/{id}/report/draft` | 🖥️ |
 | Attach a file, straight from the browser to the object store | `POST /artifacts/uploads`, `/artifacts/{id}/confirm` | 🖥️ |
+| **Remove a file they attached, while the week is a draft** | `DELETE /artifacts/{id}` | 🖥️ |
 | Attach a link | `POST /artifacts/links` | 🖥️ |
 | Submit the weekly package | `POST /periods/{id}/report/submit` | 🖥️ |
 | Read their own projects, milestones, decisions and progress | `GET /projects/...` | 🖥️ |

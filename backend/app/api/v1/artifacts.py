@@ -148,6 +148,16 @@ async def confirm_upload(
     return ArtifactVersionOut(**_as(version))
 
 
+@router.delete(
+    "/{artifact_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a file you attached, while the week is still a draft",
+)
+async def remove_artifact(artifact_id: UUID, scope: ScopeDep, session: SessionDep) -> None:
+    """REP-04: the student's own correction. Refused once the week has been submitted."""
+    await service.remove_artifact(session, scope, artifact_id)
+
+
 @router.post("/links", status_code=status.HTTP_201_CREATED, summary="Attach a link")
 async def attach_link(
     payload: LinkRequest, scope: ScopeDep, session: SessionDep

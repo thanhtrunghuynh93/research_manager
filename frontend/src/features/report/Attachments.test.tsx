@@ -175,3 +175,53 @@ test("while a file is in flight the panel names it, rather than going quiet", as
   await waitFor(() => expect(onAttached).toHaveBeenCalled());
   await waitFor(() => expect(screen.queryByTestId("attachment-sending")).not.toBeInTheDocument());
 });
+
+test("a student removes a file they attached, and the list is refetched", async () => {
+  const removed: string[] = [];
+  server.use(
+    http.delete("/api/v1/artifacts/a1", () => {
+      removed.push("a1");
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const { onAttached } = renderPanel([attachment()]);
+
+  await userEvent.click(screen.getByTestId("remove-attachment"));
+
+  await waitFor(() => expect(removed).toEqual(["a1"]));
+  expect(onAttached).toHaveBeenCalled();
+});
+
+test("declining the confirmation removes nothing", async () => {
+  const removed: string[] = [];
+  server.use(
+    http.delete("/api/v1/artifacts/a1", () => {
+      removed.push("a1");
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  renderPanel([attachment()]);
+
+  await userEvent.click(screen.getByTestId("remove-attachment"));
+
+  expect(removed).toEqual([]);
+});
+
+test("a submitted week offers no removal, and says why", async () => {
+  // The API refuses it, so offering a button that always fails would be worse than no button —
+  // and an absent button with no explanation reads as something missing.
+  render(
+    <Attachments
+      projectId="p1"
+      periodId="per1"
+      attachments={[attachment()]}
+      submitted
+      onAttached={vi.fn()}
+    />,
+  );
+
+  expect(screen.queryByTestId("remove-attachment")).not.toBeInTheDocument();
+  expect(screen.getByTestId("attachments-locked")).toHaveTextContent(/part of the record/i);
+});

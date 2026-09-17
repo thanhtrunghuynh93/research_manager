@@ -212,6 +212,10 @@ class InMemoryObjectStore:
     async def bucket_ready(self) -> bool:
         return True
 
+    def stored_keys(self) -> list[str]:
+        """Every key currently held. For tests that assert a deletion actually deleted."""
+        return list(self._objects)
+
     async def ensure_bucket(self) -> None:
         return None
 
