@@ -178,11 +178,13 @@ async def memberships_active_in_range(
 
     `left_on` is exclusive, so a student who left on the Monday a period starts owes nothing for it.
 
-    A membership the student created themselves owes only weeks that began after they joined
-    (PROJ-07). Joining on a Saturday would otherwise owe a report by Sunday 23:59, and if they had
-    already submitted that week they would be counted missing and emailed about it — a late mark
-    the student inflicted on themselves by joining. A professor assigning someone mid-week still
-    owes that week: they know what they are asking for, and this is the rule they have worked to.
+    A membership acquired by joining an existing project owes only weeks that began after the
+    student joined (PROJ-07). Joining on a Saturday would otherwise owe a report by Sunday 23:59,
+    and if they had already submitted that week they would be counted missing and emailed about it
+    — a late mark inflicted by the act of joining.
+
+    Starting a project is the other way round: the student is announcing work they are already
+    doing, so it owes the week it lands in, exactly as a professor's assignment does.
     """
     return list(
         (
@@ -194,7 +196,7 @@ async def memberships_active_in_range(
                     Project.status == ProjectStatus.ACTIVE,
                     ProjectMembership.joined_on <= local_end,
                     or_(
-                        ProjectMembership.origin == MembershipOrigin.ASSIGNED,
+                        ProjectMembership.origin != MembershipOrigin.SELF_JOINED,
                         ProjectMembership.joined_on <= local_start,
                     ),
                     or_(

@@ -61,6 +61,10 @@ async def test_a_student_starts_their_own_project_and_is_on_it(
     assert project.status is models.ProjectStatus.ACTIVE
     assert project.created_by == student_a.id
 
+    # `created`, not `self_joined`: the two owe different weeks, and nobody assigned them either.
+    members = await service.list_members(db, student_a_scope, project.id)
+    assert members[0].origin is models.MembershipOrigin.CREATED
+
     scope = await identity_service.scope_for(db, student_a)
     assert project.id in scope.project_ids, "the creator is enrolled, or nothing derives from it"
 

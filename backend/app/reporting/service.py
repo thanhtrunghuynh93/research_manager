@@ -1053,3 +1053,42 @@ def _audit(
         target_id=target_id,
         after=after,
     )
+
+
+async def _on_membership_started(event: Any, session: AsyncSession) -> None:
+    """REP-01: derive the week's obligation as soon as somebody is on a project.
+
+    Without this a project created on Tuesday owes nothing until `ensure_periods` runs at 00:15 the
+    next morning — the student sees a project and no report, which reads as the system not having
+    noticed. The nightly job stays: this is the same derivation brought forward, and running both
+    is safe because `ensure_obligations` is idempotent per (membership, period).
+
+    Runs under a system scope rather than the acting student's, because deriving obligations is a
+    professor's act and a student has no standing to write one — the borrowed identity is what lets
+    the same predicates apply here as to the scheduled run (ADR 0011).
+
+    Whether the new membership actually owes *this* week is not decided here. That is
+    `memberships_active_in_range`'s rule: a project started now owes the week it lands in, and a
+    project joined now owes from the next one (PROJ-07). This function only makes the derivation
+    happen at the right moment.
+    """
+    # `system_scope` always resolves: a workspace with no professor yet borrows its own id as a
+    # value that names no user, which is what lets the calendar run before anyone has accepted.
+    scope = await identity_service.system_scope(session, event.workspace_id)
+    periods = await list_periods(session, scope)
+    at = now()
+    started = [period for period in periods if period.start_utc <= at]
+    if not started:
+        return  # No calendar, or none of its weeks has begun. The nightly run will catch up.
+
+    await ensure_obligations(session, scope, max(started, key=lambda one: one.start_utc).id)
+
+
+def register_subscriptions() -> None:
+    """Imported for the side effect, like the other modules' (docs/repo_layout.md §3.2)."""
+    from app.projects import events as projects_events
+
+    projects_events.subscribe(projects_events.MembershipStarted, _on_membership_started)
+
+
+register_subscriptions()

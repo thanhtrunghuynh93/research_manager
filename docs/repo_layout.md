@@ -189,7 +189,7 @@ Every bounded-context package contains the same files, empty ones omitted:
 | `events.py` | Domain event dataclasses emitted by `service` (for example `ReportSubmitted`) and in-process handlers registered by dependent modules | Keeps `reporting` unaware of `assessment` |
 | `cli.py` | typer subcommands, registered in `app/cli.py` | Optional |
 
-Cross-module reads go through `service.py` functions that return schemas, never ORM instances. Cross-module reactions go through `events.py`: `reporting.service.submit_report()` emits `ReportSubmitted`, and `assessment/events.py` subscribes to enqueue the pipeline. This is how `reporting` avoids importing `assessment` while still triggering it.
+Cross-module reads go through `service.py` functions that return schemas, never ORM instances. Cross-module reactions go through `events.py`: `reporting.service.submit_report()` emits `ReportSubmitted`, and `assessment/events.py` subscribes to enqueue the pipeline. This is how `reporting` avoids importing `assessment` while still triggering it. The same seam runs the other way down the layers: `projects/events.py` emits `MembershipStarted`, and `reporting` subscribes to derive the week's obligation at once rather than at the next nightly run — `projects` cannot call `reporting`, which sits above it.
 
 ### 3.3 Import-linter contracts (`pyproject.toml`)
 

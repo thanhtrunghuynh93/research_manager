@@ -23,7 +23,7 @@ from app.core.errors import ConflictError, ForbiddenError, NotFoundError, Valida
 from app.core.pagination import Page, clamp_limit
 from app.core.types import Role
 from app.identity import service as identity_service
-from app.projects import policies, repository  # noqa: F401  (policies register on import)
+from app.projects import events, policies, repository  # noqa: F401  (policies register on import)
 from app.projects.models import (
     BaselineState,
     MembershipOrigin,
@@ -133,7 +133,7 @@ async def create_project(
         # project falls outside `scope.project_ids`, so nothing derives from it and the student
         # would be looking at a project that owes them nothing and tells them nothing.
         await _enrol(
-            session, scope, project, student_id=scope.user_id, origin=MembershipOrigin.SELF_JOINED
+            session, scope, project, student_id=scope.user_id, origin=MembershipOrigin.CREATED
         )
     return ProjectOut.model_validate(project)
 
@@ -367,6 +367,20 @@ async def _enrol(
         },
     )
     # No epoch bump: granting access cannot invalidate an answer cached under narrower access.
+    #
+    # Reporting subscribes and derives this week's obligation now rather than at 00:15 tomorrow,
+    # which is what makes a project produce a report the moment it exists. projects cannot call
+    # reporting — it sits above this module — so the event is how the two meet.
+    await events.emit(
+        events.MembershipStarted(
+            workspace_id=membership.workspace_id,
+            membership_id=membership.id,
+            project_id=project.id,
+            student_id=student_id,
+            origin=origin.value,
+        ),
+        session,
+    )
     return membership
 
 

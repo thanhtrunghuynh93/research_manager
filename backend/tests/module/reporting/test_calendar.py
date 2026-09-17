@@ -357,7 +357,7 @@ async def test_a_student_may_read_the_calendar(
     assert current is not None and current.timezone == TZ
 
 
-async def test_a_student_who_starts_a_project_owes_a_report_without_the_professor(
+async def test_a_student_who_starts_a_project_owes_a_report_for_that_week(
     db: AsyncSession,
     prof_scope: Scope,
     student_a: identity_models.User,
@@ -365,21 +365,46 @@ async def test_a_student_who_starts_a_project_owes_a_report_without_the_professo
 ) -> None:
     """PROJ-07, and the point of the whole change: the chain closes without a professor in it.
 
+    Starting a project owes the week it lands in. The student is not being handed work — they are
+    announcing work already under way, and the report is how that week gets described.
+
     The calendar is anchored so the current period began three days ago whatever today's weekday
-    is, rather than to a fixed date — the rule under test is about joining part-way through a week,
-    so the test must not depend on which day it is run.
+    is, rather than to a fixed date, because the rule under test is about landing part-way through
+    a week and the test must not depend on which day it is run.
     """
     today = now().date()
     started = today - timedelta(days=3)
     await _calendar(db, prof_scope, effective_from=started, week_start_weekday=started.weekday())
-    await projects_service.create_project(db, student_a_scope, title="Mine", stage="implementation")
     periods = await service.ensure_periods(db, prof_scope, through=today + timedelta(days=10))
+    await projects_service.create_project(db, student_a_scope, title="Mine", stage="implementation")
 
     this_week = await service.ensure_obligations(db, prof_scope, periods[0].id)
-    next_week = await service.ensure_obligations(db, prof_scope, periods[1].id)
 
-    assert this_week == [], "the week was already running when they started the project"
-    assert [o.student_id for o in next_week] == [student_a.id]
+    assert [o.student_id for o in this_week] == [student_a.id]
+
+
+async def test_the_obligation_exists_before_the_nightly_job_runs(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_a_scope: Scope,
+) -> None:
+    """The half of "immediately" that the derivation rule alone does not give you.
+
+    Deriving obligations is a nightly job. Without the event reporting subscribes to, a student who
+    creates a project sees a project and no report until 00:15 the next morning, which reads as the
+    system not having noticed. Nothing here calls `ensure_obligations`: creating the project is the
+    only act, and the obligation has to exist afterwards.
+    """
+    today = now().date()
+    started = today - timedelta(days=3)
+    await _calendar(db, prof_scope, effective_from=started, week_start_weekday=started.weekday())
+    period = (await service.ensure_periods(db, prof_scope, through=today + timedelta(days=10)))[0]
+
+    await projects_service.create_project(db, student_a_scope, title="Mine", stage="implementation")
+
+    owed = await service.list_obligations(db, prof_scope, period.id)
+    assert [o.student_id for o in owed] == [student_a.id]
 
 
 async def test_joining_mid_week_does_not_owe_the_week_that_is_ending(
@@ -405,7 +430,7 @@ async def test_joining_mid_week_does_not_owe_the_week_that_is_ending(
     this_week = await service.ensure_obligations(db, prof_scope, periods[0].id)
     next_week = await service.ensure_obligations(db, prof_scope, periods[1].id)
 
-    assert this_week == []
+    assert this_week == [], "joining someone else's project is not the same as starting one"
     assert [o.student_id for o in next_week] == [student_a.id]
 
 

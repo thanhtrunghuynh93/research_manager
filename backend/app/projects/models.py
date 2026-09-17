@@ -53,15 +53,19 @@ class ProjectStatus(StrEnum):
 class MembershipOrigin(StrEnum):
     """How a membership came to exist (PROJ-07).
 
-    It is not bookkeeping. A professor assigning a student mid-week means the student owes that
-    week — the professor knows what they are asking for. A student joining mid-week does not, so
-    the derivation reads this column to decide which weeks a membership owes
-    (`repository.memberships_active_in_range`). It is also how the audit trail distinguishes the
-    two, since the actor alone cannot: the professor's scope writes both kinds today.
+    It is not bookkeeping. The derivation reads this column to decide which weeks a membership owes
+    (`repository.memberships_active_in_range`), and it is how the audit trail tells the three apart,
+    since the actor alone cannot.
+
+    `assigned` and `created` owe the week they land in: a professor assigning a student mid-week
+    knows what they are asking for, and a student who starts a project is asking for it themselves.
+    `self_joined` owes from the following week — joining an existing project on a Saturday should
+    not be a report due that Sunday for a week spent off the project.
     """
 
     ASSIGNED = "assigned"
     SELF_JOINED = "self_joined"
+    CREATED = "created"
 
 
 class MilestoneStatus(StrEnum):
