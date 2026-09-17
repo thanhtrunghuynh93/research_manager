@@ -3,7 +3,7 @@
  *
  * The cache is shared by everyone who uses the browser. Invalidation marks entries stale but
  * leaves them readable, so on a shared machine the next person to sign in saw the previous user's
- * overview, projects and notifications until each refetch landed.
+ * overview and projects until each refetch landed.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, renderHook, screen, waitFor } from "@testing-library/react";

@@ -1,6 +1,6 @@
 /** UI-02: obligations, the next deadline, draft state, and one way into the weekly flow. */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 
@@ -45,6 +45,7 @@ function handlers({
   ] as ObligationFixture[],
   report = null as unknown,
   reportStatus = 404,
+  released = [] as object[],
 } = {}) {
   return [
     http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
@@ -60,6 +61,19 @@ function handlers({
           )
         : HttpResponse.json(report),
     ),
+    // Added with the released-assessment block; individual tests override these.
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({
+        id: "s1",
+        workspace_id: "w1",
+        role: "student",
+        email: "an@example.edu",
+        display_name: "An",
+        state: "active",
+        created_at: "2026-09-01T00:00:00Z",
+      }),
+    ),
+    http.get("/api/v1/assessments", () => HttpResponse.json(released)),
   ];
 }
 
@@ -140,4 +154,46 @@ test("shows an excused project as excused rather than owed", async () => {
 
   expect(await screen.findByText(/excused/i)).toBeInTheDocument();
   expect(screen.getByText(/Approved leave/)).toBeInTheDocument();
+});
+
+test("an assessment released for this week is shown, and links to the full one", async () => {
+  // The loop this closes: approving publishes to the student, and until now there was no screen
+  // on which a student could read what was published (use_cases.md §8.2).
+  server.use(
+    ...handlers({
+      released: [
+        {
+          id: "a1",
+          project_id: "pr1",
+          progress_index: 79,
+          confidence: "high",
+          confidence_reasons: [],
+          published_at: "2026-09-21T03:00:00Z",
+        },
+      ],
+    }),
+  );
+  renderPage();
+
+  const released = await screen.findByTestId("released-assessments");
+  const link = await within(released).findByRole("link", { name: /baseline evaluation/i });
+
+  expect(link).toHaveAttribute("href", "/me/assessments/a1");
+});
+
+test("nothing released yet says so, and says what would make one appear", async () => {
+  server.use(...handlers());
+  renderPage();
+
+  expect(await screen.findByText(/nothing released for this week/i)).toBeInTheDocument();
+  expect(screen.getByText(/once your professor has approved it/i)).toBeInTheDocument();
+});
+
+test("no draft assessment is ever implied on the student's own screen", async () => {
+  server.use(...handlers());
+  renderPage();
+
+  await screen.findByText(/nothing released for this week/i);
+
+  expect(screen.queryByText(/draft/i)).not.toBeInTheDocument();
 });

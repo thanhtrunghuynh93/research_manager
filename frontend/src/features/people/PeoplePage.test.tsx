@@ -31,11 +31,24 @@ function user(overrides: Record<string, unknown> = {}) {
 
 const PROF = user({ id: "p1", role: "prof", email: "prof@example.edu", display_name: "Prof Le" });
 
+const WORKSPACE = {
+  id: "w1",
+  name: "Ecomind Lab",
+  timezone: "Asia/Ho_Chi_Minh",
+  access_epoch: 1,
+  owner_id: "p1",
+  archived_at: null,
+};
+
 function renderPeople(users: unknown[], extra: Parameters<typeof server.use> = []) {
   server.use(
+    // `extra` first: msw takes the first handler that matches, so a test's own workspace list has
+    // to come before the single-workspace default below or it would never be reached.
+    ...extra,
     http.get("/api/v1/auth/me", () => HttpResponse.json(PROF)),
     http.get("/api/v1/users", () => HttpResponse.json({ items: users, next_cursor: null })),
-    ...extra,
+    // The roll spans workspaces, so the page asks for them to label each person by theirs.
+    http.get("/api/v1/workspaces", () => HttpResponse.json([WORKSPACE])),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -51,8 +64,8 @@ test("separates the professors from the students", async () => {
   renderPeople([PROF, user()]);
 
   await screen.findByText("An Nguyen");
-  expect(within(screen.getByTestId("professors")).getByText("Prof Le")).toBeInTheDocument();
-  expect(within(screen.getByTestId("students")).getByText("An Nguyen")).toBeInTheDocument();
+  expect(within(screen.getByTestId("professors-w1")).getByText("Prof Le")).toBeInTheDocument();
+  expect(within(screen.getByTestId("students-w1")).getByText("An Nguyen")).toBeInTheDocument();
 });
 
 test("offers no control that would change a role", async () => {
@@ -72,7 +85,7 @@ test("gives a colleague no buttons", async () => {
   renderPeople([PROF, user({ id: "p2", role: "prof", display_name: "Prof Tran" })]);
   await screen.findByText("Prof Tran");
 
-  const professors = screen.getByTestId("professors");
+  const professors = screen.getByTestId("professors-w1");
   expect(within(professors).queryByRole("button")).not.toBeInTheDocument();
 });
 
@@ -204,6 +217,7 @@ test("a refusal from the API is shown rather than swallowed", async () => {
 test("follows the cursor when the roll is longer than a page", async () => {
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json(PROF)),
+    http.get("/api/v1/workspaces", () => HttpResponse.json([WORKSPACE])),
     http.get("/api/v1/users", ({ request }) => {
       const cursor = new URL(request.url).searchParams.get("cursor");
       return cursor
@@ -224,4 +238,115 @@ test("follows the cursor when the roll is longer than a page", async () => {
   await userEvent.click(screen.getByRole("button", { name: /show more/i }));
 
   expect(await screen.findByText("Bao Tran")).toBeInTheDocument();
+});
+
+const OTHER_WORKSPACE = { ...WORKSPACE, id: "w2", name: "Vision Lab" };
+
+test("offers no controls for a student in a workspace the professor is not in", async () => {
+  // Suspend, restore and remove are scoped to the caller's workspace, so on a row from elsewhere
+  // they would answer 404. The row says to join that workspace instead.
+  renderPeople(
+    [PROF, user({ id: "s2", workspace_id: "w2", display_name: "Mai Pham" })],
+    [http.get("/api/v1/workspaces", () => HttpResponse.json([WORKSPACE, OTHER_WORKSPACE]))],
+  );
+
+  const row = (await screen.findByText("Mai Pham")).closest("li")!;
+
+  expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+  expect(within(row)).toBeTruthy();
+  expect(row).toHaveTextContent(/join its workspace/i);
+});
+
+test("names no workspace when there is only one to be in", async () => {
+  renderPeople([PROF, user()]);
+
+  await screen.findByText("An Nguyen");
+  expect(screen.queryByTestId("person-workspace")).not.toBeInTheDocument();
+});
+
+test("offers a destination for a student who has not started work", async () => {
+  const moved: unknown[] = [];
+  renderPeople(
+    [PROF, user()],
+    [
+      http.get("/api/v1/workspaces", () => HttpResponse.json([WORKSPACE, OTHER_WORKSPACE])),
+      http.post("/api/v1/users/:id/workspace", async ({ request, params }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        moved.push({ id: params.id, ...body });
+        return HttpResponse.json(user({ workspace_id: "w2" }));
+      }),
+    ],
+  );
+
+  const select = await screen.findByLabelText(/move to/i);
+  await userEvent.selectOptions(select, "w2");
+
+  await waitFor(() => expect(moved).toEqual([{ id: "s1", workspace_id: "w2" }]));
+});
+
+test("shows the API's reason when a student has already started", async () => {
+  renderPeople(
+    [PROF, user()],
+    [
+      http.get("/api/v1/workspaces", () => HttpResponse.json([WORKSPACE, OTHER_WORKSPACE])),
+      http.post("/api/v1/users/:id/workspace", () =>
+        HttpResponse.json(
+          { title: "Invalid request", detail: "this student has already done work" },
+          { status: 422 },
+        ),
+      ),
+    ],
+  );
+
+  await userEvent.selectOptions(await screen.findByLabelText(/move to/i), "w2");
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(/already done work/i);
+});
+
+test("offers nowhere to move to when there is only one workspace", async () => {
+  renderPeople([PROF, user()]);
+
+  await screen.findByText("An Nguyen");
+  expect(screen.queryByLabelText(/move to/i)).not.toBeInTheDocument();
+});
+
+test("groups the roll by workspace, and keeps an empty one visible", async () => {
+  // Reads span every workspace the professor belongs to (ADR 0016). A flat list of two cohorts
+  // reads as one, and a workspace with nobody in it is an answer rather than a missing section.
+  renderPeople(
+    [PROF, user(), user({ id: "s2", workspace_id: "w2", display_name: "Mai Pham" })],
+    [
+      http.get("/api/v1/workspaces", () =>
+        HttpResponse.json([
+          WORKSPACE,
+          OTHER_WORKSPACE,
+          { ...OTHER_WORKSPACE, id: "w3", name: "Empty Lab" },
+        ]),
+      ),
+    ],
+  );
+
+  await screen.findByText("Mai Pham");
+
+  expect(within(screen.getByTestId("students-w1")).getByText("An Nguyen")).toBeInTheDocument();
+  expect(within(screen.getByTestId("students-w2")).getByText("Mai Pham")).toBeInTheDocument();
+  expect(within(screen.getByTestId("students-w1")).queryByText("Mai Pham")).not.toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("students-w3")).getByText(/nobody has been enrolled/i),
+  ).toBeInTheDocument();
+});
+
+test("offers no controls for students in a workspace the professor is not working in", async () => {
+  // Reads span membership; writes do not. Suspend and remove are scoped to the workspace the
+  // caller is in, so on another workspace's section they would answer 404.
+  renderPeople(
+    [PROF, user({ id: "s2", workspace_id: "w2", display_name: "Mai Pham" })],
+    [http.get("/api/v1/workspaces", () => HttpResponse.json([WORKSPACE, OTHER_WORKSPACE]))],
+  );
+
+  await screen.findByText("Mai Pham");
+  const row = screen.getByText("Mai Pham").closest("li")!;
+
+  await waitFor(() => expect(row).toHaveTextContent(/join its workspace/i));
+  expect(within(row).queryByRole("button")).not.toBeInTheDocument();
 });

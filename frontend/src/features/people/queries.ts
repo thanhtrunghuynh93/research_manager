@@ -8,6 +8,10 @@ export const peopleKey = ["people"] as const;
 /**
  * AUTH-01: the directory, a page at a time.
  *
+ * The roll spans every workspace the professor belongs to, with no flag to ask for it: reads follow
+ * membership (ADR 0016), so one predicate answers it. Each row carries its own `workspace_id`,
+ * which is what the screen groups by.
+ *
  * The cursor is followed rather than ignored. A roll longer than one page is ordinary — the API
  * caps a page at 200 — and a directory that silently stops at the first page is one where a
  * professor cannot find the student they came to remove.
@@ -30,8 +34,12 @@ export function usePeople() {
 export function useInvite() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { email: string; display_name?: string; role: Role }) =>
-      api.post<Invitation>("/api/v1/users/invitations", payload),
+    mutationFn: (payload: {
+      email: string;
+      display_name?: string;
+      role: Role;
+      workspace_id?: string;
+    }) => api.post<Invitation>("/api/v1/users/invitations", payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: peopleKey }),
   });
 }
@@ -55,3 +63,18 @@ function useAccountAction(action: "remove" | "deactivate" | "reactivate") {
 export const useRemoveStudent = () => useAccountAction("remove");
 export const useSuspend = () => useAccountAction("deactivate");
 export const useRestore = () => useAccountAction("reactivate");
+
+/**
+ * Move a student to another workspace, which only works before they have done any work: their
+ * project memberships and reports are pinned to the workspace they were written in, and the API
+ * refuses rather than dragging them along. The whole cache is reset because the roll, and whatever
+ * else the moved student appears in, are now different workspaces' data.
+ */
+export function useMoveStudent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, workspaceId }: { userId: string; workspaceId: string }) =>
+      api.post<User>(`/api/v1/users/${userId}/workspace`, { workspace_id: workspaceId }),
+    onSuccess: () => queryClient.resetQueries(),
+  });
+}

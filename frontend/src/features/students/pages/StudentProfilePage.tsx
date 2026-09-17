@@ -12,19 +12,9 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { Badge, ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
+import { Trajectory } from "@/features/assessments/components/Trajectory";
 import type { Assessment } from "@/features/review/types";
 import { openArtifact, useArtifacts } from "@/features/report/queries";
-import { formatInstant } from "@/lib/dates";
-
-type TrendPoint = {
-  period_id: string;
-  assessment_id: string;
-  progress_index: number | null;
-  plan_completion: string | null;
-  confidence: string;
-  rubric_version_id: string | null;
-  created_at: string;
-};
 
 export function StudentProfilePage() {
   const { t } = useTranslation();
@@ -79,54 +69,6 @@ export function StudentProfilePage() {
         )}
       </ul>
     </section>
-  );
-}
-
-function Trajectory({ studentId, projectId }: { studentId: string; projectId: string }) {
-  const { t } = useTranslation();
-  const trend = useQuery({
-    queryKey: ["trends", studentId, projectId],
-    queryFn: () =>
-      api.get<TrendPoint[]>(`/api/v1/trends?student_id=${studentId}&project_id=${projectId}`),
-  });
-
-  const points = trend.data ?? [];
-  const rubricVersions = new Set(points.map((point) => point.rubric_version_id));
-
-  return (
-    <div className="mt-8">
-      <h2 className="section-title">
-        {t("student.trajectory", { project: projectId.slice(0, 8) })}
-      </h2>
-      {rubricVersions.size > 1 && (
-        <p className="mt-1.5 text-[12.5px] text-warn" data-testid="rubric-break">
-          {t("student.rubricBreak", { count: rubricVersions.size })}
-        </p>
-      )}
-      {/* Cards, not a line: a line through a rubric change would assert a comparison the data
-          does not support. The break is the point, so the cards that follow one carry an edge. */}
-      <ol className="mt-3 flex flex-wrap gap-2.5" data-testid="trajectory">
-        {points.map((point, index) => {
-          const brokenHere =
-            index > 0 && points[index - 1]!.rubric_version_id !== point.rubric_version_id;
-          return (
-            <li
-              key={point.assessment_id}
-              className={`card min-w-[8.5rem] ${brokenHere ? "border-l-[3px] border-l-warn-rule" : ""}`}
-            >
-              <ProgressIndex value={point.progress_index} />
-              <p className="stamp mt-2">{formatInstant(point.created_at)}</p>
-              <p className="stamp">
-                {t("student.rubric", { id: (point.rubric_version_id ?? "").slice(0, 8) })}
-              </p>
-            </li>
-          );
-        })}
-        {points.length === 0 && (
-          <li className="text-sm text-muted-foreground">{t("student.noApproved")}</li>
-        )}
-      </ol>
-    </div>
   );
 }
 
