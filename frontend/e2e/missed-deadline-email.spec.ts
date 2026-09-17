@@ -60,12 +60,17 @@ test("the unsubmitted student is emailed, and nobody else in the scenario is", a
 
 test("the professor is told in-app and is not emailed", async ({ page, request }) => {
   // REP-08: the professor sees the outstanding list at the same moment, without an email.
+  // Use cases v0.3 retired the notifications screen, so the overview is where they see it — the
+  // same obligations, read from the table that owes them rather than from a message about it.
   expect(addressesOf(await inbox(request))).not.toContain(PROF.email);
 
   await signIn(page, PROF);
-  await page.goto("/notifications");
+  await page.goto("/overview");
 
-  await expect(page.getByTestId("list")).toContainText(/outstanding reports/i);
+  // The drill's one unsubmitted student, listed by id — the overview names nobody by email.
+  const outstanding = page.getByTestId("outstanding");
+  await expect(outstanding).not.toContainText(/nothing outstanding/i);
+  await expect(outstanding.locator("li")).toHaveCount(1);
 });
 
 test("the email lists the missing entry and carries no assessment or other student", async ({

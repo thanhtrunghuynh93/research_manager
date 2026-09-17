@@ -1,6 +1,6 @@
 # Research Management System — Repository Layout
 
-Version 0.2 — 12 September 2026 — companion to [architecture.md](architecture.md) and [research_management_requirements.md](research_management_requirements.md)
+Version 0.3 — 16 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.5, and [use_cases.md](use_cases.md) v0.11
 
 This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 
@@ -17,7 +17,6 @@ This document fixes where code lives, how modules are shaped, and which conventi
 ```
 research_management/
 ├── README.md                  quick start, links to docs
-├── LICENSE
 ├── .gitignore
 ├── .editorconfig
 ├── .pre-commit-config.yaml    ruff, ruff-format, eslint, prettier, mypy (staged files), gitleaks
@@ -32,6 +31,8 @@ research_management/
 │   ├── architecture.md
 │   ├── repo_layout.md         this file
 │   ├── implementation_status.md  what is built, what is left, decisions taken (section 9)
+│   ├── use_cases.md           what each role can do, and which of it has a screen — compiled
+│   │                          from the routers and the screens that call them, not from the spec
 │   ├── adr/                   architecture decision records, one file each (section 7)
 │   ├── runbooks/              deploy.md, production-readiness.md, backup-restore.md, rotate-secrets.md, break-glass.md, incident.md
 │   ├── api/                   openapi.json exported by CI for review; changelog of breaking changes
@@ -62,7 +63,8 @@ backend/
 │   ├── worker.py              procrastinate app entry: imports every module's tasks.py, registers periodic tasks
 │   ├── cli.py                 typer root command; subcommands registered by modules
 │   ├── seed.py                demo dataset and the AC-19 missed-deadline drill
-│   ├── tasks.py               periodic jobs that span modules: calendar, queue health, retention
+│   ├── tasks.py               periodic jobs that span modules: ensure_periods (15 0), freeze_baselines
+│   │                          (30 0), queue_health (*/5), retention_sweep (45 1)
 │   ├── observability.py       reads the current state into the metric gauges
 │   ├── core/
 │   │   ├── config.py          Settings (pydantic-settings), one class, env-var names in section 3.6
@@ -99,32 +101,34 @@ backend/
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
 │   │   ├── metrics.py         progress_index, plan_completion, coverage_pct, confidence — pure functions
-│   │   ├── pipeline/
-│   │   │   ├── claims.py      extract_claims job
-│   │   │   ├── matching.py    match_claims job
-│   │   │   ├── rating.py      rate_rubric job + validate_output()
-│   │   │   └── draft.py       create_draft job
+│   │   ├── pipeline/          a placeholder package: the four steps — extract claims, match them,
+│   │   │                      rate the rubric, draft — run inside service.py::run_pipeline
+│   │   ├── service.py         the pipeline, and approve / withdraw / request_correction. There is
+│   │   │                      no review.py, and override is a branch of approve rather than its
+│   │   │                      own service
 │   │   ├── events.py          subscribes to ReportSubmitted; enqueues one job per changed entry
 │   │   ├── tasks.py           the pipeline as a worker job
-│   │   ├── ops.py             model spend and budgets, for the professor-only admin routes
-│   │   └── review.py          approve, override, request_revision services
+│   │   └── ops.py             model spend and budgets, for the professor-only admin routes
 │   ├── assistant/
 │   │   ├── router.py          intent + entity extraction → plan
 │   │   ├── facts/             one file per fact function group: reports.py, obligations.py, scores.py, members.py
 │   │   ├── retrieval.py       scope-filtered semantic retrieval
 │   │   ├── answer.py          generation, citation validation, answer contract
 │   │   ├── stream.py          SSE event writer
-│   │   └── cache.py           answer_cache with access_epoch check
+│   │   └── cache.py           answer_cache, keyed to the workspace and to the digest of every
+│   │                          (workspace, epoch) pair the read spanned (ADR 0016)
 │   ├── notifications/
 │   │   ├── email/
 │   │   │   ├── base.py        EmailSender protocol
 │   │   │   ├── smtp.py
 │   │   │   └── console.py     dev sender: logs to stdout / writes to MinIO "outbox"
-│   │   ├── templates/         Jinja2, en/ and vi/ subfolders, plain-text and HTML pairs
-│   │   ├── scheduler_tasks.py ensure_periods, freeze_baselines, scan_due_reminders, dispatch_missed_deadline
-│   │   ├── preferences.py
+│   │   ├── templates/         Jinja2 triples — .txt, .html, .subject.txt — for invitation,
+│   │   │                      missed_deadline and password_reset. No locale subfolders:
+│   │   │                      migration 0016 dropped the column
+│   │   ├── scheduler_tasks.py scan_due_reminders, dispatch_due_reminders, send_queued_emails,
+│   │   │                      dispatch_missed_deadline — ensure_periods and freeze_baselines
+│   │   │                      live in app/tasks.py
 │   │   └── cli.py             dispatch-missed-deadline, send-queued-emails
-│   ├── exports/               bundle assembly across reporting, projects and assessment (UI-06)
 │   ├── ai/
 │   │   ├── gateway.py         AIGateway protocol, OpenAIGateway, prompt framing; the only OpenAI import
 │   │   ├── bootstrap.py       installs the gateway and the embedder at start-up
@@ -146,22 +150,26 @@ backend/
 │       ├── problems.py        RFC 9457 problem responses
 │       └── v1/
 │           ├── __init__.py    include_routers()
-│           ├── auth.py        /api/v1/auth/*
-│           ├── users.py
-│           ├── projects.py
-│           ├── memberships.py
-│           ├── milestones.py
-│           ├── periods.py
-│           ├── reports.py
-│           ├── artifacts.py
-│           ├── repositories.py
-│           ├── webhooks.py    /api/v1/webhooks/github (no session auth; signature only)
-│           ├── evidence.py
-│           ├── assessments.py
-│           ├── assistant.py
-│           ├── notifications.py
-│           ├── exports.py
-│           ├── admin.py       jobs retry, sync status, budgets — professor only
+│           ├── auth.py        login, logout, /auth/me, accept-invitation, password reset
+│           ├── users.py       the roll, invitations, remove, deactivate/reactivate, and
+│           │                  moving a student to another workspace (AUTH-06)
+│           ├── workspaces.py  list, create, read, rename, join, leave, archive
+│           │                  (ADR 0012/14/15/16). Renaming and archiving are owner-only;
+│           │                  entering and reading follow membership as well
+│           ├── projects.py    projects, members, decisions, progress — membership has no
+│           │                  router of its own
+│           ├── milestones.py  milestones and tasks
+│           ├── reports.py     calendar, periods, obligations, excuse/extend, draft, submit,
+│           │                  versions, revisions — there is no periods.py
+│           ├── artifacts.py   presigned upload, confirm, links, versions, download (REP-04)
+│           ├── repositories.py  repositories, sync, developer identities, contributions,
+│           │                  evidence search and references, and the signed GitHub webhook
+│           │                  (no session auth; signature only). No webhooks.py or evidence.py
+│           ├── assessments.py  drafts, approve, withdraw, corrections, feedback, trends
+│           ├── assistant.py   ask, ask/stream (SSE), conversations
+│           ├── notifications.py  reminder offsets only; the in-app surface was retired (UI-07)
+│           ├── overview.py    the professor's current week (UI-01)
+│           ├── admin.py       assessment retry, sync status, AI usage and budgets — prof only
 │           └── health.py      /api/healthz, /api/readyz, /api/metrics
 └── tests/                     section 3.4
 ```
@@ -193,13 +201,13 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Layered bounded contexts"
 type = "layers"
-layers = ["app.assistant", "app.exports", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
+layers = ["app.assistant", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
 
 [[tool.importlinter.contracts]]
 name = "Only assessment and assistant use the AI gateway"
 type = "forbidden"
 allow_indirect_imports = "true"   # the API calls assessment.service, which may reach the gateway
-source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.exports", "app.api", "app.core"]
+source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.api", "app.core"]
 forbidden_modules = ["app.ai"]
 
 [[tool.importlinter.contracts]]
@@ -235,7 +243,9 @@ backend/tests/
 │   └── test_metrics.py       includes the spec example: ratings 3,4,3,2 → 78.75 → 79
 ├── module/                   service-level tests per bounded context, real DB, fakes for AI and GitHub
 │   ├── identity/  projects/  reporting/  evidence/  assessment/  assistant/  notifications/
-├── authz/                    one test per access acceptance scenario (AC-02, AC-11, QA-06); parametrised over API, search, download, export
+├── authz/                    test_user_visibility.py: that one predicate decides every read of a
+│                          user record. The access acceptance scenarios (AC-02, AC-11, QA-06) live
+│                          in acceptance/, and Scope.within is covered in unit/test_authz.py
 ├── api/                      HTTP tests through the ASGI app; OpenAPI schema snapshot
 ├── jobs/                     idempotency and retry: duplicate webhook, retried sync range, killed worker (AC-09, AC-13)
 ├── acceptance/               test_ac_01.py … test_ac_19.py, each named after the requirements scenario it proves
@@ -298,29 +308,40 @@ frontend/
     ├── api/
     │   ├── client.ts          fetch wrapper: credentials include, problem-details errors, idempotency header helper
     │   ├── generated/         openapi-typescript output; regenerated by `npm run gen:api`; drift checked in CI
-    │   └── sse.ts             EventSource helper for assistant streams
+    │   └── sse.ts             EventSource helper. Written, and imported by nothing: the assistant
+    │                          screen posts and renders the completed answer
     ├── features/              one folder per backend module or screen
+    │   ├── assessments/       shared by the professor's review and the student's own reading:
+    │   │                      types, queries, Trajectory, RatingList
     │   ├── auth/              login, accept-invitation, reset-password
+    │   ├── calendar/          the reporting calendar and the weeks it opens; rendered on the
+    │   │                      workspaces screen, because a calendar is a workspace setting (REP-01)
     │   ├── overview/          professor overview (UI-01)
-    │   ├── me/                student overview and profile subset (UI-02, UI-04)
-    │   ├── projects/          workspace, milestones, decisions, repositories (UI-03)
+    │   ├── me/                student overview, own progress, one released assessment (UI-02, UI-04)
+    │   ├── people/            the roll across every workspace the professor belongs to, grouped
+    │   │                      by workspace: invite, move, suspend, restore, remove (AUTH-01, UI-08)
+    │   ├── projects/          the project list and the project workspace: create, activate,
+    │                          assign a student, milestones, decisions (PROJ-01, UI-03)
     │   ├── students/          research profile (UI-04)
-    │   ├── report/            weekly package editor: EntryTabs, MarkdownEditor, EvidenceList, PlanEditor, SubmitDialog
+    │   ├── report/            weekly package editor: a tab per required project, EntryForm,
+    │   │                      Attachments, AutosaveIndicator
     │   ├── review/            three-pane review workspace (UI-05)
-    │   ├── assessments/       released assessment view, correction request
-    │   ├── assistant/         chat, scope controls, citation side panel
-    │   ├── notifications/     list, preferences (UI-07)
-    │   └── exports/           filters and download (UI-06)
+    │   ├── assistant/         question, answer, citations
+    │   └── workspaces/        the workspaces a professor belongs to or owns: work here, join,
+    │                          leave, create, archive (ADR 0012/14/15/16, UI-08)
     ├── components/
-    │   ├── ui/                shadcn primitives (generated, not hand-edited)
-    │   ├── markdown/          renderer with KaTeX, tables, safe links
-    │   ├── evidence/          EvidenceBadge, FreshnessBadge, CitationLink
-    │   └── forms/             Field wrappers, AutosaveIndicator
-    ├── hooks/                 useAutosave, useScope, useIdempotencyKey
-    ├── lib/                   dates (period formatting in workspace timezone), i18n setup, zod schemas shared by forms
+    │   ├── Failure.tsx        the shared error surface
+    │   ├── ui/                placeholder
+    │   ├── markdown/          placeholder
+    │   ├── evidence/          Badges.tsx (Badge, ConfidenceBadge, ProgressIndex), CitationLink.tsx
+    │   └── forms/             placeholder
+    ├── hooks/                 useAutosave, useTheme. `useScope` and `useIdempotencyKey` were never
+    │                          built: scope is resolved server-side and the idempotency header is
+    │                          set in api/client.ts
+    ├── lib/                   dates (period formatting in workspace timezone), i18n setup, theme
     ├── locales/
-    │   ├── en/*.json
-    │   └── vi/*.json
+    │   └── en/common.json     one language, deliberately: i18n.ts initialises `en` alone, so a
+    │                          second is a resource file and a switcher rather than a refactor
     └── test/                  Vitest + Testing Library unit tests, setup.ts, msw handlers
 ```
 
@@ -332,7 +353,6 @@ Conventions: a `features/<name>/` folder contains `pages/`, `components/`, `quer
 infra/
 ├── docker-compose.yml         production: caddy, api, worker, postgres, minio, backup
 ├── docker-compose.dev.yml     overrides: bind mounts, hot reload, mailpit for email, exposed ports
-├── .env.example
 ├── caddy/
 │   └── Caddyfile              TLS, serve frontend/dist, reverse_proxy /api/* api:8000, security headers
 ├── postgres/
@@ -362,6 +382,10 @@ scripts/
 ├── seed_benchmark.py          50 students × 30 projects × 3 years, 100k chunks, for the performance suite
 ├── bench/                     k6 scripts for the p95 targets in architecture section 15
 ├── gen_api_client.sh          exports openapi.json from the app and runs openapi-typescript
+├── check_docs.py             asserts this file against the tree: every path named here exists and
+│                          every high-churn path is named, every /api/... route cited in any
+│                          document is one the application serves, the counts in
+│                          implementation_status.md match, and version cross-references agree
 ├── check_traceability.py      asserts every requirement ID in docs/research_management_requirements.md
 │                              appears in docs/architecture.md section 16 and in at least one test docstring
 └── restore_drill.sh           spins a scratch stack, restores latest backup, runs smoke checks
@@ -369,7 +393,7 @@ scripts/
 
 ## 7 Documentation conventions
 
-- **ADRs** in `docs/adr/NNNN-<slug>.md` with Context, Decision, Consequences. Seed set from the architecture: 0001 modular monolith, 0002 procrastinate over Redis queue, 0003 pgvector in Postgres, 0004 application-level authorization before RLS, 0005 GitHub App connector, 0006 deterministic metrics outside the model, 0007 OpenAI behind a single gateway.
+- **ADRs** in `docs/adr/NNNN-<slug>.md` with Context, Decision, Consequences. 0001–0011 came from the architecture; 0012–0016 were written while building workspaces. `docs/adr/README.md` is the index and must list every file in the directory — `scripts/check_docs.py` asserts it.
 - **Runbooks** are imperative checklists; every runbook names the alert or event that triggers it.
 - **Requirement references** in code use the ID in a comment on the function that implements it, for example `# REP-08` above `dispatch_missed_deadline`, so `grep REP-08` finds spec, architecture, code, and tests.
 
@@ -377,7 +401,7 @@ scripts/
 
 - `main` is deployable; feature branches `feat/<area>-<slug>`, fixes `fix/<slug>`; squash merge with a Conventional Commits title (`feat(reporting): freeze plan baselines at period start`).
 - Pull request template asks for: requirement IDs touched, migration present yes/no, docs updated yes/no, screenshots for UI.
-- `ci.yml` jobs: `backend-lint` (ruff, mypy, import-linter), `backend-test` (pytest with testcontainers, coverage gate), `migrate-check` (alembic autogenerate produces no diff), `frontend` (eslint, tsc, vitest, build), `client-drift` (regenerate API client and fail on diff), `traceability` (`scripts/check_traceability.py`), `images` (build both images, Trivy scan).
+- `ci.yml` jobs: `backend-lint` (ruff, mypy, import-linter), `backend-test` (pytest with testcontainers, coverage gate), `migrate-check` (alembic autogenerate produces no diff), `frontend` (eslint, tsc, vitest, build), `client-drift` (regenerate API client and fail on diff), `docs` (`scripts/check_traceability.py` and `scripts/check_docs.py`), `images` (build both images, Trivy scan).
 - `e2e.yml` runs Playwright against the dev Compose stack with the console email sender and fake connector.
 - `release.yml` on tag `v*`: build, push to the registry, generate SBOM, create release notes from commits.
 
@@ -395,4 +419,4 @@ The first pull requests, in dependency order, so that the tree above fills in wi
 5. `evidence/` with the fake connector, then the GitHub App connector; identity mapping; indexing and retrieval.
 6. `assessment/`: snapshot, metrics with unit tests, pipeline on the fake gateway, review workspace.
 7. `ai/` gateway against OpenAI, prompt registry, cost ledger; evaluation harness.
-8. `assistant/`, exports, professor overview polish, backup container and restore drill, release workflow.
+8. `assistant/`, professor overview polish, backup container and restore drill, release workflow.

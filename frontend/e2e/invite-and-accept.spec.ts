@@ -12,7 +12,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { PROF, signIn, tokenPath } from "./helpers";
+import { PROF, signIn, studentRoll, studentRow, tokenPath } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -38,8 +38,8 @@ test("the professor invites a student from the roll", async ({ page, request }) 
 
   await expect(page.getByRole("status")).toContainText(INVITEE.email);
   // Invited, not yet active: the account exists but has no password.
-  await expect(page.getByTestId("students")).toContainText(INVITEE.email);
-  await expect(page.getByTestId("students")).toContainText(/invited/i);
+  await expect(studentRoll(page)).toContainText(INVITEE.email);
+  await expect(studentRoll(page)).toContainText(/invited/i);
 
   // The email is the channel the token travels on, so that is where the link is read from.
   acceptPath = await tokenPath(request, INVITEE.email, "accept-invitation");
@@ -125,9 +125,7 @@ test("the professor removes the student, and the row says so", async ({ page }) 
   await signIn(page, PROF);
   await page.goto("/people");
 
-  const row = page.getByTestId("students").getByRole("listitem").filter({
-    hasText: INVITEE.email,
-  });
+  const row = studentRow(page, INVITEE.email);
   await row.getByRole("button", { name: /remove from workspace/i }).click();
 
   // ADR 0011: the destructive act names its consequence before it happens.

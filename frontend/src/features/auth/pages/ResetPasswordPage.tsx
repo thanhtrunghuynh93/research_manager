@@ -14,7 +14,7 @@ import { ApiError } from "@/api/client";
 import { useResetPassword } from "@/features/auth/queries";
 
 /** Mirrors PASSWORD_MIN_LENGTH in the API, so the rule is stated before the round trip. */
-const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MIN_LENGTH = 8;
 
 export function ResetPasswordPage() {
   const { t } = useTranslation();

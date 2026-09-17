@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
 import { useLogout, useSession } from "@/features/auth/queries";
+import { useCurrentWorkspace } from "@/features/workspaces/queries";
 import { useTheme } from "@/hooks/useTheme";
 
 /** The active item carries a rule, not a fill: this is a document, and the reader is on a page. */
@@ -22,6 +23,7 @@ export function AppShell() {
 
   const user = session.data;
   const isProf = user?.role === "prof";
+  const workspace = useCurrentWorkspace();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -39,6 +41,14 @@ export function AppShell() {
             {user && (
               <span className="text-[13px] text-muted-foreground" data-testid="greeting">
                 {t("app.greeting", { name: user.display_name })}
+              </span>
+            )}
+            {/* Every screen below is one workspace's, and a professor moves between them, so this
+                is the one place that says which — the roll, the overview and the assistant all
+                change underneath it. */}
+            {workspace && (
+              <span className="chip chip-neutral" data-testid="current-workspace">
+                {workspace.name}
               </span>
             )}
             <button
@@ -80,23 +90,28 @@ export function AppShell() {
             </NavLink>
           )}
           {isProf && (
+            <NavLink to="/projects" className={item}>
+              {t("projects.title")}
+            </NavLink>
+          )}
+          {isProf && (
+            <NavLink to="/workspaces" className={item}>
+              {t("workspaces.title")}
+            </NavLink>
+          )}
+          {isProf && (
             <NavLink to="/assistant" className={item}>
               {t("assistant.title")}
             </NavLink>
           )}
           {user && !isProf && (
-            <NavLink to="/me" className={item}>
+            <NavLink to="/me" className={item} end>
               {t("me.title")}
             </NavLink>
           )}
-          {user && (
-            <NavLink to="/notifications" className={item}>
-              {t("notifications.title")}
-            </NavLink>
-          )}
-          {user && (
-            <NavLink to="/exports" className={item}>
-              {t("exports.title")}
+          {user && !isProf && (
+            <NavLink to="/me/profile" className={item}>
+              {t("myProfile.title")}
             </NavLink>
           )}
         </nav>

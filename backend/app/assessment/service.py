@@ -703,8 +703,7 @@ async def approve(
     review.published_at = now()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="assessment.approved",
         target_table="assessment_versions",
         target_id=assessment_id,
@@ -726,8 +725,7 @@ async def withdraw(session: AsyncSession, scope: Scope, assessment_id: UUID) -> 
     review.published_at = None
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="assessment.withdrawn",
         target_table="assessment_versions",
         target_id=assessment_id,

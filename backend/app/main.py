@@ -14,6 +14,7 @@ from fastapi import FastAPI
 
 from app.ai import bootstrap as ai_bootstrap
 from app.api.middleware import (
+    AuthRateLimitMiddleware,
     RequestContextMiddleware,
     RequestIdFilter,
     SecurityHeadersMiddleware,
@@ -72,6 +73,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = settings
+    # Added innermost first: the request context wraps everything, so a rejected request still
+    # carries a request id into the log, and the security headers wrap the limiter, so a 429
+    # answer is dressed like every other response rather than being the one bare reply we serve.
+    application.add_middleware(AuthRateLimitMiddleware)
     application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(RequestContextMiddleware)
     register_exception_handlers(application)

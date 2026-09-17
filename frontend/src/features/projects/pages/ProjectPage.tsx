@@ -10,6 +10,11 @@ import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/evidence/Badges";
+import { useSession } from "@/features/auth/queries";
+import {
+  AddMemberForm,
+  StatusControls,
+} from "@/features/projects/components/ProjectControls";
 import {
   useDecisions,
   useMembers,
@@ -35,6 +40,9 @@ export function ProjectPage() {
   const milestones = useMilestones(id);
   const decisions = useDecisions(id);
   const progress = useProgress(id);
+  const session = useSession();
+  // The route is signed-in, not professor-only: a student member can open their own project.
+  const isProf = session.data?.role === "prof";
 
   if (project.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (project.isError)
@@ -61,6 +69,7 @@ export function ProjectPage() {
         {data.description && (
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink2">{data.description}</p>
         )}
+        {isProf ? <StatusControls project={data} /> : null}
       </header>
 
       <div className="mt-7 grid gap-7 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
@@ -128,6 +137,7 @@ export function ProjectPage() {
               </li>
             )}
           </ul>
+          {isProf ? <AddMemberForm project={data} /> : null}
         </div>
 
         <div>

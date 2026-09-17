@@ -56,6 +56,20 @@ export async function signOut(page: Page) {
   await page.getByRole("button", { name: /sign out/i }).click();
 }
 
+/**
+ * The student roll on `/people`, whichever workspace section holds it.
+ *
+ * Since ADR 0016 the roll is grouped by workspace and each list is keyed `students-{workspace.id}`,
+ * so a fixed test id no longer names anything. The prefix selector keeps the spec ignorant of ids
+ * it has no way to know. The demo professor belongs to one workspace; if that ever changes this
+ * resolves to several elements and fails loudly rather than silently reading the wrong one.
+ */
+export const studentRoll = (page: Page) => page.locator('[data-testid^="students-"]');
+
+/** One person's row on the roll, found by the address that is unique to them. */
+export const studentRow = (page: Page, email: string) =>
+  studentRoll(page).getByRole("listitem").filter({ hasText: email });
+
 type Message = { ID: string; To: { Address: string }[]; Subject: string };
 
 export async function inbox(request: APIRequestContext): Promise<Message[]> {

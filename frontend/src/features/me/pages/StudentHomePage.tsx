@@ -1,6 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
+import { ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
+import { useAssessments } from "@/features/assessments/queries";
+import { useSession } from "@/features/auth/queries";
 import {
   currentPeriod,
   useObligations,
@@ -8,7 +11,7 @@ import {
   useProjects,
   useReport,
 } from "@/features/report/queries";
-import { formatInstant, formatLocalDate } from "@/lib/dates";
+import { formatInstant, formatLocalDate, todayLocal } from "@/lib/dates";
 
 /** UI-02: what is owed this week, when it is due, and one way into the weekly flow. */
 export function StudentHomePage() {
@@ -57,7 +60,10 @@ export function StudentHomePage() {
       <ul className="panel mt-2.5">
         {obligations.data?.map((obligation) => (
           <li key={obligation.id} className="row">
-            <span>{titleOf(obligation.project_id)}</span>
+            {/* The student's own way into UI-03: the project page is signed-in, not prof-only. */}
+            <Link to={`/projects/${obligation.project_id}`} className="link">
+              {titleOf(obligation.project_id)}
+            </Link>
             <span
               className={
                 obligation.state === "excused"
@@ -74,6 +80,86 @@ export function StudentHomePage() {
           <li className="px-4 py-2.5 text-sm text-muted-foreground">{t("me.nothingOwed")}</li>
         )}
       </ul>
+
+      <ReleasedThisWeek periodId={period.id} titleOf={titleOf} />
+      <PastWeeks currentPeriodId={period.id} />
     </section>
+  );
+}
+
+/**
+ * The assessments published for this week, and the reason this screen exists at all.
+ *
+ * The professor's approve button says "Published to the student"; until this block there was no
+ * screen on which a student could read what was published. The policy already restricts this to
+ * their own approved assessments, so there is nothing to filter here.
+ */
+function ReleasedThisWeek({
+  periodId,
+  titleOf,
+}: {
+  periodId: string;
+  titleOf: (projectId: string) => string;
+}) {
+  const { t } = useTranslation();
+  const session = useSession();
+  const released = useAssessments({ studentId: session.data?.id, periodId });
+
+  return (
+    <>
+      <h2 className="section-title mt-8">{t("me.released")}</h2>
+      <ul className="panel mt-2.5" data-testid="released-assessments">
+        {released.data?.map((one) => (
+          <li key={one.id} className="row">
+            <Link to={`/me/assessments/${one.id}`} className="link">
+              {titleOf(String(one.project_id))}
+            </Link>
+            <span className="flex items-center gap-2.5">
+              <ProgressIndex value={one.progress_index} />
+              <ConfidenceBadge
+                confidence={one.confidence}
+                reasons={(one.confidence_reasons ?? []).map(String)}
+              />
+            </span>
+          </li>
+        ))}
+        {released.data?.length === 0 && (
+          <li className="px-4 py-2.5 text-sm text-muted-foreground">{t("me.noReleased")}</li>
+        )}
+      </ul>
+      <p className="stamp mt-2">{t("me.releasedNote")}</p>
+    </>
+  );
+}
+
+/**
+ * Every week before this one. `usePeriods` is already loaded for the header, so the history costs
+ * no request — and without it the student could only ever see the week they are in.
+ */
+function PastWeeks({ currentPeriodId }: { currentPeriodId: string }) {
+  const { t } = useTranslation();
+  const periods = usePeriods();
+  const today = todayLocal();
+
+  const past = (periods.data ?? [])
+    .filter((one) => one.id !== currentPeriodId && one.local_end < today)
+    .sort((a, b) => b.local_start.localeCompare(a.local_start))
+    .slice(0, 8);
+
+  if (!past.length) return null;
+
+  return (
+    <>
+      <h2 className="section-title mt-8">{t("me.pastWeeks")}</h2>
+      <ul className="panel mt-2.5" data-testid="past-weeks">
+        {past.map((one) => (
+          <li key={one.id} className="row">
+            <Link to={`/report/${one.id}`} className="link">
+              {formatLocalDate(one.local_start)} – {formatLocalDate(one.local_end)}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

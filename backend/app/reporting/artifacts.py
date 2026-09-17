@@ -263,8 +263,7 @@ async def confirm_upload(
     artifact.current_version_no = version.version_no
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="artifact.uploaded",
         target_table="artifact_versions",
         target_id=version.id,
@@ -649,4 +648,63 @@ def _out(artifact: Artifact, version: ArtifactVersion) -> ArtifactVersionOut:
         truncated=version.truncated,
         uploaded=version.uploaded,
         created_at=version.created_at,
+    )
+
+
+# ------------------------------------------------------------------ job-level reads
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactForIndexing:
+    """Everything the evidence index needs about one attachment version.
+
+    A job-level read: no Scope to hand, and the event that first carried these fields is long gone
+    by the time a retry runs. Reading them back means the retry cannot index under a workspace or
+    an owner that a stale job argument claimed.
+    """
+
+    workspace_id: UUID
+    artifact_id: UUID
+    version_id: UUID
+    version_no: int
+    project_id: UUID | None
+    owner_student_id: UUID
+    supported_claim: str
+    text: str
+    source_time: datetime
+
+
+async def version_for_indexing(
+    session: AsyncSession, version_id: UUID, *, store: ObjectStore | None = None
+) -> ArtifactForIndexing | None:
+    """One attachment version, with its extracted text read back from the object store.
+
+    The text is not held in a column — it is written to `extracted_text_key` during extraction,
+    before anything indexes it — so re-reading it here is what lets the indexing be retried at all
+    without asking the student to upload the file again.
+
+    Absent when the version, the artifact or the extracted text is gone: an attachment whose
+    extraction found nothing has no text key, and there is nothing to index rather than an error.
+    """
+    version = await session.get(ArtifactVersion, version_id)
+    if version is None or not version.extracted_text_key:
+        return None
+    artifact = await session.get(Artifact, version.artifact_id)
+    if artifact is None:
+        return None
+
+    raw = await (store or current_store()).get_bytes(version.extracted_text_key)
+    if raw is None:
+        return None
+
+    return ArtifactForIndexing(
+        workspace_id=artifact.workspace_id,
+        artifact_id=artifact.id,
+        version_id=version.id,
+        version_no=version.version_no,
+        project_id=artifact.project_id,
+        owner_student_id=artifact.owner_student_id,
+        supported_claim=artifact.supported_claim,
+        text=raw.decode("utf-8", errors="replace"),
+        source_time=version.created_at,
     )

@@ -7,6 +7,7 @@ caller rather than serve one, and every one of them is reached only through iden
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -24,6 +25,7 @@ from app.identity.models import (
     User,
     UserState,
     Workspace,
+    WorkspaceMember,
 )
 
 
@@ -31,11 +33,129 @@ async def get_workspace(session: AsyncSession, workspace_id: UUID) -> Workspace 
     return await session.get(Workspace, workspace_id)
 
 
+async def workspaces_owned_by(
+    session: AsyncSession, owner_id: UUID, *, include_archived: bool = False
+) -> list[Workspace]:
+    """Every workspace this professor administers, oldest first.
+
+    Archived ones are excluded by default. An archived workspace is finished — empty of accounts
+    by the time it is archived, and nothing can be invited into it — so listing it offers a row
+    with no action on it.
+    """
+    statement = select(Workspace).where(Workspace.owner_id == owner_id)
+    if not include_archived:
+        statement = statement.where(Workspace.archived_at.is_(None))
+    return list(
+        (await session.execute(statement.order_by(Workspace.created_at, Workspace.id)))
+        .scalars()
+        .all()
+    )
+
+
+async def count_active_users(session: AsyncSession, workspace_id: UUID) -> int:
+    """Accounts that still belong to this workspace and can sign in.
+
+    Counted through `workspace_members`, not `users.workspace_id`: a professor who belongs here but
+    is working elsewhere is still in the workspace, and counting the column would let it be
+    archived out from under them (ADR 0015).
+    """
+    return int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(WorkspaceMember)
+                .join(User, User.id == WorkspaceMember.user_id)
+                .where(
+                    WorkspaceMember.workspace_id == workspace_id,
+                    User.state == UserState.ACTIVE,
+                )
+            )
+        ).scalar_one()
+    )
+
+
+async def workspaces_joined_by(
+    session: AsyncSession, user_id: UUID, *, include_archived: bool = False
+) -> list[Workspace]:
+    """Every workspace this account belongs to, oldest first. Archived ones are excluded."""
+    statement = (
+        select(Workspace)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .where(WorkspaceMember.user_id == user_id)
+    )
+    if not include_archived:
+        statement = statement.where(Workspace.archived_at.is_(None))
+    return list(
+        (await session.execute(statement.order_by(Workspace.created_at, Workspace.id)))
+        .scalars()
+        .all()
+    )
+
+
+async def membership(
+    session: AsyncSession, workspace_id: UUID, user_id: UUID
+) -> WorkspaceMember | None:
+    return (
+        await session.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def add_membership(session: AsyncSession, workspace_id: UUID, user_id: UUID) -> None:
+    """Idempotent: joining a workspace you already belong to changes nothing."""
+    if await membership(session, workspace_id, user_id) is None:
+        session.add(WorkspaceMember(workspace_id=workspace_id, user_id=user_id))
+        await session.flush()
+
+
+async def remove_membership(session: AsyncSession, workspace_id: UUID, user_id: UUID) -> None:
+    row = await membership(session, workspace_id, user_id)
+    if row is not None:
+        await session.delete(row)
+        await session.flush()
+
+
+async def count_active_professors_in(
+    session: AsyncSession, workspace_id: UUID, *, excluding: UUID
+) -> int:
+    """Professors who would still belong here if `excluding` left."""
+    return int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(WorkspaceMember)
+                .join(User, User.id == WorkspaceMember.user_id)
+                .where(
+                    WorkspaceMember.workspace_id == workspace_id,
+                    WorkspaceMember.user_id != excluding,
+                    User.role == Role.PROF,
+                    User.state == UserState.ACTIVE,
+                )
+            )
+        ).scalar_one()
+    )
+
+
 async def access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
     epoch = (
         await session.execute(select(Workspace.access_epoch).where(Workspace.id == workspace_id))
     ).scalar_one_or_none()
     return epoch if epoch is not None else 0
+
+
+async def access_epochs(session: AsyncSession, workspace_ids: Iterable[UUID]) -> dict[UUID, int]:
+    """Every epoch a read may span, in one round trip rather than one query per workspace."""
+    ids = list(workspace_ids)
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(Workspace.id, Workspace.access_epoch).where(Workspace.id.in_(ids))
+    )
+    return {workspace_id: epoch for workspace_id, epoch in rows.all()}
 
 
 async def bump_access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
@@ -81,7 +201,12 @@ async def get_visible_user(session: AsyncSession, scope: Scope, user_id: UUID) -
 async def list_visible_users(
     session: AsyncSession, scope: Scope, *, limit: int, cursor: str | None
 ) -> tuple[list[User], str | None]:
-    """Keyset pagination on the primary key, which is UUIDv7 and therefore in creation order."""
+    """Keyset pagination on the primary key, which is UUIDv7 and therefore in creation order.
+
+    One predicate, whatever it spans. `visible_to` compiles the User policy, which is keyed by
+    membership and by `Scope.workspace_ids` — so a professor in several workspaces gets one row per
+    person rather than one per membership, and a student gets themselves.
+    """
     statement = select(User).where(visible_to(scope, User)).order_by(User.id).limit(limit + 1)
     after = cursor_after(cursor)
     if after is not None:
@@ -164,6 +289,27 @@ async def revoke_pending_invitations(session: AsyncSession, user_id: UUID, at: d
         )
         .values(revoked_at=at)
     )
+
+
+async def revoke_workspace_invitations(
+    session: AsyncSession, workspace_id: UUID, at: datetime
+) -> int:
+    """Withdraw every outstanding offer to join one workspace.
+
+    Archiving counts active accounts, and an invited account is not one yet — so without this an
+    archived workspace could still be joined by whoever is holding its invitation link.
+    """
+    result = await session.execute(
+        update(Invitation)
+        .where(
+            Invitation.workspace_id == workspace_id,
+            Invitation.accepted_at.is_(None),
+            Invitation.revoked_at.is_(None),
+        )
+        .values(revoked_at=at)
+        .returning(Invitation.id)
+    )
+    return len(result.scalars().all())
 
 
 async def get_session_by_token(session: AsyncSession, token_hash: str) -> Session | None:

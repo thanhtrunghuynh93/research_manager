@@ -319,3 +319,38 @@ async def test_freezing_twice_changes_nothing(
     second = await service.freeze_baselines(db, prof_scope, period.id)
 
     assert [b.id for b in first] == [b.id for b in second]
+
+
+# ------------------------------------------------------------------ reading the calendar back
+
+
+async def test_the_current_calendar_is_absent_before_it_is_configured(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """Absent is a state, not an error: a screen has to tell it from "configured"."""
+    assert await service.current_calendar(db, prof_scope) is None
+
+
+async def test_the_current_calendar_is_the_latest_version(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """Configuring writes a new version rather than editing one, so the read follows the newest."""
+    await _calendar(db, prof_scope)
+    second = await _calendar(db, prof_scope, meeting_weekday=2, effective_from=date(2026, 10, 5))
+
+    current = await service.current_calendar(db, prof_scope)
+
+    assert current is not None
+    assert current.version == second.version
+    assert current.meeting_weekday == 2
+
+
+async def test_a_student_may_read_the_calendar(
+    db: AsyncSession, prof_scope: Scope, student_a_scope: Scope
+) -> None:
+    """REP-01: everyone needs to know when their report is due, so this is not prof-only."""
+    await _calendar(db, prof_scope)
+
+    current = await service.current_calendar(db, student_a_scope)
+
+    assert current is not None and current.timezone == TZ

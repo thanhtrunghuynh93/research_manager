@@ -51,4 +51,8 @@ async def make_user(
     )
     session.add(user)
     await session.flush()
+    # Belonging is a membership row, not the column (ADR 0015). The service writes one whenever it
+    # creates an account; a factory that skipped it would build users nobody is on the roll of.
+    session.add(models.WorkspaceMember(workspace_id=workspace.id, user_id=user.id))
+    await session.flush()
     return user

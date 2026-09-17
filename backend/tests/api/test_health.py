@@ -32,6 +32,100 @@ async def test_readyz_checks_database(client: AsyncClient) -> None:
     assert body["status"] in ("ready", "degraded")
 
 
+async def test_readyz_reports_the_worker_and_smtp(client: AsyncClient) -> None:
+    """production-readiness.md §1.2: readiness covered the database and object storage only.
+
+    An invitation email is a deferred job, so a deploy with a dead worker or wrong SMTP credentials
+    answered `ready` and enrolled nobody — and enrolment is the one flow with no way in if it
+    fails.
+    """
+    response = await client.get("/api/readyz")
+    checks = response.json()["checks"]
+    assert "worker" in checks
+    assert "smtp" in checks
+
+
+async def test_an_empty_queue_is_not_a_dead_worker(client: AsyncClient, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A fresh deploy has an empty queue for its first few minutes.
+
+    Answering `fail` there would make a correct first boot look broken, which is how an operator
+    learns to ignore a check.
+    """
+    from app.api.v1 import health
+
+    state = await health._check_worker()
+    assert state in ("ok", "skipped")
+
+
+async def test_rejected_credentials_make_the_deployment_unready(
+    client: AsyncClient,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    """The relay answered and refused us: the configuration is wrong and waiting will not fix it."""
+    import smtplib
+
+    from app.api.v1 import health
+
+    def _reject(_: object) -> None:
+        raise smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted")
+
+    monkeypatch.setattr(health, "_smtp_connect", _reject)
+    monkeypatch.setattr(health, "_smtp_cached", None)
+
+    response = await client.get("/api/readyz")
+
+    assert response.json()["checks"]["smtp"] == "fail"
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+
+
+async def test_a_busy_relay_does_not_make_the_deployment_unready(
+    client: AsyncClient,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    """A timeout says the relay was busy for ten seconds, not that this deployment cannot send.
+
+    Treating the two alike made readiness flap between ok and fail against a relay whose
+    credentials were provably good, and an amber light that comes on by itself is one people learn
+    to ignore.
+    """
+    import smtplib
+
+    from app.api.v1 import health
+
+    def _timeout(_: object) -> None:
+        raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed: read timed out")
+
+    monkeypatch.setattr(health, "_smtp_connect", _timeout)
+    monkeypatch.setattr(health, "_smtp_cached", None)
+
+    response = await client.get("/api/readyz")
+
+    assert response.json()["checks"]["smtp"] == "skipped"
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+
+
+async def test_the_smtp_result_is_reused_between_polls(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A relay is a third party with an opinion about how often it may be connected to."""
+    from app.api.v1 import health
+
+    calls = []
+
+    def _count(settings: object) -> None:
+        calls.append(settings)
+
+    monkeypatch.setattr(health, "_smtp_connect", _count)
+    monkeypatch.setattr(health, "_smtp_cached", None)
+
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    assert await health._check_smtp(settings) == "ok"
+    assert await health._check_smtp(settings) == "ok"
+    assert len(calls) == 1
+
+
 async def test_metrics_is_prometheus_text(client: AsyncClient) -> None:
     """No token configured: a development or pilot host stays scrapeable without inventing one."""
     response = await client.get("/api/metrics")

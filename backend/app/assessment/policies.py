@@ -21,7 +21,7 @@ from app.core.authz import Scope, register_policy
 @register_policy(AssessmentVersion)
 def assessment_visible_to(scope: Scope) -> ColumnElement[bool]:
     """A student sees their own assessments, and only once a review has approved them."""
-    same_workspace = AssessmentVersion.workspace_id == scope.workspace_id
+    same_workspace = scope.within(AssessmentVersion.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -37,7 +37,7 @@ def assessment_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(AssessmentReview)
 def review_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = AssessmentReview.workspace_id == scope.workspace_id
+    same_workspace = scope.within(AssessmentReview.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -50,7 +50,7 @@ def review_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(EvidenceSnapshot)
 def snapshot_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = EvidenceSnapshot.workspace_id == scope.workspace_id
+    same_workspace = scope.within(EvidenceSnapshot.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, EvidenceSnapshot.student_id == scope.user_id)
@@ -58,7 +58,7 @@ def snapshot_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(AnalysisRun)
 def run_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = AnalysisRun.workspace_id == scope.workspace_id
+    same_workspace = scope.within(AnalysisRun.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, AnalysisRun.student_id == scope.user_id)
@@ -67,12 +67,12 @@ def run_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(RubricVersion)
 def rubric_visible_to(scope: Scope) -> ColumnElement[bool]:
     """The rubric is workspace-wide: a student is entitled to know what they are assessed on."""
-    return RubricVersion.workspace_id == scope.workspace_id
+    return scope.within(RubricVersion.workspace_id)
 
 
 @register_policy(Feedback)
 def feedback_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = Feedback.workspace_id == scope.workspace_id
+    same_workspace = scope.within(Feedback.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -87,5 +87,5 @@ def supervision_note_visible_to(scope: Scope) -> ColumnElement[bool]:
     """QA-06: never a student, under any condition. Every professor in the workspace, though —
     co-supervisors share notes, and the row carries `author_id` to say whose it is (ADR 0011)."""
     if scope.is_prof:
-        return SupervisionNote.workspace_id == scope.workspace_id
+        return scope.within(SupervisionNote.workspace_id)
     return SupervisionNote.id.is_(None)

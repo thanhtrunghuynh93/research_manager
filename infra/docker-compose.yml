@@ -32,6 +32,13 @@ services:
       - "443:443"
     environment:
       RM_DOMAIN: ${RM_DOMAIN:-localhost}
+      # Without this line the Caddyfile's {$RM_ACME_EMAIL} placeholder always falls back, however
+      # the host .env is filled in: this container has no env_file, so an unlisted variable is
+      # unset. The `:-` default matters too — Caddy's `email` directive rejects an empty argument
+      # outright ("wrong argument count"), so passing the variable through empty would take the
+      # whole site down rather than misrouting a notice. scripts/preflight.sh is what refuses an
+      # empty value, before the deploy rather than during it.
+      RM_ACME_EMAIL: ${RM_ACME_EMAIL:-admin@example.edu}
     volumes:
       - caddy-data:/data
       - caddy-config:/config
@@ -52,6 +59,17 @@ services:
   worker:
     <<: *backend
     command: ["python", "-m", "app.worker"]
+    # The image's HEALTHCHECK curls /api/healthz, which is right for the api and meaningless here:
+    # the worker shares the image and serves no HTTP, so it reported "unhealthy" from the moment it
+    # started while consuming jobs perfectly. A container that is permanently unhealthy and
+    # permanently fine is worse than one with no healthcheck, because it teaches an operator to
+    # ignore the column.
+    #
+    # Its liveness is checked where the answer actually lives: /api/readyz reads the queue and
+    # reports whether anything is consuming it, which is the question worth asking and one no
+    # per-container probe can answer.
+    healthcheck:
+      disable: true
 
   postgres:
     image: pgvector/pgvector:pg16

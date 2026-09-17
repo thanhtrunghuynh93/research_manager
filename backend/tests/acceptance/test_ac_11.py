@@ -20,16 +20,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.fake import FakeGateway
 from app.ai.schemas import RoutePlan
+from app.assistant import cache
 from app.assistant import service as assistant_service
 from app.assistant.models import AnswerCache
+from app.assistant.schemas import AnswerOut, AnswerScope
 from app.core.authz import Scope
-from app.core.types import Visibility
+from app.core.ids import uuid7
+from app.core.types import Role, Visibility
 from app.evidence import service as evidence_service
 from app.evidence.models import EvidenceSourceKind
 from app.identity import models as identity_models
+from app.identity import repository
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
+from tests.factories import make_workspace
 
 pytestmark = pytest.mark.acceptance
 
@@ -190,3 +195,109 @@ async def test_ac_11_the_cache_is_keyed_by_the_asker_not_only_the_question(
         )
     ).scalar_one()
     assert rows == 2
+
+
+# ---------------------------------------------------- the read-set, once it spans (ADR 0016)
+
+
+async def test_ac_11_an_epoch_bump_in_the_other_workspace_discards_the_answer(
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+) -> None:
+    """ADR 0016 widened reads to every workspace a professor belongs to, and predicted this:
+    validating against the anchor alone leaves an answer resting on the *other* workspace's
+    records servable after the access that produced it has ended."""
+    home = prof_scope.workspace_id
+    await _project_with_a_report(db, prof_scope, student_a)
+    owned = await repository.get_workspace(db, home)
+    assert owned is not None
+    owned.owner_id = prof.id
+    await db.flush()
+
+    # Creating takes the professor there, so join back: the anchor is `home` again and the read-set
+    # now spans both. That is the shape ADR 0016 describes and the one the anchor-only check missed.
+    second = await identity_service.create_workspace(db, prof_scope, name="Second Lab")
+    await identity_service.join_workspace(db, await identity_service.scope_for(db, prof), home)
+
+    spanning = await identity_service.scope_for(db, prof)
+    assert spanning.workspace_id == home
+    assert spanning.workspace_ids == frozenset({home, second.id})
+
+    await assistant_service.ask(db, spanning, question=QUESTION, as_of=AS_OF, gateway=_gateway())
+    again = await assistant_service.ask(
+        db,
+        await identity_service.scope_for(db, prof),
+        question=QUESTION,
+        as_of=AS_OF,
+        gateway=_gateway(),
+    )
+    assert again.cached is True, "the cache is doing something, or this proves nothing"
+
+    # The anchor is untouched; only the other workspace this read may see moves.
+    await repository.bump_access_epoch(db, second.id)
+    await db.flush()
+    assert (await identity_service.scope_for(db, prof)).access_epoch == spanning.access_epoch, (
+        "the anchor's epoch must be unchanged, or this passes for the wrong reason"
+    )
+
+    after = await assistant_service.ask(
+        db,
+        await identity_service.scope_for(db, prof),
+        question=QUESTION,
+        as_of=AS_OF,
+        gateway=_gateway(),
+    )
+    assert after.cached is False, (
+        "a read that spans workspaces has to be invalidated by any of them moving, not the anchor"
+    )
+
+
+async def test_ac_11_an_answer_cached_in_one_workspace_is_not_served_in_another(
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+) -> None:
+    """Epochs are small per-workspace counters, so two workspaces sit at the same number most of
+    the time. The unique key carries no workspace, so without one in the lookup the same professor
+    asking the same question while working elsewhere was served the first workspace's answer.
+
+    Written against the cache directly. Going through `ask` would not reach the collision: the
+    router resolves a different `AnswerScope` in a workspace holding different records, so the
+    scope hash differs and the rows never meet. The defect lives in the lookup, so that is what is
+    exercised, with both scopes pinned to the same epoch — the case the counters make ordinary.
+    """
+    home = prof_scope.workspace_id
+    other = await make_workspace(db, name="Second Lab")
+    answer = AnswerOut(
+        id=uuid7(),
+        question=QUESTION,
+        scope=AnswerScope(as_of=AS_OF, role="prof"),
+        time_range="September",
+        generated_at=AS_OF,
+        answer="the evaluation split is frozen",
+    )
+
+    here = Scope(
+        workspace_id=home,
+        user_id=prof.id,
+        role=Role.PROF,
+        project_ids=frozenset(),
+        access_epoch=1,
+    )
+    there = Scope(
+        workspace_id=other.id,
+        user_id=prof.id,
+        role=Role.PROF,
+        project_ids=frozenset(),
+        access_epoch=1,
+    )
+    key = cache.key_for(here, QUESTION, "same-scope-key")
+
+    await cache.put(db, here, key, answer)
+
+    assert await cache.get(db, here, key) is not None, "the row is there to be found"
+    assert await cache.get(db, there, cache.key_for(there, QUESTION, "same-scope-key")) is None, (
+        "an answer belongs to the workspace it was asked in, whatever the epochs happen to be"
+    )
