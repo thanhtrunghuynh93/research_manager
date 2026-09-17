@@ -374,7 +374,9 @@
     "joinableNote": "Your professor has opened these. Joining puts a weekly report for the project on your plate from next week.",
     "join": "Join",
     "memberCount_one": "{{count}} member",
-    "memberCount_other": "{{count}} members"
+    "memberCount_other": "{{count}} members",
+    "repoUrl": "Git repository",
+    "repoUrlHint": "Optional. A link so people on the project can find the code. This does not connect the repository — commits are not read and nothing is attributed from it."
   },
   "myAssessment": {
     "title": "Released assessment",

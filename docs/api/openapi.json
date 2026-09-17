@@ -3146,6 +3146,18 @@
             "title": "Intended Contributions",
             "type": "array"
           },
+          "repo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 500,
+            "title": "Repo Url"
+          },
           "research_questions": {
             "items": {
               "type": "string"
@@ -3287,6 +3299,17 @@
             "title": "Open To Join",
             "type": "boolean"
           },
+          "repo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Url"
+          },
           "research_questions": {
             "items": {
               "type": "string"
@@ -3415,6 +3438,18 @@
               }
             ],
             "title": "Open To Join"
+          },
+          "repo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 500,
+            "title": "Repo Url"
           },
           "research_questions": {
             "anyOf": [

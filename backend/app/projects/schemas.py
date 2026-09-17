@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.projects.models import BaselineState as BaselineState
@@ -16,6 +16,29 @@ from app.projects.models import MilestoneStatus as MilestoneStatus
 from app.projects.models import ProjectStatus as ProjectStatus
 from app.projects.models import ResearchStage as ResearchStage
 from app.projects.models import TaskStatus as TaskStatus
+
+_REPO_SCHEMES = ("https://", "http://", "ssh://", "git://", "git@")
+
+
+def normalize_repo_url(value: str | None) -> str | None:
+    """A link somebody can actually follow, or nothing at all.
+
+    Blank and absent are the same thing here: the field is optional, and storing "" would make
+    every screen decide separately whether an empty string counts as having a repository. A value
+    that is not a URL is refused rather than stored, because the only thing this field does is get
+    clicked, and `github.com/lab/thing` pasted without a scheme resolves to nowhere.
+    """
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if not cleaned.startswith(_REPO_SCHEMES):
+        raise ValueError("must start with https://, http://, ssh://, git:// or git@")
+    return cleaned
+
+
+RepoUrl = Annotated[str | None, AfterValidator(normalize_repo_url), Field(max_length=500)]
 
 
 class ProjectOut(BaseModel):
@@ -32,6 +55,7 @@ class ProjectOut(BaseModel):
     start_on: date | None = None
     target_on: date | None = None
     venue_target: str | None = None
+    repo_url: str | None = None
     shared_resources: dict[str, Any]
     ai_restricted: bool
     open_to_join: bool
@@ -66,6 +90,7 @@ class ProjectIn(BaseModel):
     start_on: date | None = None
     target_on: date | None = None
     venue_target: str | None = None
+    repo_url: RepoUrl = None
     shared_resources: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -79,6 +104,7 @@ class ProjectPatch(BaseModel):
     start_on: date | None = None
     target_on: date | None = None
     venue_target: str | None = None
+    repo_url: RepoUrl = None
     shared_resources: dict[str, Any] | None = None
     ai_restricted: bool | None = None
     open_to_join: bool | None = None

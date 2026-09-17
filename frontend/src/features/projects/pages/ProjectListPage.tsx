@@ -158,6 +158,7 @@ function CreateForm({ isProf }: { isProf: boolean }) {
   const [stage, setStage] = useState<ResearchStage>("implementation");
   const [description, setDescription] = useState("");
   const [questions, setQuestions] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
   const create = useCreateProject();
 
   return (
@@ -174,12 +175,14 @@ function CreateForm({ isProf }: { isProf: boolean }) {
               .split("\n")
               .map((line) => line.trim())
               .filter(Boolean),
+            repo_url: repoUrl.trim() || null,
           },
           {
             onSuccess: () => {
               setTitle("");
               setDescription("");
               setQuestions("");
+              setRepoUrl("");
             },
           },
         );
@@ -222,6 +225,18 @@ function CreateForm({ isProf }: { isProf: boolean }) {
           onChange={(event) => setDescription(event.target.value)}
           className="input"
         />
+      </label>
+
+      <label className="mt-4 block">
+        <span className="field-label">{t("projects.repoUrl")}</span>
+        <input
+          type="url"
+          value={repoUrl}
+          onChange={(event) => setRepoUrl(event.target.value)}
+          placeholder="https://github.com/..."
+          className="input"
+        />
+        <span className="stamp mt-1 block">{t("projects.repoUrlHint")}</span>
       </label>
 
       <label className="mt-4 block">

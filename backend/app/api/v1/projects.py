@@ -62,6 +62,7 @@ async def create_project(payload: ProjectIn, scope: ScopeDep, session: SessionDe
         start_on=payload.start_on,
         target_on=payload.target_on,
         venue_target=payload.venue_target,
+        repo_url=payload.repo_url,
         shared_resources=payload.shared_resources,
     )
 

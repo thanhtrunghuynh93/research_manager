@@ -50,6 +50,7 @@ from app.projects.schemas import (
     ProjectProgressOut,
     ResearchDecisionOut,
     TaskOut,
+    normalize_repo_url,
 )
 
 # A change to any of these alters what the milestone promised, so the previous state is retained
@@ -58,7 +59,7 @@ BASELINE_FIELDS = frozenset({"title", "success_criteria", "target_on", "weight",
 
 # The columns a PATCH may set back to null. Everything else refuses one rather than handing a
 # NOT NULL violation to the database.
-PROJECT_CLEARABLE = frozenset({"target_on", "venue_target"})
+PROJECT_CLEARABLE = frozenset({"target_on", "venue_target", "repo_url"})
 MILESTONE_CLEARABLE = frozenset({"target_on", "owner_id", "change_reason"})
 TASK_CLEARABLE = frozenset(
     {"blocker", "milestone_id", "assignee_id", "target_on", "completion_reason"}
@@ -77,6 +78,7 @@ CREATOR_FIELDS = frozenset(
         "start_on",
         "target_on",
         "venue_target",
+        "repo_url",
     }
 )
 
@@ -96,6 +98,7 @@ async def create_project(
     start_on: date | None = None,
     target_on: date | None = None,
     venue_target: str | None = None,
+    repo_url: str | None = None,
     shared_resources: dict[str, object] | None = None,
 ) -> ProjectOut:
     """PROJ-01. Either role may start a project; what differs is the status it starts in.
@@ -118,6 +121,7 @@ async def create_project(
         start_on=start_on,
         target_on=target_on,
         venue_target=venue_target,
+        repo_url=normalize_repo_url(repo_url),
         shared_resources=shared_resources or {},
         created_by=scope.user_id,
     )
@@ -201,6 +205,11 @@ async def update_project(
 ) -> ProjectOut:
     project = await _require_project(session, scope, project_id)
     _require_may_update_project(scope, project, changes)
+    # Normalised here and not only in the schema: this is the entry point other modules and the
+    # seed call, so a blank typed into the form and a blank passed by a job have to mean the same
+    # absent rather than one of them leaving "   " in the column.
+    if "repo_url" in changes:
+        changes["repo_url"] = normalize_repo_url(changes["repo_url"])  # type: ignore[arg-type]
     applied = _apply(project, changes, clearable=PROJECT_CLEARABLE)
     if applied:
         _audit(

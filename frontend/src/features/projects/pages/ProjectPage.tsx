@@ -74,6 +74,19 @@ export function ProjectPage() {
         {data.description && (
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink2">{data.description}</p>
         )}
+        {data.repo_url && (
+          <p className="mt-2 text-sm">
+            <a
+              href={data.repo_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="link"
+              data-testid="project-repo"
+            >
+              {data.repo_url}
+            </a>
+          </p>
+        )}
         {isProf ? <StatusControls project={data} /> : null}
         {isProf || isCreator ? <ProjectFieldsForm project={data} /> : null}
         {!isProf ? <MembershipControls project={data} /> : null}

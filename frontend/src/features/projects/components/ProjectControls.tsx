@@ -140,6 +140,7 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
   const [title, setTitle] = useState(project.title);
   const [description, setDescription] = useState(project.description);
   const [stage, setStage] = useState<ResearchStage>(project.stage);
+  const [repoUrl, setRepoUrl] = useState(project.repo_url ?? "");
 
   return (
     <form
@@ -147,7 +148,7 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
       data-testid="project-fields"
       onSubmit={(event) => {
         event.preventDefault();
-        update.mutate({ title, description, stage });
+        update.mutate({ title, description, stage, repo_url: repoUrl.trim() || null });
       }}
     >
       <div className="flex flex-wrap items-end gap-3">
@@ -167,6 +168,16 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
             type="text"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
+            className="input"
+          />
+        </label>
+        <label className="block min-w-[14rem] flex-1">
+          <span className="field-label">{t("projects.repoUrl")}</span>
+          <input
+            type="url"
+            value={repoUrl}
+            onChange={(event) => setRepoUrl(event.target.value)}
+            placeholder="https://github.com/..."
             className="input"
           />
         </label>

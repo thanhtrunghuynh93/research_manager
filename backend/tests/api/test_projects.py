@@ -244,3 +244,24 @@ async def test_the_project_workspace_lists_decisions(
 
 async def test_the_project_endpoints_require_a_session(client: AsyncClient) -> None:
     assert (await client.get("/api/v1/projects")).status_code == 401
+
+
+async def test_a_repository_link_must_be_one_a_browser_could_follow(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    # The only thing this field does is get clicked, so a bare host is refused at the edge rather
+    # than stored and found broken later.
+    await _sign_in(client, student_a)
+
+    refused = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "github.com/lab/mine"},
+    )
+    assert refused.status_code == 422
+
+    accepted = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "https://github.com/lab/mine"},
+    )
+    assert accepted.status_code == 201
+    assert accepted.json()["repo_url"] == "https://github.com/lab/mine"

@@ -38,6 +38,8 @@ const PROJECT = {
   venue_target: null,
   shared_resources: {},
   ai_restricted: false,
+  open_to_join: false,
+  repo_url: null,
   created_by: "u1",
   created_at: "2026-09-01T00:00:00Z",
 };
@@ -149,4 +151,45 @@ test("the professor is not offered projects to join, and a student with none see
   renderPage(STUDENT, [PROJECT], []);
   await screen.findByTestId("project-list");
   expect(screen.queryByTestId("joinable")).not.toBeInTheDocument();
+});
+
+
+test("the repository link is optional and travels with the new project", async () => {
+  const posted: Record<string, unknown>[] = [];
+  renderPage(STUDENT);
+  server.use(
+    http.post("/api/v1/projects", async ({ request }) => {
+      posted.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(PROJECT, { status: 201 });
+    }),
+  );
+
+  await screen.findByTestId("project-list");
+  await userEvent.type(screen.getByLabelText(/^title$/i), "With a repo");
+  await userEvent.type(
+    screen.getByLabelText(/git repository/i),
+    "https://github.com/lab/thing",
+  );
+  await userEvent.click(screen.getByRole("button", { name: /create project/i }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(posted[0]).toMatchObject({ repo_url: "https://github.com/lab/thing" });
+});
+
+test("leaving the repository blank sends nothing rather than an empty string", async () => {
+  const posted: Record<string, unknown>[] = [];
+  renderPage(STUDENT);
+  server.use(
+    http.post("/api/v1/projects", async ({ request }) => {
+      posted.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json(PROJECT, { status: 201 });
+    }),
+  );
+
+  await screen.findByTestId("project-list");
+  await userEvent.type(screen.getByLabelText(/^title$/i), "No repo");
+  await userEvent.click(screen.getByRole("button", { name: /create project/i }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(posted[0]).toMatchObject({ repo_url: null });
 });

@@ -142,6 +142,12 @@ class Project(UUIDPrimaryKeyMixin, Base):
     start_on: Mapped[date | None]
     target_on: Mapped[date | None]
     venue_target: Mapped[str | None] = mapped_column(Text)
+    # Where the code lives, as a link for the people on the project (PROJ-01, shared resources).
+    # Deliberately *not* a connected repository: REPO-01's `repositories` table is a sync — it
+    # needs a provider, an external id and a credential, it pulls events and attributes
+    # contributions, and only a professor may set one up. This is a URL somebody typed. Nothing
+    # reads it but a human, and filling it in attributes no commits to anybody.
+    repo_url: Mapped[str | None] = mapped_column(Text)
     shared_resources: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     # Architecture §10: every model step is skipped for a restricted project; the professor rates
     # it by hand and the pipeline records "Not rated — restricted".

@@ -475,3 +475,43 @@ async def _epoch(db: AsyncSession, workspace_id: object) -> int:
             )
         )
     ).scalar_one()
+
+
+# ------------------------------------------------------------------ PROJ-01: where the code lives
+
+
+async def test_a_project_records_where_its_code_is(
+    db: AsyncSession, student_a_scope: Scope
+) -> None:
+    project = await service.create_project(
+        db,
+        student_a_scope,
+        title="Spectral clustering",
+        stage=models.ResearchStage.IMPLEMENTATION,
+        repo_url="  https://github.com/lab/spectral  ",
+    )
+
+    assert project.repo_url == "https://github.com/lab/spectral", "trimmed, not stored as typed"
+
+
+async def test_the_repository_link_is_optional_and_blank_means_absent(
+    db: AsyncSession, student_a_scope: Scope
+) -> None:
+    # Absent and empty must not be two states, or every screen decides for itself what "" means.
+    omitted = await _project(db, student_a_scope, title="No repo")
+    assert omitted.repo_url is None
+
+    blanked = await service.update_project(db, student_a_scope, omitted.id, repo_url="   ")
+    assert blanked.repo_url is None
+
+
+async def test_the_creator_may_change_the_repository_link(
+    db: AsyncSession, student_a_scope: Scope
+) -> None:
+    project = await _project(db, student_a_scope, title="Mine")
+
+    updated = await service.update_project(
+        db, student_a_scope, project.id, repo_url="git@github.com:lab/mine.git"
+    )
+
+    assert updated.repo_url == "git@github.com:lab/mine.git"

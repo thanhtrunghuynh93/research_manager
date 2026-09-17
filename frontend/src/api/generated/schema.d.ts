@@ -2894,6 +2894,8 @@ export interface components {
             description: string;
             /** Intended Contributions */
             intended_contributions?: string[];
+            /** Repo Url */
+            repo_url?: string | null;
             /** Research Questions */
             research_questions?: string[];
             /** Shared Resources */
@@ -2952,6 +2954,8 @@ export interface components {
             intended_contributions: string[];
             /** Open To Join */
             open_to_join: boolean;
+            /** Repo Url */
+            repo_url?: string | null;
             /** Research Questions */
             research_questions: string[];
             /** Shared Resources */
@@ -2984,6 +2988,8 @@ export interface components {
             intended_contributions?: string[] | null;
             /** Open To Join */
             open_to_join?: boolean | null;
+            /** Repo Url */
+            repo_url?: string | null;
             /** Research Questions */
             research_questions?: string[] | null;
             /** Shared Resources */
