@@ -165,7 +165,7 @@ export function Attachments({
                 if (file) void upload(file);
                 event.target.value = "";
               }}
-              className="mt-2 w-full rounded border border-dashed border-border-strong bg-surface px-3 py-2.5 text-[13px] file:mr-3 file:rounded file:border file:border-border file:bg-raised file:px-2 file:py-1 file:text-[12px]"
+              className="file-input"
             />
           </label>
           <label className="block">

@@ -181,6 +181,16 @@
     @apply text-xs text-accent underline underline-offset-2;
   }
 
+  /* A file input carries its own button, drawn by the browser and reachable only through the
+     `file:` variants. Left alone it is the one control on the report screen that does not look
+     like a control, so it is dressed as `btn-ghost` — the dashed border stays, because the field
+     around it is a drop target and should still read as one. */
+  .file-input {
+    @apply mt-2 w-full rounded border border-dashed border-border-strong bg-surface px-3 py-2.5 text-[13px];
+    @apply file:mr-3.5 file:cursor-pointer file:rounded file:border file:border-border file:bg-surface file:px-3.5 file:py-2 file:text-sm file:transition-colors;
+    @apply hover:file:border-foreground disabled:opacity-60;
+  }
+
   /* A caution that states a reason. Never used for decoration. */
   .notice-warn {
     @apply rounded border border-warn-line border-l-[3px] bg-warn-soft px-4 py-3 text-sm;
