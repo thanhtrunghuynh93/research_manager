@@ -72,6 +72,17 @@ CONTENT_FIELDS = (
 # ------------------------------------------------------------------ calendar (REP-01)
 
 
+async def current_calendar(session: AsyncSession, scope: Scope) -> CalendarConfigOut | None:
+    """The calendar version in force, or absent when none has been configured (REP-01).
+
+    Absent is a state a screen has to be able to tell from "configured": without it the only
+    signal is an empty period list, which lies the moment a calendar is replaced after periods
+    already exist.
+    """
+    row = await repository.latest_calendar(session, scope.workspace_id)
+    return CalendarConfigOut.model_validate(row) if row is not None else None
+
+
 async def configure_calendar(
     session: AsyncSession,
     scope: Scope,
@@ -534,6 +545,32 @@ class UnfulfilledEntry:
 async def period_for_job(session: AsyncSession, period_id: UUID) -> PeriodOut | None:
     row = await repository.period_row(session, period_id)
     return None if row is None else PeriodOut.model_validate(row)
+
+
+@dataclass(frozen=True, slots=True)
+class VersionOwner:
+    """Who a submitted version belongs to, and where. A job-level read: no Scope to hand."""
+
+    workspace_id: UUID
+    student_id: UUID
+
+
+async def version_owner_for_job(
+    session: AsyncSession, report_version_id: UUID
+) -> VersionOwner | None:
+    """The workspace and student behind one submitted version, or absent.
+
+    The evidence re-index job carries only the version id — the event it stands in for is long
+    gone by then — so it reads the owner back rather than trusting arguments that could have been
+    serialised under a different account.
+    """
+    version = await session.get(ReportVersion, report_version_id)
+    if version is None:
+        return None
+    report = await session.get(WeeklyReport, version.report_id)
+    if report is None:
+        return None
+    return VersionOwner(workspace_id=report.workspace_id, student_id=report.student_id)
 
 
 async def period_timezone(session: AsyncSession, period_id: UUID) -> str:

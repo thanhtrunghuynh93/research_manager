@@ -624,3 +624,81 @@ async def test_an_upload_that_never_arrived_is_not_listed_as_an_attachment(
     rows = await artifacts.list_artifacts(db, prof_scope, student_id=student_a.id)
 
     assert [row.filename for row in rows] == []
+
+
+# ------------------------------------------- the attachment survives a provider outage (AC-13)
+
+
+async def test_a_dead_embedding_provider_does_not_lose_the_attachment(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bytes arrived and the text was extracted before anything indexed it.
+
+    Indexing runs inside the confirming transaction so the chunks commit with the version that
+    cites them, which puts the embedding provider on the student's upload path. A provider that is
+    down used to surface as a 500 and lose an attachment that was already stored.
+    """
+    from app.evidence import service as evidence_service
+
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
+        raise RuntimeError("429 insufficient_quota: you have no credits remaining")
+
+    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+
+    uploaded = await _upload(db, scope, store, project)
+
+    assert uploaded.extraction_state is ExtractionState.OK
+    listed = await artifacts.list_artifacts(db, scope, student_id=student_a.id)
+    assert any(one.artifact_id == uploaded.artifact_id for one in listed), (
+        "the attachment is on the student's record even though nothing could be indexed"
+    )
+
+
+async def test_the_attachment_is_indexed_when_the_provider_comes_back(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recoverable without the student re-uploading: the extracted text is already in the store."""
+    from app.evidence import service as evidence_service
+
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+    uploaded = await _upload(db, scope, store, project)
+    monkeypatch.undo()
+
+    # What the retry job does, reading the text back from the object store.
+    indexed = await evidence_service.index_artifact_version(db, uploaded.version_id, store=store)
+
+    assert indexed is True
+    hits = await evidence_service.search_evidence(db, scope, query="ablation difficulty proxy")
+    assert hits, "the attachment is citable once the provider answers again"
+
+
+async def test_an_attachment_with_no_text_is_a_no_op_for_the_retry(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    """Nothing to read is not a failure: extraction records three outcomes, not two."""
+    from app.evidence import service as evidence_service
+
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    uploaded = await _upload(db, scope, store, project, filename="figure.png", data=b"\x89PNG\r\n")
+
+    assert (
+        await evidence_service.index_artifact_version(db, uploaded.version_id, store=store) is False
+    )

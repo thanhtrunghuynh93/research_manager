@@ -154,3 +154,35 @@ async def test_the_calendar_is_professor_only(
     )
 
     assert response.status_code == 403
+
+
+async def test_the_calendar_reads_back_as_null_before_it_is_configured(
+    client: AsyncClient, prof: identity_models.User
+) -> None:
+    """A screen has to tell "not configured" from "configured", and an empty period list lies."""
+    await _sign_in(client, prof)
+
+    response = await client.get("/api/v1/calendar")
+
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+async def test_a_student_may_read_the_calendar_they_cannot_set(
+    client: AsyncClient, db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """REP-01: the deadline rules are everyone's business; setting them is the professor's."""
+    await service.configure_calendar(
+        db,
+        prof_scope,
+        timezone="Asia/Ho_Chi_Minh",
+        meeting_weekday=0,
+        week_start_weekday=0,
+        effective_from=date(2026, 9, 14),
+    )
+    await _sign_in(client, student_a)
+
+    response = await client.get("/api/v1/calendar")
+
+    assert response.status_code == 200
+    assert response.json()["timezone"] == "Asia/Ho_Chi_Minh"
