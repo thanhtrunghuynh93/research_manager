@@ -37,6 +37,7 @@ TASK_MODULES: list[str] = [
     "app.notifications.scheduler_tasks",
     "app.assessment.tasks",
     "app.evidence.tasks",
+    "app.reporting.tasks",
 ]
 
 RETRY_TRANSIENT = procrastinate.RetryStrategy(max_attempts=5, wait=10, exponential_wait=2)

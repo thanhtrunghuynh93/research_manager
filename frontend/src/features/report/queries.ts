@@ -128,6 +128,12 @@ export function useArtifacts(filters: {
     queryKey: artifactsKey({ ...filters }),
     queryFn: () => api.get<Artifact[]>(`/api/v1/artifacts?${query}`),
     enabled: Boolean(query),
+    // Reading a file happens in a worker just after it is attached, so an attachment arrives
+    // `pending` and becomes `ok` a few seconds later. Poll only while something is pending: the
+    // alternative is a badge that says "Reading…" until the student reloads the page, which is
+    // the same silence the upload used to have, moved one step along.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((one) => one.extraction_state === "pending") ? 3000 : false,
   });
 }
 

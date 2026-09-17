@@ -76,7 +76,12 @@ async def _upload(
         store=store,
     )
     await store.put_bytes(grant.storage_key, data, content_type=grant.content_type)
-    return await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+    version = await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+    # Confirming no longer reads the file — a job does, seconds later. Running it here is what the
+    # worker does, so every test below sees the state the student eventually sees. Re-read rather
+    # than reused: `confirm_upload` returned a snapshot taken before the file was read.
+    await artifacts.extract_version(db, version.version_id, store=store)
+    return (await artifacts.list_versions(db, scope, grant.artifact_id))[-1]
 
 
 async def test_a_grant_names_a_key_derived_from_the_checksum(
@@ -721,7 +726,9 @@ async def _upload_for_week(
         store=store,
     )
     await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
-    return await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+    version = await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+    await artifacts.extract_version(db, version.version_id, store=store)
+    return version
 
 
 async def test_removing_a_file_takes_it_out_of_storage_and_out_of_the_index(
@@ -833,3 +840,59 @@ async def _artifact_exists(db: AsyncSession, artifact_id) -> bool:
     return (
         await db.execute(select(Artifact.id).where(Artifact.id == artifact_id))
     ).scalar_one_or_none() is not None
+
+
+async def test_confirming_an_upload_does_not_read_the_file(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """The upload returns as soon as the bytes are safe; a job reads them (REP-04).
+
+    Reading is what made attaching slow — unzipping a deck and embedding what comes out took the
+    better part of five seconds on the live stack. None of it is work the student waits through,
+    so the version comes back `pending` and nothing is searchable yet.
+    """
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        period_id=period.id,
+        filename="notes.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
+
+    version = await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+
+    assert version.uploaded is True, "the bytes are on the record"
+    assert version.extraction_state is ExtractionState.PENDING
+    assert await _evidence_reference_count(db, version.version_id) == 0
+
+    # What the worker then does, and the state the student ends up seeing.
+    await artifacts.extract_version(db, version.version_id, store=store)
+
+    after = (await artifacts.list_versions(db, scope, grant.artifact_id))[-1]
+    assert after.extraction_state is ExtractionState.OK
+    assert await _evidence_reference_count(db, version.version_id) == 1
+
+
+async def test_reading_the_same_version_twice_indexes_it_once(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    # A redelivered job is the ordinary case for a retried task, not an exceptional one.
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, scope, store, project, period)
+
+    await artifacts.extract_version(db, version.version_id, store=store)
+
+    assert await _evidence_reference_count(db, version.version_id) == 1

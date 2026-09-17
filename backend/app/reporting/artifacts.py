@@ -29,6 +29,7 @@ from app.core.authz import Scope, visible_to
 from app.core.config import get_settings
 from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.ids import uuid7
+from app.core.jobs import defer_after_commit
 from app.core.storage import (
     ObjectStore,
     content_type_for,
@@ -252,14 +253,12 @@ async def confirm_upload(
 
     version.byte_size = len(data)
     version.uploaded = True
-    result = extraction.extract(artifact.filename, data)
-    version.extraction_state = ExtractionState(result.state.value)
-    version.extraction_note = result.note
-    version.truncated = result.truncated
-    if result.text:
-        text_key = extracted_text_key(version.storage_key)
-        await active.put_bytes(text_key, result.text.encode("utf-8"), content_type="text/plain")
-        version.extracted_text_key = text_key
+    # Reading the file is the slow part — a PPTX to unzip and walk, then an embedding round trip,
+    # which together took the better part of five seconds on the live stack. It is not work the
+    # student needs to wait through: the bytes are safe, the checksum matched, and the attachment
+    # is on the record. So the version stays `pending` and a job picks it up, which is why the
+    # badge beside it reads "Reading…" until it does.
+    version.extraction_state = ExtractionState.PENDING
 
     artifact.current_version_no = version.version_no
     write_audit(
@@ -275,7 +274,7 @@ async def confirm_upload(
         },
     )
     await session.flush()
-    await _index(session, artifact, version, result.text)
+    _defer_extraction(session, version.id)
     return _out(artifact, version)
 
 
@@ -566,6 +565,74 @@ async def _open_artifact(
     session.add(artifact)
     await session.flush()
     return artifact
+
+
+def _defer_extraction(session: AsyncSession, version_id: UUID) -> None:
+    """Hand the reading to a job, once this transaction commits. Keyed on the version.
+
+    Imported inside the function because `reporting.tasks` imports this module back. Swallowed on
+    failure like the other defers — the attachment is stored and on the record, and a job that was
+    never queued is a file that reads late rather than an upload that was lost.
+    """
+    from app.reporting import tasks
+
+    try:
+        defer_after_commit(
+            session,
+            tasks.extract_artifact,
+            queueing_lock=f"extract-artifact:{version_id}",
+            version_id=str(version_id),
+        )
+    except Exception:  # noqa: BLE001 - the stored attachment is what must survive
+        log.exception("could not queue the text extraction of artifact version %s", version_id)
+
+
+async def extract_version(
+    session: AsyncSession,
+    version_id: UUID,
+    *,
+    store: ObjectStore | None = None,
+) -> ExtractionState:
+    """Read the text out of a stored file and hand it to evidence (REP-04).
+
+    Split out of `confirm_upload` so it can run in a worker: the student's upload returns as soon
+    as the bytes are safe, and this follows within seconds. Unscoped, like the other job entry
+    points, because a worker has no request to borrow a Scope from — the version id came from the
+    job that the upload itself enqueued.
+
+    Idempotent. A redelivered job re-reads the same bytes and re-indexes the same version, and
+    `index_evidence` replaces a reference's chunks rather than adding a second copy.
+    """
+    version = (
+        await session.execute(select(ArtifactVersion).where(ArtifactVersion.id == version_id))
+    ).scalar_one_or_none()
+    if version is None:
+        return ExtractionState.FAILED  # Removed before the job ran; nothing to read.
+    artifact = (
+        await session.execute(select(Artifact).where(Artifact.id == version.artifact_id))
+    ).scalar_one_or_none()
+    if artifact is None:
+        return ExtractionState.FAILED
+
+    active = store or current_store()
+    data = await active.get_bytes(version.storage_key)
+    if data is None:
+        version.extraction_state = ExtractionState.FAILED
+        version.extraction_note = "the stored object could not be read back"
+        await session.flush()
+        return version.extraction_state
+
+    result = extraction.extract(artifact.filename, data)
+    version.extraction_state = ExtractionState(result.state.value)
+    version.extraction_note = result.note
+    version.truncated = result.truncated
+    if result.text:
+        text_key = extracted_text_key(version.storage_key)
+        await active.put_bytes(text_key, result.text.encode("utf-8"), content_type="text/plain")
+        version.extracted_text_key = text_key
+    await session.flush()
+    await _index(session, artifact, version, result.text)
+    return version.extraction_state
 
 
 async def remove_artifact(
