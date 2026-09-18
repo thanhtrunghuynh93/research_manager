@@ -225,3 +225,22 @@ test("a submitted week offers no removal, and says why", async () => {
   expect(screen.queryByTestId("remove-attachment")).not.toBeInTheDocument();
   expect(screen.getByTestId("attachments-locked")).toHaveTextContent(/part of the record/i);
 });
+
+test("the locked notice names when the week went in, and says attaching did not do it", async () => {
+  // It appears directly under a file the student has just attached, so without the date it reads
+  // as cause and effect — which is how it was read.
+  render(
+    <Attachments
+      projectId="p1"
+      periodId="per1"
+      attachments={[attachment()]}
+      submitted
+      submittedAt="2026-09-17T03:54:12Z"
+      onAttached={vi.fn()}
+    />,
+  );
+
+  const locked = screen.getByTestId("attachments-locked");
+  expect(locked).toHaveTextContent(/Sep 17, 2026/);
+  expect(locked).toHaveTextContent(/does not submit anything/i);
+});

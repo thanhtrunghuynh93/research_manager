@@ -148,6 +148,7 @@ export function ReportEditorPage() {
             // Every state but `draft` means the week has been in at least once — a revision
             // request or a re-submission is still a record the professor has read.
             submitted={Boolean(report.data && report.data.workflow_state !== "draft")}
+            submittedAt={report.data?.first_submitted_at ?? null}
           />
         </>
       )}
@@ -186,11 +187,13 @@ function EntryAttachments({
   projectId,
   periodId,
   submitted,
+  submittedAt,
 }: {
   projectId: string;
   periodId: string;
   /** Once the week is in, its attachments are part of the record and the API refuses removal. */
   submitted: boolean;
+  submittedAt: string | null;
 }) {
   const queryClient = useQueryClient();
   const artifacts = useArtifacts({ periodId, projectId });
@@ -200,6 +203,7 @@ function EntryAttachments({
       periodId={periodId}
       attachments={artifacts.data ?? []}
       submitted={submitted}
+      submittedAt={submittedAt}
       onAttached={() => void queryClient.invalidateQueries({ queryKey: ["artifacts"] })}
     />
   );
