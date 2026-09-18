@@ -8,6 +8,7 @@ them run afterwards.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -25,7 +26,13 @@ from app.core.types import Role
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.projects.schemas import PlanBaselineOut
-from app.reporting import calendar, events, policies, repository  # noqa: F401  (policies register)
+from app.reporting import (  # noqa: F401  (policies register)
+    artifacts,
+    calendar,
+    events,
+    policies,
+    repository,
+)
 from app.reporting.models import (
     CalendarConfig,
     ObligationState,
@@ -48,6 +55,7 @@ from app.reporting.schemas import (
     VersionOut,
 )
 
+log = logging.getLogger(__name__)
 # Eight weeks ahead, as the architecture's periodic task does (architecture §7.1).
 # How far back the daily baseline task will still catch up, if the worker was down.
 BASELINE_CATCHUP = timedelta(days=14)
@@ -435,6 +443,17 @@ async def submit_report(
         after={"version_no": version.version_no, "timing": version.timing_status.value},
     )
     await session.flush()
+
+    # Read the week's attachments now that the week is finished (REP-04). Queued before the event
+    # so the reading jobs are enqueued ahead of the assessment the event triggers — with one worker
+    # that means the text is indexed before the snapshot is taken. It is an ordering by insertion
+    # rather than a guarantee: under a pool the assessment can still start first, and a snapshot
+    # missing an attachment is what the pipeline's confidence and the professor's re-run are for.
+    queued = await artifacts.read_attachments_for(
+        session, student_id=report.student_id, period_id=period_id
+    )
+    if queued:
+        log.info("queued %d attachment(s) to be read for the submitted week", queued)
 
     await events.emit(
         events.ReportSubmitted(

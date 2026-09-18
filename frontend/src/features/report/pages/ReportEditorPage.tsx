@@ -142,14 +142,7 @@ export function ReportEditorPage() {
             onChange={(entry) => setDrafts({ ...drafts, [entry.project_id]: entry })}
           />
           {/* REP-04: evidence is attached per project entry, not per package. */}
-          <EntryAttachments
-            projectId={active}
-            periodId={periodId}
-            // Every state but `draft` means the week has been in at least once — a revision
-            // request or a re-submission is still a record the professor has read.
-            submitted={Boolean(report.data && report.data.workflow_state !== "draft")}
-            submittedAt={report.data?.first_submitted_at ?? null}
-          />
+          <EntryAttachments projectId={active} periodId={periodId} />
         </>
       )}
 
@@ -183,18 +176,7 @@ export function ReportEditorPage() {
  * The attachments already on this entry, read from the server rather than remembered in this tab.
  * Refetched after each one is attached, so the list is what the professor will also see.
  */
-function EntryAttachments({
-  projectId,
-  periodId,
-  submitted,
-  submittedAt,
-}: {
-  projectId: string;
-  periodId: string;
-  /** Once the week is in, its attachments are part of the record and the API refuses removal. */
-  submitted: boolean;
-  submittedAt: string | null;
-}) {
+function EntryAttachments({ projectId, periodId }: { projectId: string; periodId: string }) {
   const queryClient = useQueryClient();
   const artifacts = useArtifacts({ periodId, projectId });
   return (
@@ -202,8 +184,6 @@ function EntryAttachments({
       projectId={projectId}
       periodId={periodId}
       attachments={artifacts.data ?? []}
-      submitted={submitted}
-      submittedAt={submittedAt}
       onAttached={() => void queryClient.invalidateQueries({ queryKey: ["artifacts"] })}
     />
   );

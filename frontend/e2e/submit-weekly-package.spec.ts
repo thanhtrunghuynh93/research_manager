@@ -28,7 +28,7 @@ test("a student sees this week, opens it, drafts it, and submits once", async ({
   // REP-04: autosave is visible, so the student knows the draft is safe before they submit.
   await expect(page.getByText(/saved/i)).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: /submit package/i }).click();
+  await page.getByRole("button", { name: /submit report/i }).click();
   await expect(page.getByText(/submitted as version/i)).toBeVisible();
 });
 

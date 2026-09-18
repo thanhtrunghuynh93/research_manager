@@ -274,7 +274,6 @@ async def confirm_upload(
         },
     )
     await session.flush()
-    _defer_extraction(session, version.id)
     return _out(artifact, version)
 
 
@@ -567,7 +566,39 @@ async def _open_artifact(
     return artifact
 
 
-def _defer_extraction(session: AsyncSession, version_id: UUID) -> None:
+async def read_attachments_for(session: AsyncSession, *, student_id: UUID, period_id: UUID) -> int:
+    """Queue the reading of everything this student attached to this week (REP-04).
+
+    Called when the report is submitted, because that is when the week is finished being assembled:
+    a file attached and then removed before submitting was never part of the report, and reading it
+    would have been work done for nothing.
+
+    Queued rather than done here. Submission is the one action with a deadline attached, and the
+    reading involves unzipping documents and calling an embedding provider — an outage there took
+    submissions down once already, and it must not be able to again.
+    """
+    versions = (
+        (
+            await session.execute(
+                select(ArtifactVersion)
+                .join(Artifact, Artifact.id == ArtifactVersion.artifact_id)
+                .where(
+                    Artifact.owner_student_id == student_id,
+                    Artifact.period_id == period_id,
+                    ArtifactVersion.uploaded.is_(True),
+                    ArtifactVersion.extraction_state == ExtractionState.PENDING,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for version in versions:
+        defer_extraction(session, version.id)
+    return len(versions)
+
+
+def defer_extraction(session: AsyncSession, version_id: UUID) -> None:
     """Hand the reading to a job, once this transaction commits. Keyed on the version.
 
     Imported inside the function because `reporting.tasks` imports this module back. Swallowed on
@@ -642,13 +673,13 @@ async def remove_artifact(
     *,
     store: ObjectStore | None = None,
 ) -> None:
-    """REP-04: the student takes back a file they attached, while the week is still theirs.
+    """REP-04: the student takes back a file they attached.
 
-    Bounded by submission rather than by time. Before the week is submitted the attachment is part
-    of a draft and removing it is correcting a mistake; afterwards it is part of a record the
-    professor may have read and an assessment may cite, and unpicking that is not a student's to
-    do. The refusal says which it is, because "you cannot remove this" without the reason reads as
-    a bug.
+    Theirs to remove whenever they want it gone, submitted week or not. The earlier rule bounded
+    this at submission, on the reasoning that an assessment might already cite the file — but an
+    attachment is the student's own evidence for their own work, and a student who uploaded the
+    wrong thing should not have to ask permission to take it back. An assessment written against a
+    removed file keeps its rationale and loses the citation, which the professor can see and re-run.
 
     A real deletion, not a hidden row (requirements §11): the stored object, the extracted text
     beside it, the evidence references indexed from every version, and the cached answers that
@@ -658,11 +689,6 @@ async def remove_artifact(
     artifact = await _require_artifact(session, scope, artifact_id)
     if artifact.owner_student_id != scope.user_id:
         raise ForbiddenError("only the student who attached this file may remove it")
-    if await _week_is_submitted(session, artifact):
-        raise ValidationError(
-            "this week has been submitted, so its attachments are part of the record; "
-            "ask your professor to remove it"
-        )
 
     versions = list(
         (
@@ -705,25 +731,6 @@ async def remove_artifact(
     # AUTH-03: an answer cached while the file was readable must not outlive it.
     await identity_service.advance_access_epoch(session, artifact.workspace_id)
     await session.flush()
-
-
-async def _week_is_submitted(session: AsyncSession, artifact: Artifact) -> bool:
-    """Has the owner already submitted the week this attachment belongs to?
-
-    A file attached outside any period — which the upload form does not produce, but the API
-    allows — has no week to be part of, so there is nothing to protect.
-    """
-    if artifact.period_id is None:
-        return False
-    submitted = (
-        await session.execute(
-            select(WeeklyReport.current_version_id).where(
-                WeeklyReport.student_id == artifact.owner_student_id,
-                WeeklyReport.period_id == artifact.period_id,
-            )
-        )
-    ).scalar_one_or_none()
-    return submitted is not None
 
 
 async def _require_artifact(session: AsyncSession, scope: Scope, artifact_id: UUID) -> Artifact:

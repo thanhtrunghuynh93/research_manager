@@ -15,7 +15,6 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
 import { Badge } from "@/components/evidence/Badges";
 import { openArtifact } from "@/features/report/queries";
-import { formatInstant } from "@/lib/dates";
 
 type Grant = {
   artifact_id: string;
@@ -47,18 +46,11 @@ export function Attachments({
   projectId,
   periodId,
   attachments,
-  submitted = false,
-  submittedAt = null,
   onAttached,
 }: {
   projectId: string;
   periodId: string;
   attachments: Attachment[];
-  /** Once the week is in, its attachments are part of the record; the API refuses to remove one. */
-  submitted?: boolean;
-  /** When that happened. Named in the copy, because the notice otherwise appears right after a
-   *  file is attached and reads as though attaching is what submitted the week. */
-  submittedAt?: string | null;
   /** Called after anything is attached, so the caller can refetch the list from the server. */
   onAttached: () => void;
 }) {
@@ -144,14 +136,6 @@ export function Attachments({
       <h3 className="section-title">{t("report.attachments.title")}</h3>
       <p className="stamp mt-1.5">{t("report.attachments.limit")}</p>
 
-      {submitted && (
-        <p className="stamp mt-1.5" data-testid="attachments-locked">
-          {submittedAt
-            ? t("report.attachments.lockedOn", { when: formatInstant(submittedAt) })
-            : t("report.attachments.locked")}
-        </p>
-      )}
-
       <ul className="panel mt-3.5" data-testid="attachment-list">
         {attachments.map((attachment) => (
           <li
@@ -168,17 +152,15 @@ export function Attachments({
               >
                 {t("report.attachments.download")}
               </button>
-              {!submitted && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void remove(attachment.artifact_id, attachment.filename)}
-                  className="btn-quiet"
-                  data-testid="remove-attachment"
-                >
-                  {t("report.attachments.remove")}
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void remove(attachment.artifact_id, attachment.filename)}
+                className="btn-quiet"
+                data-testid="remove-attachment"
+              >
+                {t("report.attachments.remove")}
+              </button>
             </span>
           </li>
         ))}

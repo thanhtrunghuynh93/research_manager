@@ -430,7 +430,7 @@ hand.
 | See their week — period, deadline, what they owe | `GET /periods`, `/periods/{id}/obligations` | 🖥️ |
 | Write the weekly report, a tab per required project, autosaving | `PATCH /periods/{id}/report/draft` | 🖥️ |
 | Attach a file, straight from the browser to the object store | `POST /artifacts/uploads`, `/artifacts/{id}/confirm` | 🖥️ |
-| **Remove a file they attached, while the week is a draft** | `DELETE /artifacts/{id}` | 🖥️ |
+| **Remove a file they attached** | `DELETE /artifacts/{id}` | 🖥️ |
 | Attach a link | `POST /artifacts/links` | 🖥️ |
 | Submit the weekly package | `POST /periods/{id}/report/submit` | 🖥️ |
 | Read their own projects, milestones, decisions and progress | `GET /projects/...` | 🖥️ |

@@ -209,38 +209,21 @@ test("declining the confirmation removes nothing", async () => {
   expect(removed).toEqual([]);
 });
 
-test("a submitted week offers no removal, and says why", async () => {
-  // The API refuses it, so offering a button that always fails would be worse than no button —
-  // and an absent button with no explanation reads as something missing.
-  render(
-    <Attachments
-      projectId="p1"
-      periodId="per1"
-      attachments={[attachment()]}
-      submitted
-      onAttached={vi.fn()}
-    />,
+test("a file stays removable after the week is submitted", async () => {
+  // The bound at submission was dropped: an attachment is the student's own evidence for their own
+  // work, and someone who uploaded the wrong thing should not have to ask permission to take it
+  // back. The panel therefore has no state in which it hides the control.
+  const removed: string[] = [];
+  server.use(
+    http.delete("/api/v1/artifacts/a1", () => {
+      removed.push("a1");
+      return new HttpResponse(null, { status: 204 });
+    }),
   );
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderPanel([attachment()]);
 
-  expect(screen.queryByTestId("remove-attachment")).not.toBeInTheDocument();
-  expect(screen.getByTestId("attachments-locked")).toHaveTextContent(/part of the record/i);
-});
+  await userEvent.click(screen.getByTestId("remove-attachment"));
 
-test("the locked notice names when the week went in, and says attaching did not do it", async () => {
-  // It appears directly under a file the student has just attached, so without the date it reads
-  // as cause and effect — which is how it was read.
-  render(
-    <Attachments
-      projectId="p1"
-      periodId="per1"
-      attachments={[attachment()]}
-      submitted
-      submittedAt="2026-09-17T03:54:12Z"
-      onAttached={vi.fn()}
-    />,
-  );
-
-  const locked = screen.getByTestId("attachments-locked");
-  expect(locked).toHaveTextContent(/Sep 17, 2026/);
-  expect(locked).toHaveTextContent(/does not submit anything/i);
+  await waitFor(() => expect(removed).toEqual(["a1"]));
 });

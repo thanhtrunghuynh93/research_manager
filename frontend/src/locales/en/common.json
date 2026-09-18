@@ -62,7 +62,7 @@
   "report": {
     "title": "Weekly package",
     "tabs": "Project entries",
-    "submit": "Submit package",
+    "submit": "Submit report",
     "submitted": "Submitted as version {{version}}.",
     "state": {
       "not_started": "Not started",
@@ -111,9 +111,7 @@
       },
       "sending": "Sending {{name}} — this takes a few seconds while the text is read out of it.",
       "remove": "Remove",
-      "removeConfirm": "Remove {{name}}? The file and its extracted text are deleted, and it stops being searchable.",
-      "locked": "This week has been submitted, so its attachments are part of the record. Ask your professor to remove one.",
-      "lockedOn": "You submitted this week on {{when}}, so its attachments are part of the record. Attaching a file does not submit anything — ask your professor to remove one."
+      "removeConfirm": "Remove {{name}}? The file and its extracted text are deleted, and it stops being searchable."
     }
   },
   "overview": {

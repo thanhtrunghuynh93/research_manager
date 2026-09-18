@@ -753,15 +753,16 @@ async def test_removing_a_file_takes_it_out_of_storage_and_out_of_the_index(
     assert await _artifact_exists(db, version.artifact_id) is False
 
 
-async def test_a_submitted_week_keeps_its_attachments(
+async def test_a_file_stays_the_students_to_remove_after_submitting(
     db: AsyncSession,
     prof_scope,
     student_a: identity_models.User,
     store: InMemoryObjectStore,
 ) -> None:
-    # Before submission the file is part of a draft; afterwards it is part of a record the
-    # professor may have read and an assessment may cite, and unpicking that is not the
-    # student's to do.
+    # The bound at submission was dropped. An attachment is the student's own evidence for their
+    # own work, and someone who uploaded the wrong thing should not have to ask permission to take
+    # it back — an assessment written against a removed file keeps its rationale and loses the
+    # citation, which the professor can see and re-run.
     period, project = await _project(db, prof_scope, student_a)
     scope = await identity_service.scope_for(db, student_a)
     version = await _upload_for_week(db, scope, store, project, period)
@@ -783,10 +784,9 @@ async def test_a_submitted_week_keeps_its_attachments(
         ],
     )
 
-    with pytest.raises(ValidationError):
-        await artifacts.remove_artifact(db, scope, version.artifact_id, store=store)
+    await artifacts.remove_artifact(db, scope, version.artifact_id, store=store)
 
-    assert await _artifact_exists(db, version.artifact_id) is True
+    assert await _artifact_exists(db, version.artifact_id) is False
 
 
 async def test_a_co_member_cannot_even_see_the_file_to_remove_it(
@@ -848,11 +848,11 @@ async def test_confirming_an_upload_does_not_read_the_file(
     student_a: identity_models.User,
     store: InMemoryObjectStore,
 ) -> None:
-    """The upload returns as soon as the bytes are safe; a job reads them (REP-04).
+    """The upload returns as soon as the bytes are safe; nothing is read until the week is in.
 
     Reading is what made attaching slow — unzipping a deck and embedding what comes out took the
-    better part of five seconds on the live stack. None of it is work the student waits through,
-    so the version comes back `pending` and nothing is searchable yet.
+    better part of five seconds on the live stack — and a file attached and then removed before
+    submitting was never part of the report, so reading it would have been work done for nothing.
     """
     period, project = await _project(db, prof_scope, student_a)
     scope = await identity_service.scope_for(db, student_a)
@@ -896,3 +896,59 @@ async def test_reading_the_same_version_twice_indexes_it_once(
     await artifacts.extract_version(db, version.version_id, store=store)
 
     assert await _evidence_reference_count(db, version.version_id) == 1
+
+
+async def test_submitting_the_report_is_what_queues_the_reading(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """REP-04: the week is read when the week is finished, not as each file arrives.
+
+    A file attached and then removed before submitting was never part of the report, so reading it
+    would have been work done for nothing — and the reading is the expensive half.
+    """
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        period_id=period.id,
+        filename="notes.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
+    await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+
+    queued = await artifacts.read_attachments_for(db, student_id=student_a.id, period_id=period.id)
+    assert queued == 1, "the pending attachment is the one the submitted week will read"
+
+    # A version already read is not read again, which is what keeps a resubmission cheap.
+    versions = await artifacts.list_versions(db, scope, grant.artifact_id)
+    await artifacts.extract_version(db, versions[-1].version_id, store=store)
+    assert (
+        await artifacts.read_attachments_for(db, student_id=student_a.id, period_id=period.id) == 0
+    )
+
+
+async def test_another_students_attachments_are_not_read_by_this_submission(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    period, project = await _project(db, prof_scope, student_a)
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_b.id, joined_on=date(2026, 9, 1)
+    )
+    theirs = await identity_service.scope_for(db, student_b)
+    await _upload_for_week(db, theirs, store, project, period)
+
+    assert (
+        await artifacts.read_attachments_for(db, student_id=student_a.id, period_id=period.id) == 0
+    )
