@@ -34,8 +34,22 @@
 	}
 
 	# Single-page app: static assets, then index.html fallback for client routes.
+	#
+	# The two caching rules are not symmetrical, and the asymmetry is the point. Vite fingerprints
+	# everything under /assets, so those URLs are immutable by construction and can be kept for a
+	# year. index.html names them, is not fingerprinted, and is the only thing that tells a browser
+	# a deploy happened — so it must be revalidated every time.
+	#
+	# Without this block Caddy sends neither header, and a browser falls back to heuristic caching:
+	# roughly a tenth of the document's age, which for a day-old index.html is hours of serving the
+	# previous release from cache without ever asking. The deploy looks like it did nothing.
 	handle {
 		root * /srv
+		@assets path /assets/*
+		@revalidate not path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		# no-cache stores the response and requires revalidation; the ETag makes that a 304.
+		header @revalidate Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}

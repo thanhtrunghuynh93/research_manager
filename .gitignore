@@ -31,6 +31,13 @@ infra/.env.*
 # Host secrets mounted into the containers. The README explaining them is kept.
 infra/secrets/*
 !infra/secrets/README.md
+# The offsite backup credential. The tracked .example carries the shape and no secret; this one
+# is what rclone actually reads, and a filled-in copy is a key to every backup this host has made.
+infra/backup/rclone.conf
+# The age public keys backups are encrypted to. Host-specific: a copy inherited from another
+# deployment would encrypt backups to a key whose private half nobody here has, which produces
+# backups that look correct and can never be restored.
+infra/backup/age-recipients.txt
 
 # Editors and OS
 .vscode/

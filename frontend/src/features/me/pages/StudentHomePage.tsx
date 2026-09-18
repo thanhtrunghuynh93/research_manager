@@ -8,7 +8,7 @@ import {
   useProjects,
   useReport,
 } from "@/features/report/queries";
-import { formatInstant, formatLocalDate } from "@/lib/dates";
+import { formatInstant, formatLocalDate, todayLocal } from "@/lib/dates";
 
 /** UI-02: what is owed this week, when it is due, and one way into the weekly flow. */
 export function StudentHomePage() {
@@ -57,7 +57,10 @@ export function StudentHomePage() {
       <ul className="panel mt-2.5">
         {obligations.data?.map((obligation) => (
           <li key={obligation.id} className="row">
-            <span>{titleOf(obligation.project_id)}</span>
+            {/* The student's own way into UI-03: the project page is signed-in, not prof-only. */}
+            <Link to={`/projects/${obligation.project_id}`} className="link">
+              {titleOf(obligation.project_id)}
+            </Link>
             <span
               className={
                 obligation.state === "excused"
@@ -74,6 +77,48 @@ export function StudentHomePage() {
           <li className="px-4 py-2.5 text-sm text-muted-foreground">{t("me.nothingOwed")}</li>
         )}
       </ul>
+
+      {/* The only way into the released record since this screen stopped carrying it, and the
+          only inbound link to /me/profile anywhere in the app. */}
+      <p className="stamp mt-3">
+        <Link to="/me/profile" className="link" data-testid="to-my-progress">
+          {t("me.toProfile")}
+        </Link>
+      </p>
+
+      <PastWeeks currentPeriodId={period.id} />
     </section>
+  );
+}
+
+/**
+ * Every week before this one. `usePeriods` is already loaded for the header, so the history costs
+ * no request — and without it the student could only ever see the week they are in.
+ */
+function PastWeeks({ currentPeriodId }: { currentPeriodId: string }) {
+  const { t } = useTranslation();
+  const periods = usePeriods();
+  const today = todayLocal();
+
+  const past = (periods.data ?? [])
+    .filter((one) => one.id !== currentPeriodId && one.local_end < today)
+    .sort((a, b) => b.local_start.localeCompare(a.local_start))
+    .slice(0, 8);
+
+  if (!past.length) return null;
+
+  return (
+    <>
+      <h2 className="section-title mt-8">{t("me.pastWeeks")}</h2>
+      <ul className="panel mt-2.5" data-testid="past-weeks">
+        {past.map((one) => (
+          <li key={one.id} className="row">
+            <Link to={`/report/${one.id}`} className="link">
+              {formatLocalDate(one.local_start)} – {formatLocalDate(one.local_end)}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

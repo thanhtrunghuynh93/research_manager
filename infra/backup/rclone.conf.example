@@ -1,0 +1,18 @@
+# Offsite backup destination for backup.sh (RM_OFFSITE_REMOTE).
+#
+# Empty means local-only backups: a host that loses its disk loses the backups with it, which
+# satisfies nothing in the RPO/RTO targets (requirements §11, AC-16). backup.sh checks whether the
+# named remote exists and skips the offsite sync when it does not, so this file being a template
+# is a silent downgrade rather than an error — decide the destination and fill it in.
+#
+# Example for an S3-compatible bucket (Backblaze B2, Wasabi, another region's Spaces):
+#
+# [offsite]
+# type = s3
+# provider = Other
+# access_key_id = <key>
+# secret_access_key = <secret>
+# endpoint = <endpoint>
+# acl = private
+#
+# Then set RM_OFFSITE_REMOTE=offsite:research-management in infra/.env.

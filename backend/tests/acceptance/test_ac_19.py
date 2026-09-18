@@ -16,6 +16,7 @@ from app.core.authz import Scope
 from app.core.clock import now, reminder_due
 from app.identity import models as identity_models
 from app.identity import service as identity_service
+from app.notifications import repository as notifications_repository
 from app.notifications import service as notifications
 from app.notifications.email.console import ConsoleEmailSender
 from app.projects import service as projects_service
@@ -95,7 +96,7 @@ async def test_ac_19_exactly_one_email_reaches_the_student_who_owes_a_report(
     assert [email.to for email in sender.outbox] == ["unsubmitted@example.edu"]
 
     # The professor sees the outstanding obligation in the application, and receives no email.
-    professor_messages = await notifications.list_notifications(db, prof_scope)
+    professor_messages = await notifications_repository.list_notifications(db, prof_scope)
     summary = next(
         message
         for message in professor_messages
@@ -107,7 +108,9 @@ async def test_ac_19_exactly_one_email_reaches_the_student_who_owes_a_report(
     # The student who submitted and the student on leave hear nothing.
     for student in (on_time, on_leave):
         scope = await identity_service.scope_for(db, student)
-        kinds = [message.kind for message in await notifications.list_notifications(db, scope)]
+        kinds = [
+            message.kind for message in await notifications_repository.list_notifications(db, scope)
+        ]
         assert notifications.MISSED_DEADLINE not in kinds
 
     # A retried job sends no duplicate.

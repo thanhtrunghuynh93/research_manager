@@ -50,6 +50,21 @@ class ArtifactExtracted:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactRemoved:
+    """REP-04: an attachment the student took back before the week was submitted.
+
+    Carries every version id rather than the artifact's, because evidence is indexed per version:
+    a figure replaced twice has three references, and forgetting one of them would leave the
+    others answerable in search (requirements §11, "propagate authorized deletion to file storage,
+    searchable indexes, answer caches").
+    """
+
+    workspace_id: UUID
+    artifact_id: UUID
+    version_ids: tuple[UUID, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class RevisionRequested:
     """REP-05: one request, about one project entry. A week can hold several.
 

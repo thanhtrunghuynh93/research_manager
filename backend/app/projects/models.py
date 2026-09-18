@@ -50,6 +50,24 @@ class ProjectStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+class MembershipOrigin(StrEnum):
+    """How a membership came to exist (PROJ-07).
+
+    It is not bookkeeping. The derivation reads this column to decide which weeks a membership owes
+    (`repository.memberships_active_in_range`), and it is how the audit trail tells the three apart,
+    since the actor alone cannot.
+
+    `assigned` and `created` owe the week they land in: a professor assigning a student mid-week
+    knows what they are asking for, and a student who starts a project is asking for it themselves.
+    `self_joined` owes from the following week — joining an existing project on a Saturday should
+    not be a report due that Sunday for a week spent off the project.
+    """
+
+    ASSIGNED = "assigned"
+    SELF_JOINED = "self_joined"
+    CREATED = "created"
+
+
 class MilestoneStatus(StrEnum):
     PLANNED = "planned"
     IN_PROGRESS = "in_progress"
@@ -88,6 +106,7 @@ def _enum(enum_type: type[StrEnum], name: str) -> Enum:
 
 STAGE_ENUM = _enum(ResearchStage, "research_stage")
 PROJECT_STATUS_ENUM = _enum(ProjectStatus, "project_status")
+MEMBERSHIP_ORIGIN_ENUM = _enum(MembershipOrigin, "membership_origin")
 MILESTONE_STATUS_ENUM = _enum(MilestoneStatus, "milestone_status")
 TASK_STATUS_ENUM = _enum(TaskStatus, "task_status")
 BASELINE_STATE_ENUM = _enum(BaselineState, "baseline_state")
@@ -127,10 +146,20 @@ class Project(UUIDPrimaryKeyMixin, Base):
     start_on: Mapped[date | None]
     target_on: Mapped[date | None]
     venue_target: Mapped[str | None] = mapped_column(Text)
+    # Where the code lives, as a link for the people on the project (PROJ-01, shared resources).
+    # Deliberately *not* a connected repository: REPO-01's `repositories` table is a sync — it
+    # needs a provider, an external id and a credential, it pulls events and attributes
+    # contributions, and only a professor may set one up. This is a URL somebody typed. Nothing
+    # reads it but a human, and filling it in attributes no commits to anybody.
+    repo_url: Mapped[str | None] = mapped_column(Text)
     shared_resources: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     # Architecture §10: every model step is skipped for a restricted project; the professor rates
     # it by hand and the pipeline records "Not rated — restricted".
     ai_restricted: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # PROJ-07: whether a student may put themselves on this project without being assigned.
+    # Default closed, and only a professor may open it: a membership is the whole grant of access
+    # to a project's records, so opening one is a disclosure decision, not a convenience.
+    open_to_join: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_by: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
@@ -182,6 +211,11 @@ class ProjectMembership(UUIDPrimaryKeyMixin, Base):
     project_id: Mapped[UUID]
     student_id: Mapped[UUID]
     responsibility: Mapped[str] = mapped_column(Text, default="")
+    origin: Mapped[MembershipOrigin] = mapped_column(
+        MEMBERSHIP_ORIGIN_ENUM,
+        default=MembershipOrigin.ASSIGNED,
+        server_default=MembershipOrigin.ASSIGNED.value,
+    )
     joined_on: Mapped[date]
     # Exclusive: the first day the student is no longer a member. Ending a membership today
     # therefore revokes access today (AUTH-03).

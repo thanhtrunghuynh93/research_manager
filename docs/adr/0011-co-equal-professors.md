@@ -1,6 +1,8 @@
 # ADR 0011 — Professors are co-equal; the role is fixed at acceptance
 
-Status: accepted — 2026-09-14
+Status: accepted — 2026-09-14 — amended by [ADR 0012](0012-workspace-ownership.md), which makes
+`workspaces.owner_id` the workspace administration relation. Co-equality below is unchanged within
+a workspace; it no longer extends across them.
 
 ## Context
 

@@ -1,7 +1,9 @@
 """Project use cases: the only entry point other modules may import.
 
-Requirements PROJ-01..06. The professor owns every structural change; students read what their
-membership grants them (requirements §2).
+Requirements PROJ-01..07. The professor owns the structural decisions — who is assigned, what is
+active, what is open to joining — and since PROJ-07 a student may start a project of their own,
+join one that has been opened, edit what they started, and leave. Everything else a student sees
+here is read, granted by a membership (requirements §2).
 """
 
 from __future__ import annotations
@@ -21,9 +23,10 @@ from app.core.errors import ConflictError, ForbiddenError, NotFoundError, Valida
 from app.core.pagination import Page, clamp_limit
 from app.core.types import Role
 from app.identity import service as identity_service
-from app.projects import policies, repository  # noqa: F401  (policies register on import)
+from app.projects import events, policies, repository  # noqa: F401  (policies register on import)
 from app.projects.models import (
     BaselineState,
+    MembershipOrigin,
     Milestone,
     MilestoneRevision,
     MilestoneStatus,
@@ -37,6 +40,7 @@ from app.projects.models import (
     Task,
 )
 from app.projects.schemas import (
+    JoinableProjectOut,
     MembershipOut,
     MilestoneOut,
     MilestoneRevisionOut,
@@ -46,6 +50,7 @@ from app.projects.schemas import (
     ProjectProgressOut,
     ResearchDecisionOut,
     TaskOut,
+    normalize_repo_url,
 )
 
 # A change to any of these alters what the milestone promised, so the previous state is retained
@@ -54,10 +59,27 @@ BASELINE_FIELDS = frozenset({"title", "success_criteria", "target_on", "weight",
 
 # The columns a PATCH may set back to null. Everything else refuses one rather than handing a
 # NOT NULL violation to the database.
-PROJECT_CLEARABLE = frozenset({"target_on", "venue_target"})
+PROJECT_CLEARABLE = frozenset({"target_on", "venue_target", "repo_url"})
 MILESTONE_CLEARABLE = frozenset({"target_on", "owner_id", "change_reason"})
 TASK_CLEARABLE = frozenset(
     {"blocker", "milestone_id", "assignee_id", "target_on", "completion_reason"}
+)
+
+# AUTH-07: what the person who started a project may change about it. Everything omitted here —
+# `status`, `ai_restricted`, `open_to_join`, `shared_resources` — is a decision about the project's
+# standing rather than its description, and stays with the professor.
+CREATOR_FIELDS = frozenset(
+    {
+        "title",
+        "description",
+        "research_questions",
+        "intended_contributions",
+        "stage",
+        "start_on",
+        "target_on",
+        "venue_target",
+        "repo_url",
+    }
 )
 
 
@@ -76,34 +98,118 @@ async def create_project(
     start_on: date | None = None,
     target_on: date | None = None,
     venue_target: str | None = None,
+    repo_url: str | None = None,
     shared_resources: dict[str, object] | None = None,
 ) -> ProjectOut:
-    scope.require_prof()
+    """PROJ-01. Either role may start a project; what differs is the status it starts in.
+
+    A professor's starts `proposed`, because activation is where a second party's assent becomes
+    visible and the professor is proposing work to someone else. A student starting their own has
+    no second party to wait for, and a proposed project derives no obligation (REP-01) — so leaving
+    it proposed would give them a project page, no weekly report, and nothing on screen to say why.
+    The professor keeps the levers that matter afterwards: pause, archive, and whether anyone else
+    may join.
+    """
     project = Project(
         workspace_id=scope.workspace_id,
         title=title,
         description=description,
         stage=stage,
-        status=ProjectStatus.PROPOSED,
+        status=ProjectStatus.PROPOSED if scope.is_prof else ProjectStatus.ACTIVE,
         research_questions=research_questions or [],
         intended_contributions=intended_contributions or [],
         start_on=start_on,
         target_on=target_on,
         venue_target=venue_target,
+        repo_url=normalize_repo_url(repo_url),
         shared_resources=shared_resources or {},
         created_by=scope.user_id,
     )
     session.add(project)
     await session.flush()
     _audit(session, scope, "project.created", "projects", project.id, after={"title": title})
+    if not scope.is_prof:
+        # The creator is on the project they started. Not a convenience: without the membership the
+        # project falls outside `scope.project_ids`, so nothing derives from it and the student
+        # would be looking at a project that owes them nothing and tells them nothing.
+        await _enrol(
+            session, scope, project, student_id=scope.user_id, origin=MembershipOrigin.CREATED
+        )
     return ProjectOut.model_validate(project)
+
+
+async def join_project(
+    session: AsyncSession, scope: Scope, project_id: UUID, *, responsibility: str = ""
+) -> MembershipOut:
+    """PROJ-07: a student puts themselves on a project the professor has opened.
+
+    Resolved through `joinable_project` rather than `_require_project`, because the caller is not a
+    member yet and the ordinary policy would answer 404. A project that is closed, archived, in
+    another workspace, or one they are already on is simply not found — the same answer for all
+    four, so this does not become a way to probe which projects exist.
+    """
+    if scope.is_prof:
+        raise ForbiddenError("a professor does not hold a project membership")
+    project = await repository.joinable_project(session, scope, project_id)
+    if project is None:
+        raise NotFoundError("project not found")
+    membership = await _enrol(
+        session,
+        scope,
+        project,
+        student_id=scope.user_id,
+        responsibility=responsibility,
+        origin=MembershipOrigin.SELF_JOINED,
+    )
+    return MembershipOut.model_validate(membership)
+
+
+async def list_joinable(
+    session: AsyncSession, scope: Scope, *, limit: int = 50
+) -> list[JoinableProjectOut]:
+    if scope.is_prof:
+        raise ForbiddenError("a professor does not join projects")
+    return [
+        JoinableProjectOut(
+            id=project.id,
+            title=project.title,
+            stage=project.stage,
+            status=project.status,
+            member_count=count,
+        )
+        for project, count in await repository.joinable_projects(session, scope, limit=limit)
+    ]
+
+
+def _require_may_update_project(scope: Scope, project: Project, changes: dict[str, object]) -> None:
+    """AUTH-07: the professor changes any project; the creator changes the record they wrote.
+
+    The creator's set stops short of `status`, `ai_restricted` and `open_to_join`. Those are not
+    description, they are governance: whether work is owed, whether the text may go to a model
+    provider, and who else may read the project. `created_by` is nullable and carries no foreign
+    key, so a row without one has no creator and falls to the professor alone.
+    """
+    if scope.is_prof:
+        return
+    if project.created_by is None or project.created_by != scope.user_id:
+        raise ForbiddenError("only the professor or the project's creator may change it")
+    # The keys, not the values: `ProjectPatch` is dumped with `exclude_unset=True`, so an explicit
+    # null is a real edit and testing `is not None` would wave the clearable fields through.
+    refused = sorted(set(changes) - CREATOR_FIELDS)
+    if refused:
+        raise ForbiddenError("only the professor may change: " + ", ".join(refused))
 
 
 async def update_project(
     session: AsyncSession, scope: Scope, project_id: UUID, **changes: object
 ) -> ProjectOut:
-    scope.require_prof()
     project = await _require_project(session, scope, project_id)
+    _require_may_update_project(scope, project, changes)
+    # Normalised here and not only in the schema: this is the entry point other modules and the
+    # seed call, so a blank typed into the form and a blank passed by a job have to mean the same
+    # absent rather than one of them leaving "   " in the column.
+    if "repo_url" in changes:
+        changes["repo_url"] = normalize_repo_url(changes["repo_url"])  # type: ignore[arg-type]
     applied = _apply(project, changes, clearable=PROJECT_CLEARABLE)
     if applied:
         _audit(
@@ -193,7 +299,7 @@ async def add_member(
     joined_on: date | None = None,
     planned_allocation: Decimal | None = None,
 ) -> MembershipOut:
-    """AUTH-01: only the professor assigns students to projects."""
+    """AUTH-01: only the professor puts *another* account on a project (PROJ-07 covers joining)."""
     scope.require_prof()
     project = await _require_project(session, scope, project_id)
 
@@ -201,7 +307,37 @@ async def add_member(
     if student.role is not Role.STUDENT:
         raise ConflictError("only a student can hold a project membership")
 
-    if await repository.active_membership(session, project_id, student_id) is not None:
+    return MembershipOut.model_validate(
+        await _enrol(
+            session,
+            scope,
+            project,
+            student_id=student_id,
+            responsibility=responsibility,
+            joined_on=joined_on,
+            planned_allocation=planned_allocation,
+            origin=MembershipOrigin.ASSIGNED,
+        )
+    )
+
+
+async def _enrol(
+    session: AsyncSession,
+    scope: Scope,
+    project: Project,
+    *,
+    student_id: UUID,
+    responsibility: str = "",
+    joined_on: date | None = None,
+    planned_allocation: Decimal | None = None,
+    origin: MembershipOrigin,
+) -> ProjectMembership:
+    """Write one membership row, however it was asked for.
+
+    Assignment and joining differ in who may ask and in what the row then owes; they must not
+    differ in what gets written, or the two paths drift and only one of them is tested.
+    """
+    if await repository.active_membership(session, project.id, student_id) is not None:
         raise ConflictError("this student already has an active membership on the project")
 
     membership = ProjectMembership(
@@ -209,6 +345,7 @@ async def add_member(
         project_id=project.id,
         student_id=student_id,
         responsibility=responsibility,
+        origin=origin,
         joined_on=joined_on or now().date(),
         planned_allocation=planned_allocation,
     )
@@ -220,20 +357,50 @@ async def add_member(
         "membership.added",
         "project_memberships",
         membership.id,
-        after={"project_id": str(project_id), "student_id": str(student_id)},
+        after={
+            "project_id": str(project.id),
+            "student_id": str(student_id),
+            # The actor cannot tell these apart on its own — a student's scope writes both when
+            # they create a project — and the audit table is the only durable record that a
+            # student put themselves somewhere nobody sent them (PROJ-07).
+            "origin": origin.value,
+        },
     )
     # No epoch bump: granting access cannot invalidate an answer cached under narrower access.
-    return MembershipOut.model_validate(membership)
+    #
+    # Reporting subscribes and derives this week's obligation now rather than at 00:15 tomorrow,
+    # which is what makes a project produce a report the moment it exists. projects cannot call
+    # reporting — it sits above this module — so the event is how the two meet.
+    await events.emit(
+        events.MembershipStarted(
+            workspace_id=membership.workspace_id,
+            membership_id=membership.id,
+            project_id=project.id,
+            student_id=student_id,
+            origin=origin.value,
+        ),
+        session,
+    )
+    return membership
 
 
 async def end_membership(
     session: AsyncSession, scope: Scope, membership_id: UUID, *, left_on: date | None = None
 ) -> MembershipOut:
-    """PROJ-02 keeps the row; AUTH-03 revokes the access it granted."""
-    scope.require_prof()
+    """PROJ-02 keeps the row; AUTH-03 revokes the access it granted.
+
+    A student may end their own membership and no one else's (PROJ-07), and only as of today:
+    a back-dated leave would rewrite which weeks were owed, and a forward-dated one would let them
+    schedule an exit. The professor keeps both, which is what excusing a week properly looks like.
+    """
     membership = await repository.get_membership(session, scope, membership_id)
     if membership is None:
         raise NotFoundError("membership not found")
+    if not scope.is_prof:
+        if membership.student_id != scope.user_id:
+            raise ForbiddenError("only the professor or the student on it may end this membership")
+        if left_on is not None and left_on != now().date():
+            raise ValidationError("a student may only leave as of today")
     if membership.left_on is not None:
         return MembershipOut.model_validate(membership)
 
@@ -881,8 +1048,7 @@ def _audit(
 ) -> None:
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action=action,
         target_table=table,
         target_id=target_id,

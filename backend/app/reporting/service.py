@@ -8,6 +8,7 @@ them run afterwards.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -25,7 +26,13 @@ from app.core.types import Role
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.projects.schemas import PlanBaselineOut
-from app.reporting import calendar, events, policies, repository  # noqa: F401  (policies register)
+from app.reporting import (  # noqa: F401  (policies register)
+    artifacts,
+    calendar,
+    events,
+    policies,
+    repository,
+)
 from app.reporting.models import (
     CalendarConfig,
     ObligationState,
@@ -48,6 +55,7 @@ from app.reporting.schemas import (
     VersionOut,
 )
 
+log = logging.getLogger(__name__)
 # Eight weeks ahead, as the architecture's periodic task does (architecture §7.1).
 # How far back the daily baseline task will still catch up, if the worker was down.
 BASELINE_CATCHUP = timedelta(days=14)
@@ -70,6 +78,17 @@ CONTENT_FIELDS = (
 
 
 # ------------------------------------------------------------------ calendar (REP-01)
+
+
+async def current_calendar(session: AsyncSession, scope: Scope) -> CalendarConfigOut | None:
+    """The calendar version in force, or absent when none has been configured (REP-01).
+
+    Absent is a state a screen has to be able to tell from "configured": without it the only
+    signal is an empty period list, which lies the moment a calendar is replaced after periods
+    already exist.
+    """
+    row = await repository.latest_calendar(session, scope.workspace_id)
+    return CalendarConfigOut.model_validate(row) if row is not None else None
 
 
 async def configure_calendar(
@@ -99,8 +118,7 @@ async def configure_calendar(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="calendar.configured",
         target_table="calendar_configs",
         target_id=config.id,
@@ -426,6 +444,17 @@ async def submit_report(
     )
     await session.flush()
 
+    # Read the week's attachments now that the week is finished (REP-04). Queued before the event
+    # so the reading jobs are enqueued ahead of the assessment the event triggers — with one worker
+    # that means the text is indexed before the snapshot is taken. It is an ordering by insertion
+    # rather than a guarantee: under a pool the assessment can still start first, and a snapshot
+    # missing an attachment is what the pipeline's confidence and the professor's re-run are for.
+    queued = await artifacts.read_attachments_for(
+        session, student_id=report.student_id, period_id=period_id
+    )
+    if queued:
+        log.info("queued %d attachment(s) to be read for the submitted week", queued)
+
     await events.emit(
         events.ReportSubmitted(
             workspace_id=scope.workspace_id,
@@ -535,6 +564,32 @@ class UnfulfilledEntry:
 async def period_for_job(session: AsyncSession, period_id: UUID) -> PeriodOut | None:
     row = await repository.period_row(session, period_id)
     return None if row is None else PeriodOut.model_validate(row)
+
+
+@dataclass(frozen=True, slots=True)
+class VersionOwner:
+    """Who a submitted version belongs to, and where. A job-level read: no Scope to hand."""
+
+    workspace_id: UUID
+    student_id: UUID
+
+
+async def version_owner_for_job(
+    session: AsyncSession, report_version_id: UUID
+) -> VersionOwner | None:
+    """The workspace and student behind one submitted version, or absent.
+
+    The evidence re-index job carries only the version id — the event it stands in for is long
+    gone by then — so it reads the owner back rather than trusting arguments that could have been
+    serialised under a different account.
+    """
+    version = await session.get(ReportVersion, report_version_id)
+    if version is None:
+        return None
+    report = await session.get(WeeklyReport, version.report_id)
+    if report is None:
+        return None
+    return VersionOwner(workspace_id=report.workspace_id, student_id=report.student_id)
 
 
 async def period_timezone(session: AsyncSession, period_id: UUID) -> str:
@@ -1011,10 +1066,48 @@ def _audit(
 ) -> None:
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action=action,
         target_table=table,
         target_id=target_id,
         after=after,
     )
+
+
+async def _on_membership_started(event: Any, session: AsyncSession) -> None:
+    """REP-01: derive the week's obligation as soon as somebody is on a project.
+
+    Without this a project created on Tuesday owes nothing until `ensure_periods` runs at 00:15 the
+    next morning — the student sees a project and no report, which reads as the system not having
+    noticed. The nightly job stays: this is the same derivation brought forward, and running both
+    is safe because `ensure_obligations` is idempotent per (membership, period).
+
+    Runs under a system scope rather than the acting student's, because deriving obligations is a
+    professor's act and a student has no standing to write one — the borrowed identity is what lets
+    the same predicates apply here as to the scheduled run (ADR 0011).
+
+    Whether the new membership actually owes *this* week is not decided here. That is
+    `memberships_active_in_range`'s rule: a project started now owes the week it lands in, and a
+    project joined now owes from the next one (PROJ-07). This function only makes the derivation
+    happen at the right moment.
+    """
+    # `system_scope` always resolves: a workspace with no professor yet borrows its own id as a
+    # value that names no user, which is what lets the calendar run before anyone has accepted.
+    scope = await identity_service.system_scope(session, event.workspace_id)
+    periods = await list_periods(session, scope)
+    at = now()
+    started = [period for period in periods if period.start_utc <= at]
+    if not started:
+        return  # No calendar, or none of its weeks has begun. The nightly run will catch up.
+
+    await ensure_obligations(session, scope, max(started, key=lambda one: one.start_utc).id)
+
+
+def register_subscriptions() -> None:
+    """Imported for the side effect, like the other modules' (docs/repo_layout.md §3.2)."""
+    from app.projects import events as projects_events
+
+    projects_events.subscribe(projects_events.MembershipStarted, _on_membership_started)
+
+
+register_subscriptions()

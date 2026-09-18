@@ -31,7 +31,7 @@ export function useSession() {
  *
  * Removed, not invalidated: invalidation marks cached data stale but leaves it readable, so on a
  * shared machine the next person to sign in saw the previous user's overview, projects and
- * notifications until each refetch landed (AUTH-03).
+ * projects until each refetch landed (AUTH-03).
  *
  * The session query is exempted from that sweep rather than removed and written back. Removing a
  * query that components are already observing orphans one of those observers — it is dropped from

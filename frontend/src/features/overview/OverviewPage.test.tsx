@@ -29,6 +29,12 @@ const EMPTY = {
     spent_usd: "0",
     monthly_usd: null,
   },
+  mail: {
+    warning: false,
+    reason: "",
+    failed_notifications: 0,
+    failed_token_emails: 0,
+  },
 };
 
 function renderPage(overview: Record<string, unknown> = EMPTY) {
@@ -126,4 +132,28 @@ test("distinguishes an analysis that failed from one the budget stopped", async 
 
   expect(await screen.findByText(/delayed_budget/)).toBeInTheDocument();
   expect(screen.getByText(/provider timeout/)).toBeInTheDocument();
+});
+
+test("names an invitation that never sent, because nothing else on this screen would", async () => {
+  renderPage({
+    ...EMPTY,
+    mail: {
+      warning: true,
+      reason:
+        "1 invitation or recovery email(s) were never delivered; those people cannot sign in until the link is reissued",
+      failed_notifications: 0,
+      failed_token_emails: 1,
+    },
+  });
+
+  expect(await screen.findByTestId("mail-warning")).toHaveTextContent(/cannot sign in/);
+});
+
+test("stays quiet about mail when nothing has failed", async () => {
+  renderPage(EMPTY);
+
+  expect(
+    await screen.findByText(/Every obligation for this week has been met/),
+  ).toBeInTheDocument();
+  expect(screen.queryByTestId("mail-warning")).not.toBeInTheDocument();
 });

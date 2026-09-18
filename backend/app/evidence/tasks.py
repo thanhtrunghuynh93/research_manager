@@ -75,3 +75,50 @@ async def sync_one(repository_id: str, kind: str = "manual") -> None:
         raise RateLimitedError(
             f"{row.full_name} was rate limited", retry_after_seconds=run.retry_after_seconds
         )
+
+
+@procrastinate_app.task(name="evidence.index_report_entries", retry=RETRY_TRANSIENT)
+async def index_report_entries(report_version_id: str) -> None:
+    """Index a submitted version's entries after an inline attempt failed (ASSESS-01, AC-13).
+
+    The indexing normally happens inside the submitting transaction, so the chunks commit with the
+    version they cite and the week's assessment reads a complete snapshot. That costs one call to
+    the embedding provider on the student's critical path, and a provider that is down, rate
+    limited or out of credit would otherwise take the submission with it — at 23:59, for every
+    student at once.
+
+    So the inline attempt is allowed to fail and this job picks the work up. `index_evidence`
+    upserts the reference and replaces its chunks, which makes a re-run and a redelivered job the
+    same thing; `RETRY_TRANSIENT` then gives the provider five attempts with backoff.
+
+    The assessment drafted in the meantime may cite less than it could have. That is the
+    recoverable half of the trade: coverage and confidence already describe an incomplete
+    snapshot, and the professor can re-run the analysis. An unrecorded submission is not
+    recoverable at all.
+    """
+    from app.evidence import service
+
+    async with session_factory()() as session:
+        indexed = await service.index_report_entries(session, UUID(report_version_id))
+        await session.commit()
+    log.info("indexed %s entr(ies) for report version %s", indexed, report_version_id)
+
+
+@procrastinate_app.task(name="evidence.index_artifact_version", retry=RETRY_TRANSIENT)
+async def index_artifact_version(version_id: str) -> None:
+    """Index an attachment's extracted text after an inline attempt failed (REP-04, AC-13).
+
+    The bytes and the extracted text are already in the object store by the time the inline attempt
+    runs, so nothing the student did is lost and nothing has to be uploaded again — only the
+    embedding call has to be repeated. `index_evidence` replaces the version's chunks, so a re-run
+    and a redelivered job leave one copy.
+
+    An attachment whose extraction found no text has nothing to index, and that is a no-op rather
+    than a failure.
+    """
+    from app.evidence import service
+
+    async with session_factory()() as session:
+        indexed = await service.index_artifact_version(session, UUID(version_id))
+        await session.commit()
+    log.info("artifact version %s: %s", version_id, "indexed" if indexed else "nothing to index")

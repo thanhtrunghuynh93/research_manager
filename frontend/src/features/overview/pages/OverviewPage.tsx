@@ -10,7 +10,8 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { Badge, FreshnessBadge } from "@/components/evidence/Badges";
-import { useOverview } from "@/features/overview/queries";
+import { Failure } from "@/components/Failure";
+import { useEnsureObligations, useOverview } from "@/features/overview/queries";
 import { formatInstant, formatLocalDate } from "@/lib/dates";
 
 export function OverviewPage() {
@@ -28,6 +29,14 @@ export function OverviewPage() {
     review_queue: raw.review_queue ?? [],
     sync_issues: raw.sync_issues ?? [],
     stalled_analyses: raw.stalled_analyses ?? [],
+    // Absent means "this deployment predates the mail section", not "mail is broken". The whole
+    // screen is the professor's week; it must not go blank over a field it did not get.
+    mail: raw.mail ?? {
+      warning: false,
+      reason: "",
+      failed_notifications: 0,
+      failed_token_emails: 0,
+    },
   };
   const period = data.current_period;
 
@@ -56,15 +65,31 @@ export function OverviewPage() {
         </p>
       )}
 
+      {/* An invitation that never sent is an enrolment that did not happen, and nothing else on
+          this screen would ever mention the person it was for: they have no session, no in-app
+          message, and no other way into an invitation-only system. */}
+      {data.mail.warning && (
+        <p className="notice-warn mt-6 flex gap-3" data-testid="mail-warning">
+          <span className="font-mono text-[10px] uppercase leading-relaxed tracking-[0.12em]">
+            mail
+          </span>
+          <span>{data.mail.reason}</span>
+        </p>
+      )}
+
       <div className="mt-8 grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
         <Section
           title={t("overview.outstanding")}
           empty={t("overview.nothingOutstanding")}
           count={data.outstanding.count}
+          testId="outstanding"
           note={`${data.outstanding.note} ${t("overview.asOf", {
             when: formatInstant(data.outstanding.as_of),
           })}`}
         >
+          <li className="row">
+            <DeriveObligations periodId={data.current_period?.period_id} />
+          </li>
           {data.outstanding.entries.map((entry, index) => (
             <li
               key={`${String(entry.student_id)}:${String(entry.project_id)}:${index}`}
@@ -142,12 +167,14 @@ function Section({
   empty,
   count,
   note,
+  testId,
   children,
 }: {
   title: string;
   empty: string;
   count: number;
   note?: string;
+  testId?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -156,7 +183,7 @@ function Section({
         <span className="section-title">{title}</span>
         <span className={count === 0 ? "chip chip-neutral" : "chip chip-warn"}>{count}</span>
       </h2>
-      <ul className="panel mt-2.5">
+      <ul className="panel mt-2.5" data-testid={testId}>
         {count === 0 ? (
           <li className="px-4 py-2.5 text-sm text-muted-foreground">{empty}</li>
         ) : (
@@ -165,5 +192,32 @@ function Section({
       </ul>
       {note ? <p className="stamp mt-2">{note}</p> : null}
     </div>
+  );
+}
+
+/**
+ * The last link in the chain that makes a report due: a membership on an active project produces
+ * an obligation only once they are derived for the period. The nightly job does it too, so this
+ * button exists to not wait a day while a workspace is being set up.
+ */
+function DeriveObligations({ periodId }: { periodId?: string }) {
+  const { t } = useTranslation();
+  const ensure = useEnsureObligations();
+  if (!periodId) return null;
+
+  return (
+    <span className="flex w-full flex-wrap items-center justify-between gap-3">
+      <button
+        type="button"
+        disabled={ensure.isPending}
+        onClick={() => ensure.mutate(periodId)}
+        className="btn-ghost"
+        data-testid="derive-obligations"
+      >
+        {t("overview.deriveObligations")}
+      </button>
+      <span className="stamp">{t("overview.deriveNote")}</span>
+      <Failure error={ensure.error} />
+    </span>
   );
 }

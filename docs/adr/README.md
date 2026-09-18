@@ -3,6 +3,9 @@
 One file per decision, numbered, never edited after acceptance except to mark it superseded.
 Format: Context, Decision, Consequences. Keep each under a page.
 
+Every file in this directory appears below; `scripts/check_docs.py` asserts it, because an index
+that silently stops is worse than no index — a reader takes the last row for the last decision.
+
 | ADR | Decision |
 | --- | --- |
 | [0001](0001-modular-monolith.md) | Modular monolith with enforced module boundaries |
@@ -16,3 +19,9 @@ Format: Context, Decision, Consequences. Keep each under a page.
 | [0009](0009-access-epoch-for-cached-answers.md) | A counter, not an invalidation sweep, expires cached answers |
 | [0010](0010-presigned-uploads-verified-after-the-fact.md) | Uploads are granted, then verified; extraction has three outcomes |
 | [0011](0011-co-equal-professors.md) | Professors are co-equal; the role is fixed at acceptance |
+| [0012](0012-workspace-ownership.md) | Ownership is the workspace administration relation (amends 0011) |
+| [0013](0013-active-workspace-on-the-session.md) | *Superseded by 0014* — which workspace you are in was a property of the session |
+| [0014](0014-joining-and-leaving-a-workspace.md) | An account joins and leaves a workspace; four identity foreign keys cascade (supersedes 0013) |
+| [0015](0015-plural-workspace-membership.md) | Belonging to a workspace is plural; working in one is singular |
+| [0016](0016-reads-span-membership.md) | Reads span every workspace you belong to; writes go to one |
+| [0017](0017-students-own-their-projects.md) | A student starts and joins their own projects; the professor keeps the gate |

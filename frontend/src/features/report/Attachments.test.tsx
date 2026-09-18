@@ -141,3 +141,89 @@ test("the panel says what the claim field is for", async () => {
 
   expect(screen.getByText(/Recorded as your claim, not as a finding/i)).toBeInTheDocument();
 });
+
+test("while a file is in flight the panel names it, rather than going quiet", async () => {
+  // On the live stack the grant took 1.5s and the confirmation 4.6s, because confirming reads the
+  // text out of the file. For those six seconds the input is disabled and — since the change
+  // handler clears its value so the same file can be chosen again — shows no filename either. A
+  // disabled control showing nothing is indistinguishable from a broken one, which is what it was
+  // taken for.
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.post("/api/v1/artifacts/uploads", () => HttpResponse.json(GRANT, { status: 201 })),
+    http.put("https://objects.example/upload/a1", () => new HttpResponse(null, { status: 200 })),
+    http.post("/api/v1/artifacts/a1/confirm", async () => {
+      await held;
+      return HttpResponse.json(attachment());
+    }),
+  );
+  const { onAttached } = renderPanel();
+
+  await userEvent.upload(
+    screen.getByLabelText(/attach a file/i),
+    new File(["# notes"], "notes.md", { type: "text/markdown" }),
+  );
+
+  const sending = await screen.findByTestId("attachment-sending");
+  expect(sending).toHaveTextContent(/notes\.md/);
+  expect(screen.getByLabelText(/attach a file/i)).toBeDisabled();
+
+  release?.();
+  await waitFor(() => expect(onAttached).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByTestId("attachment-sending")).not.toBeInTheDocument());
+});
+
+test("a student removes a file they attached, and the list is refetched", async () => {
+  const removed: string[] = [];
+  server.use(
+    http.delete("/api/v1/artifacts/a1", () => {
+      removed.push("a1");
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const { onAttached } = renderPanel([attachment()]);
+
+  await userEvent.click(screen.getByTestId("remove-attachment"));
+
+  await waitFor(() => expect(removed).toEqual(["a1"]));
+  expect(onAttached).toHaveBeenCalled();
+});
+
+test("declining the confirmation removes nothing", async () => {
+  const removed: string[] = [];
+  server.use(
+    http.delete("/api/v1/artifacts/a1", () => {
+      removed.push("a1");
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  renderPanel([attachment()]);
+
+  await userEvent.click(screen.getByTestId("remove-attachment"));
+
+  expect(removed).toEqual([]);
+});
+
+test("a file stays removable after the week is submitted", async () => {
+  // The bound at submission was dropped: an attachment is the student's own evidence for their own
+  // work, and someone who uploaded the wrong thing should not have to ask permission to take it
+  // back. The panel therefore has no state in which it hides the control.
+  const removed: string[] = [];
+  server.use(
+    http.delete("/api/v1/artifacts/a1", () => {
+      removed.push("a1");
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderPanel([attachment()]);
+
+  await userEvent.click(screen.getByTestId("remove-attachment"));
+
+  await waitFor(() => expect(removed).toEqual(["a1"]));
+});

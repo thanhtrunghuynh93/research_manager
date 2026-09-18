@@ -29,7 +29,7 @@ def _in_scope(
 ) -> ColumnElement[bool]:
     """The project a row belongs to must be one the caller may see."""
     project_column = Project.id if model is Project else model.project_id  # type: ignore[union-attr]
-    same_workspace: ColumnElement[bool] = model.workspace_id == scope.workspace_id
+    same_workspace: ColumnElement[bool] = scope.within(model.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, project_column.in_(scope.project_ids))
@@ -37,7 +37,19 @@ def _in_scope(
 
 @register_policy(Project)
 def project_visible_to(scope: Scope) -> ColumnElement[bool]:
-    return _in_scope(Project, scope)
+    """AUTH-07: the creator keeps the record they started, whether or not they are still on it.
+
+    The extra term is on `Project` alone and not in `_in_scope`, which `Milestone`, `Task` and
+    `ResearchDecision` share: widening it there would hand a non-member every milestone and every
+    decision in the workspace in the same edit. Here it grants exactly one row — the project whose
+    fields its creator is entitled to change, which they must be able to read to change.
+    """
+    if scope.is_prof:
+        return scope.within(Project.workspace_id)
+    return and_(
+        scope.within(Project.workspace_id),
+        or_(Project.id.in_(scope.project_ids), Project.created_by == scope.user_id),
+    )
 
 
 @register_policy(Milestone)
@@ -58,7 +70,7 @@ def research_decision_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(ProjectMembership)
 def membership_visible_to(scope: Scope) -> ColumnElement[bool]:
     """UI-03: members of a project see who else works on it, including past members."""
-    same_workspace = ProjectMembership.workspace_id == scope.workspace_id
+    same_workspace = scope.within(ProjectMembership.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
@@ -73,7 +85,7 @@ def membership_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(PlanBaseline)
 def plan_baseline_visible_to(scope: Scope) -> ColumnElement[bool]:
     """A student sees the plan they are assessed against; the professor sees every plan."""
-    same_workspace = PlanBaseline.workspace_id == scope.workspace_id
+    same_workspace = scope.within(PlanBaseline.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(

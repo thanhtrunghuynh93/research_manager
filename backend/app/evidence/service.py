@@ -22,6 +22,9 @@ from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.ids import uuid7
+from app.core.jobs import defer_after_commit
+from app.core.jobs import key as job_key
+from app.core.storage import ObjectStore
 from app.core.types import Role, Visibility
 from app.evidence import policies  # noqa: F401  (policies register on import)
 from app.evidence import repository as repo
@@ -72,6 +75,7 @@ from app.evidence.schemas import (
 )
 from app.identity import service as identity_service
 from app.projects import service as projects_service
+from app.reporting import artifacts as reporting_artifacts
 from app.reporting import service as reporting_service
 
 log = logging.getLogger(__name__)
@@ -135,8 +139,7 @@ async def connect_repository(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="repository.connected",
         target_table="repositories",
         target_id=repository.id,
@@ -174,8 +177,7 @@ async def link_project(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="repository.linked_project",
         target_table="project_repositories",
         target_id=link.id,
@@ -579,8 +581,10 @@ async def record_force_push(
     )
     write_audit(
         session,
+        scope=scope,
+        # The repository's own workspace rather than the scope's: a force push is recorded against
+        # the workspace that owns the repository, which is the record being changed.
         workspace_id=repository.workspace_id,
-        actor_id=scope.user_id,
         action="repository.force_push_recorded",
         target_table="repositories",
         target_id=repository_id,
@@ -656,8 +660,7 @@ async def map_identity(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="developer_identity.mapped",
         target_table="developer_identities",
         target_id=identity.id,
@@ -696,8 +699,7 @@ async def confirm_identity(session: AsyncSession, scope: Scope, identity_id: UUI
     identity.confirmed_by = scope.user_id
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="developer_identity.confirmed",
         target_table="developer_identities",
         target_id=identity.id,
@@ -1168,21 +1170,31 @@ async def _require_repository(
 # ------------------------------------------------------------------ reactions to reporting
 
 
-async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
-    """Index the submitted entries so an assessment has something to cite (ASSESS-01).
+async def index_report_entries(session: AsyncSession, report_version_id: UUID) -> int:
+    """Index one submitted version's entries. Returns how many were indexed.
 
-    Reporting emits; evidence reacts. A report entry is the student's own account of their work, so
-    it is indexed as `student_private` and owned by them: it supports their assessment and appears
-    in their retrieval, and never in another student's (AUTH-02).
+    A report entry is the student's own account of their work, so it is indexed as
+    `student_private` and owned by them: it supports their assessment and appears in their
+    retrieval, and never in another student's (AUTH-02).
+
+    Everything it needs is read from the version, so the inline call and the retry job in
+    `evidence.tasks` do the same work from the same source. `index_evidence` upserts the reference
+    and replaces its chunks, so running it twice leaves one copy.
     """
+    version = await reporting_service.version_owner_for_job(session, report_version_id)
+    if version is None:
+        log.warning("no report version %s to index", report_version_id)
+        return 0
+
+    indexed = 0
     for entry in await reporting_service.entries_for_indexing(
-        session, report_version_id=event.report_version_id
+        session, report_version_id=report_version_id
     ):
         await index_evidence(
             session,
-            workspace_id=event.workspace_id,
+            workspace_id=version.workspace_id,
             project_id=entry.project_id,
-            owner_student_id=event.student_id,
+            owner_student_id=version.student_id,
             visibility=Visibility.STUDENT_PRIVATE,
             source_kind=EvidenceSourceKind.REPORT_ENTRY,
             source_id=entry.id,
@@ -1191,10 +1203,74 @@ async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
             text=entry.text,
             source_time=entry.submitted_at,
         )
+        indexed += 1
+    return indexed
 
 
-async def _on_artifact_extracted(event: Any, session: AsyncSession) -> None:
-    """REP-04: an attachment's text becomes citable evidence the moment it is readable.
+async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
+    """Index the submitted entries so an assessment has something to cite (ASSESS-01).
+
+    Reporting emits; evidence reacts — reporting does not import evidence (architecture §4.1).
+
+    Indexing runs inline because the chunks have to commit with the version that cites them: a job
+    would let the assessment pipeline, which is also a job, read a snapshot missing the week it is
+    about. The cost is one call to the embedding provider on the student's critical path, and
+    `events.emit` runs handlers inside the submitting transaction with no isolation — so a provider
+    that is down, rate limited or out of credit used to surface as a 500 and lose the submission.
+
+    It cannot. The submitted version is the thing that cannot be lost (requirements §10, AC-13), so
+    a failure here is caught and the work handed to a retryable job. The same trade the assessment
+    enqueue makes: a thinner snapshot is recoverable — coverage and confidence describe it, and the
+    professor can re-run the analysis — and an unrecorded submission is not.
+    """
+    try:
+        await index_report_entries(session, event.report_version_id)
+    except Exception:  # noqa: BLE001 - the submitted version is what must survive
+        log.exception(
+            "could not index the entries of report version %s inline; the report is recorded and "
+            "the indexing is queued for retry",
+            event.report_version_id,
+        )
+        _defer_reindex(session, event.report_version_id)
+
+
+def _defer_reindex(session: AsyncSession, report_version_id: UUID) -> None:
+    """Hand the indexing to a job, once this transaction commits.
+
+    Deferred rather than sent now for the reason `app.core.jobs` gives: a job sent before the
+    commit can be dequeued against a version that does not exist yet, and would outlive a
+    submission that rolled back. Keyed on the version, so a redelivered event is one job.
+
+    Its own failure is swallowed too. By this point the submission is what matters, and a queue
+    that is briefly unreachable must not turn a recorded report into a failed request.
+    """
+    from app.evidence import tasks
+
+    try:
+        defer_after_commit(
+            session,
+            tasks.index_report_entries,
+            queueing_lock=job_key("index-report", report_version_id),
+            report_version_id=str(report_version_id),
+        )
+    except Exception:  # noqa: BLE001 - see the docstring; nothing here may reach the caller
+        log.exception("could not queue the re-index of report version %s", report_version_id)
+
+
+async def _index_artifact(
+    session: AsyncSession,
+    *,
+    workspace_id: UUID,
+    artifact_id: UUID,
+    version_id: UUID,
+    version_no: int,
+    project_id: UUID | None,
+    owner_student_id: UUID,
+    supported_claim: str,
+    text: str,
+    source_time: Any,
+) -> None:
+    """One attachment version, as citable evidence.
 
     `student_private`, matching the artifact record itself: an attachment supports one student's
     report, and indexing it more widely would let a project-mate retrieve through search what they
@@ -1202,18 +1278,118 @@ async def _on_artifact_extracted(event: Any, session: AsyncSession) -> None:
     """
     await index_evidence(
         session,
-        workspace_id=event.workspace_id,
-        project_id=event.project_id,
-        owner_student_id=event.owner_student_id,
+        workspace_id=workspace_id,
+        project_id=project_id,
+        owner_student_id=owner_student_id,
         visibility=Visibility.STUDENT_PRIVATE,
         source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
-        source_id=event.version_id,
-        source_version=str(event.version_no),
-        locator=f"/artifacts/{event.artifact_id}",
-        text=event.text,
-        supported_claim=event.supported_claim or None,
-        source_time=event.source_time,
+        source_id=version_id,
+        source_version=str(version_no),
+        locator=f"/artifacts/{artifact_id}",
+        text=text,
+        supported_claim=supported_claim or None,
+        source_time=source_time,
     )
+
+
+async def index_artifact_version(
+    session: AsyncSession, version_id: UUID, *, store: ObjectStore | None = None
+) -> bool:
+    """Re-index one attachment version from what is stored. False when there is nothing to index.
+
+    The retry path. The inline one indexes the text the event already carries — re-reading it from
+    the object store there would be a round trip for text we are holding, and would ignore a store
+    the caller injected. By the time a retry runs the event is gone, so everything is read back
+    from the version instead, which also means a stale job argument cannot make it index under the
+    wrong workspace or owner.
+
+    Absent extracted text is a no-op: an attachment that had nothing to read has nothing to index.
+    """
+    subject = await reporting_artifacts.version_for_indexing(session, version_id, store=store)
+    if subject is None:
+        return False
+
+    await _index_artifact(
+        session,
+        workspace_id=subject.workspace_id,
+        artifact_id=subject.artifact_id,
+        version_id=subject.version_id,
+        version_no=subject.version_no,
+        project_id=subject.project_id,
+        owner_student_id=subject.owner_student_id,
+        supported_claim=subject.supported_claim,
+        text=subject.text,
+        source_time=subject.source_time,
+    )
+    return True
+
+
+async def _on_artifact_extracted(event: Any, session: AsyncSession) -> None:
+    """REP-04: an attachment's text becomes citable evidence the moment it is readable.
+
+    Inline for the same reason a submitted report is: the chunks commit with the version that
+    cites them, so the week's assessment does not read a snapshot missing the file uploaded to
+    support it. That puts the embedding provider on the student's upload path, and a provider that
+    is down used to surface as a 500 — losing an attachment whose bytes were already stored and
+    whose text was already extracted.
+
+    So the failure is caught and the work handed to a retryable job. The bytes and the text are
+    both in the object store by the time this runs, which is what makes the retry possible without
+    the student uploading anything again.
+    """
+    try:
+        await _index_artifact(
+            session,
+            workspace_id=event.workspace_id,
+            artifact_id=event.artifact_id,
+            version_id=event.version_id,
+            version_no=event.version_no,
+            project_id=event.project_id,
+            owner_student_id=event.owner_student_id,
+            supported_claim=event.supported_claim,
+            text=event.text,
+            source_time=event.source_time,
+        )
+    except Exception:  # noqa: BLE001 - the stored attachment is what must survive
+        log.exception(
+            "could not index artifact version %s inline; the attachment is stored and the "
+            "indexing is queued for retry",
+            event.version_id,
+        )
+        _defer_reindex_artifact(session, event.version_id)
+
+
+def _defer_reindex_artifact(session: AsyncSession, version_id: UUID) -> None:
+    """Hand the indexing to a job, once this transaction commits. Keyed on the version."""
+    from app.evidence import tasks
+
+    try:
+        defer_after_commit(
+            session,
+            tasks.index_artifact_version,
+            queueing_lock=job_key("index-artifact", version_id),
+            version_id=str(version_id),
+        )
+    except Exception:  # noqa: BLE001 - nothing here may reach the caller
+        log.exception("could not queue the re-index of artifact version %s", version_id)
+
+
+async def _on_artifact_removed(event: Any, session: AsyncSession) -> None:
+    """Take the withdrawn attachment out of the evidence index (requirements §11).
+
+    Not best-effort, unlike indexing: a reference left behind is a file the assistant can still
+    quote and cite after the student removed it, which is the failure this handler exists to
+    prevent. Reporting deletes the objects and the rows in the same transaction, so if this raises
+    the whole removal is refused and the attachment stays — visible and searchable together,
+    rather than gone from one and answerable from the other.
+    """
+    forgotten = await repo.forget_sources(
+        session,
+        workspace_id=event.workspace_id,
+        source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+        source_ids=event.version_ids,
+    )
+    log.info("forgot %d evidence reference(s) for artifact %s", forgotten, event.artifact_id)
 
 
 def register_subscriptions() -> None:
@@ -1222,6 +1398,7 @@ def register_subscriptions() -> None:
 
     reporting_events.subscribe(reporting_events.ReportSubmitted, _on_report_submitted)
     reporting_events.subscribe(reporting_events.ArtifactExtracted, _on_artifact_extracted)
+    reporting_events.subscribe(reporting_events.ArtifactRemoved, _on_artifact_removed)
 
 
 register_subscriptions()

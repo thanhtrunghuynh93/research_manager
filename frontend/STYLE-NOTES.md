@@ -41,9 +41,14 @@ Three families, three jobs:
 
 ## Dark mode
 
-Comes free: the dark palette is the same stylesheet under `.dark`. Nothing in the app toggles that
-class yet — add a toggle that sets `document.documentElement.classList.toggle("dark")` and
-persists the choice, or drive it from `prefers-color-scheme`.
+Comes free: the dark palette is the same stylesheet under `.dark`, and the whole theme hangs off
+that one class on the root element.
+
+**Dark is the default.** `initialTheme()` in `src/lib/theme.ts` returns the reader's stored choice
+and otherwise `"dark"` — deliberately not `prefers-color-scheme`, because the default describes
+this product rather than the reader's desktop. `main.tsx` applies it before the first render and
+`index.html` carries `color-scheme: dark light`, so the page never flashes light on its way in. The
+header toggle flips it and persists the answer under `rm.theme`, which wins from then on.
 
 ## Design decisions worth keeping
 

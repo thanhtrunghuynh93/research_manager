@@ -342,6 +342,28 @@ async def list_identities(
     return list((await session.execute(statement)).scalars().all())
 
 
+async def forget_sources(
+    session: AsyncSession,
+    *,
+    workspace_id: UUID,
+    source_kind: EvidenceSourceKind,
+    source_ids: tuple[UUID, ...],
+) -> int:
+    """Delete the references for these sources; their chunks cascade from the composite key."""
+    if not source_ids:
+        return 0
+    result = await session.execute(
+        delete(EvidenceReference)
+        .where(
+            EvidenceReference.workspace_id == workspace_id,
+            EvidenceReference.source_kind == source_kind,
+            EvidenceReference.source_id.in_(source_ids),
+        )
+        .returning(EvidenceReference.id)
+    )
+    return len(result.scalars().all())
+
+
 async def upsert_evidence_reference(session: AsyncSession, **values: object) -> EvidenceReference:
     """One reference per (source kind, id, version): re-indexing updates rather than duplicates."""
     statement = (

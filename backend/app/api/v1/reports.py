@@ -42,6 +42,16 @@ async def configure_calendar(
     )
 
 
+@router.get("/calendar", summary="The reporting calendar in force")
+async def current_calendar(scope: ScopeDep, session: SessionDep) -> CalendarConfigOut | None:
+    """`null` when no calendar has been configured, which is a state and not an error.
+
+    Readable by a student as well as a professor: `CalendarConfig`'s policy is workspace-wide
+    because everyone needs to know when their report is due (REP-01).
+    """
+    return await service.current_calendar(session, scope)
+
+
 @router.get("/periods", summary="List reporting periods")
 async def list_periods(
     scope: ScopeDep, session: SessionDep, through: date | None = None

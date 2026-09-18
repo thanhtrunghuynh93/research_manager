@@ -11,6 +11,8 @@ from app.api.deps import ProfScopeDep, ScopeDep, SessionDep
 from app.core.pagination import Page
 from app.projects import service
 from app.projects.schemas import (
+    JoinableProjectOut,
+    JoinIn,
     MembershipEndIn,
     MembershipIn,
     MembershipOut,
@@ -39,10 +41,16 @@ async def list_projects(
     )
 
 
+@router.get("/joinable", summary="Projects a student may join")
+async def list_joinable(scope: ScopeDep, session: SessionDep) -> list[JoinableProjectOut]:
+    # Declared above `/{project_id}`: FastAPI matches in registration order, so the UUID path
+    # parameter would otherwise claim the literal `joinable` and answer 422 rather than fall
+    # through to this route.
+    return await service.list_joinable(session, scope)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Create a project")
-async def create_project(
-    payload: ProjectIn, scope: ProfScopeDep, session: SessionDep
-) -> ProjectOut:
+async def create_project(payload: ProjectIn, scope: ScopeDep, session: SessionDep) -> ProjectOut:
     return await service.create_project(
         session,
         scope,
@@ -54,6 +62,7 @@ async def create_project(
         start_on=payload.start_on,
         target_on=payload.target_on,
         venue_target=payload.venue_target,
+        repo_url=payload.repo_url,
         shared_resources=payload.shared_resources,
     )
 
@@ -65,7 +74,7 @@ async def get_project(project_id: UUID, scope: ScopeDep, session: SessionDep) ->
 
 @router.patch("/{project_id}", summary="Update a project")
 async def update_project(
-    project_id: UUID, payload: ProjectPatch, scope: ProfScopeDep, session: SessionDep
+    project_id: UUID, payload: ProjectPatch, scope: ScopeDep, session: SessionDep
 ) -> ProjectOut:
     return await service.update_project(
         session, scope, project_id, **payload.model_dump(exclude_unset=True)
@@ -109,6 +118,19 @@ async def add_member(
 
 
 @router.post(
+    "/{project_id}/join",
+    status_code=status.HTTP_201_CREATED,
+    summary="Join a project that is open to joining",
+)
+async def join_project(
+    project_id: UUID, payload: JoinIn, scope: ScopeDep, session: SessionDep
+) -> MembershipOut:
+    return await service.join_project(
+        session, scope, project_id, responsibility=payload.responsibility
+    )
+
+
+@router.post(
     "/{project_id}/members/{membership_id}/end",
     summary="End a membership, keeping its history",
 )
@@ -116,7 +138,7 @@ async def end_membership(
     project_id: UUID,
     membership_id: UUID,
     payload: MembershipEndIn,
-    scope: ProfScopeDep,
+    scope: ScopeDep,
     session: SessionDep,
 ) -> MembershipOut:
     return await service.end_membership(session, scope, membership_id, left_on=payload.left_on)

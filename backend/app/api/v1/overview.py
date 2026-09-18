@@ -20,6 +20,7 @@ from app.api.deps import ProfScopeDep, SessionDep
 from app.assessment import ops
 from app.assistant import facts
 from app.core.clock import now
+from app.notifications import service as notifications_service
 
 router = APIRouter(tags=["overview"])
 
@@ -42,6 +43,19 @@ class Outstanding(BaseModel):
     note: str = ""
 
 
+class MailState(BaseModel):
+    """UI-01: mail that did not arrive, named rather than left silent.
+
+    An invitation that failed is the sharpest case — enrolment is invitation-only, so the person it
+    was for has no way in at all, and nothing else on this screen would ever mention them.
+    """
+
+    warning: bool
+    reason: str
+    failed_notifications: int
+    failed_token_emails: int
+
+
 class BudgetState(BaseModel):
     analysis_delayed: bool
     warning: bool
@@ -60,6 +74,7 @@ class OverviewOut(BaseModel):
     # AC-13: runs that stopped short, with the reason, so a retry is an informed decision.
     stalled_analyses: list[dict[str, Any]] = Field(default_factory=list)
     ai_budget: BudgetState
+    mail: MailState
 
 
 @router.get("/overview", summary="The professor's current week at a glance")
@@ -73,6 +88,7 @@ async def overview(scope: ProfScopeDep, session: SessionDep) -> OverviewOut:
     stale = await facts.run(session, "stale_repositories", query)
     stalled = await facts.run(session, "stalled_analyses", query)
     budgets = await ops.ai_budgets(session, scope)
+    mail = await notifications_service.mail_health(session, scope)
 
     return OverviewOut(
         as_of=as_of,
@@ -103,5 +119,11 @@ async def overview(scope: ProfScopeDep, session: SessionDep) -> OverviewOut:
             reason=budgets.reason,
             spent_usd=str(budgets.spent_usd),
             monthly_usd=budgets.monthly_usd,
+        ),
+        mail=MailState(
+            warning=mail.warning,
+            reason=mail.reason,
+            failed_notifications=mail.failed_notifications,
+            failed_token_emails=mail.failed_token_emails,
         ),
     )

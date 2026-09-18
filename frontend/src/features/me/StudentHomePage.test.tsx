@@ -45,6 +45,7 @@ function handlers({
   ] as ObligationFixture[],
   report = null as unknown,
   reportStatus = 404,
+  released = [] as object[],
 } = {}) {
   return [
     http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
@@ -60,6 +61,19 @@ function handlers({
           )
         : HttpResponse.json(report),
     ),
+    // Added with the released-assessment block; individual tests override these.
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({
+        id: "s1",
+        workspace_id: "w1",
+        role: "student",
+        email: "an@example.edu",
+        display_name: "An",
+        state: "active",
+        created_at: "2026-09-01T00:00:00Z",
+      }),
+    ),
+    http.get("/api/v1/assessments", () => HttpResponse.json(released)),
   ];
 }
 
@@ -140,4 +154,16 @@ test("shows an excused project as excused rather than owed", async () => {
 
   expect(await screen.findByText(/excused/i)).toBeInTheDocument();
   expect(screen.getByText(/Approved leave/)).toBeInTheDocument();
+});
+
+test("the week links on to the whole record, which nothing else does", async () => {
+  // This screen no longer carries the released assessments and My progress is not on the menu, so
+  // this link is the student's only route to what their professor published. A route nothing
+  // links to is a route nobody opens.
+  server.use(...handlers());
+  renderPage();
+
+  const link = await screen.findByTestId("to-my-progress");
+
+  expect(link).toHaveAttribute("href", "/me/profile");
 });

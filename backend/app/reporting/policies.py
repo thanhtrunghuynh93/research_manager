@@ -28,17 +28,17 @@ from app.reporting.models import (
 @register_policy(ReportingPeriod)
 def period_visible_to(scope: Scope) -> ColumnElement[bool]:
     """The calendar is workspace-wide: everyone needs to know when their report is due."""
-    return ReportingPeriod.workspace_id == scope.workspace_id
+    return scope.within(ReportingPeriod.workspace_id)
 
 
 @register_policy(CalendarConfig)
 def calendar_visible_to(scope: Scope) -> ColumnElement[bool]:
-    return CalendarConfig.workspace_id == scope.workspace_id
+    return scope.within(CalendarConfig.workspace_id)
 
 
 @register_policy(ReportingObligation)
 def obligation_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = ReportingObligation.workspace_id == scope.workspace_id
+    same_workspace = scope.within(ReportingObligation.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, ReportingObligation.student_id == scope.user_id)
@@ -46,7 +46,7 @@ def obligation_visible_to(scope: Scope) -> ColumnElement[bool]:
 
 @register_policy(WeeklyReport)
 def report_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = WeeklyReport.workspace_id == scope.workspace_id
+    same_workspace = scope.within(WeeklyReport.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, WeeklyReport.student_id == scope.user_id)
@@ -60,9 +60,9 @@ def _through_report(report_id: InstrumentedAttribute[UUID], scope: Scope) -> Col
 @register_policy(ReportVersion)
 def version_visible_to(scope: Scope) -> ColumnElement[bool]:
     if scope.is_prof:
-        return ReportVersion.workspace_id == scope.workspace_id
+        return scope.within(ReportVersion.workspace_id)
     return and_(
-        ReportVersion.workspace_id == scope.workspace_id,
+        scope.within(ReportVersion.workspace_id),
         _through_report(ReportVersion.report_id, scope),
     )
 
@@ -70,9 +70,9 @@ def version_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(ProjectReportEntry)
 def entry_visible_to(scope: Scope) -> ColumnElement[bool]:
     if scope.is_prof:
-        return ProjectReportEntry.workspace_id == scope.workspace_id
+        return scope.within(ProjectReportEntry.workspace_id)
     return and_(
-        ProjectReportEntry.workspace_id == scope.workspace_id,
+        scope.within(ProjectReportEntry.workspace_id),
         ProjectReportEntry.report_version_id.in_(
             select(ReportVersion.id).where(version_visible_to(scope))
         ),
@@ -82,9 +82,9 @@ def entry_visible_to(scope: Scope) -> ColumnElement[bool]:
 @register_policy(RevisionRequest)
 def revision_request_visible_to(scope: Scope) -> ColumnElement[bool]:
     if scope.is_prof:
-        return RevisionRequest.workspace_id == scope.workspace_id
+        return scope.within(RevisionRequest.workspace_id)
     return and_(
-        RevisionRequest.workspace_id == scope.workspace_id,
+        scope.within(RevisionRequest.workspace_id),
         _through_report(RevisionRequest.report_id, scope),
     )
 
@@ -97,7 +97,7 @@ def artifact_visible_to(scope: Scope) -> ColumnElement[bool]:
     a report is private to its author and the professor (requirements §2); sharing the file more
     widely than the entry it belongs to would be a leak through the back door.
     """
-    same_workspace = Artifact.workspace_id == scope.workspace_id
+    same_workspace = scope.within(Artifact.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(same_workspace, Artifact.owner_student_id == scope.user_id)

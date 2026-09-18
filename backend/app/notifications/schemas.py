@@ -24,18 +24,5 @@ class NotificationOut(BaseModel):
     created_at: datetime
 
 
-class PreferenceOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    user_id: UUID
-    kind: str
-    muted_at: datetime
-
-
-class MuteIn(BaseModel):
-    kind: str = Field(min_length=1, max_length=100)
-
-
 class ReminderOffsetsIn(BaseModel):
     offsets_hours: list[int] = Field(default_factory=lambda: [48, 6])

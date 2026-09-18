@@ -56,12 +56,17 @@ export function Attachments({
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
+  // What is in flight, purely so the screen can say so. The file input cannot hold it: its value
+  // is cleared on selection (see the change handler), and a disabled input showing nothing for the
+  // several seconds this takes is indistinguishable from a broken one.
+  const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claim, setClaim] = useState("");
   const [link, setLink] = useState("");
 
   async function upload(file: File) {
     setBusy(true);
+    setSending(file.name);
     setError(null);
     try {
       const grant = await api.post<Grant>("/api/v1/artifacts/uploads", {
@@ -83,6 +88,21 @@ export function Attachments({
       await api.post<Attachment>(`/api/v1/artifacts/${grant.artifact_id}/confirm`);
       onAttached();
       setClaim("");
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.problem.detail : String(problem));
+    } finally {
+      setBusy(false);
+      setSending(null);
+    }
+  }
+
+  async function remove(artifactId: string, filename: string) {
+    if (!window.confirm(t("report.attachments.removeConfirm", { name: filename }))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.delete(`/api/v1/artifacts/${artifactId}`);
+      onAttached();
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.problem.detail : String(problem));
     } finally {
@@ -132,6 +152,15 @@ export function Attachments({
               >
                 {t("report.attachments.download")}
               </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void remove(attachment.artifact_id, attachment.filename)}
+                className="btn-quiet"
+                data-testid="remove-attachment"
+              >
+                {t("report.attachments.remove")}
+              </button>
             </span>
           </li>
         ))}
@@ -160,14 +189,22 @@ export function Attachments({
             <input
               type="file"
               disabled={busy}
+              aria-busy={busy}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) void upload(file);
+                // Cleared so that choosing the same file again still fires a change — after a
+                // failure that is exactly what someone does. The name is shown below instead.
                 event.target.value = "";
               }}
-              className="mt-2 w-full rounded border border-dashed border-border-strong bg-surface px-3 py-2.5 text-[13px] file:mr-3 file:rounded file:border file:border-border file:bg-raised file:px-2 file:py-1 file:text-[12px]"
+              className="file-input"
             />
           </label>
+          {sending && (
+            <p className="stamp" role="status" data-testid="attachment-sending">
+              {t("report.attachments.sending", { name: sending })}
+            </p>
+          )}
           <label className="block">
             <span className="field-label">{t("report.attachments.link")}</span>
             <span className="mt-2 flex gap-2">

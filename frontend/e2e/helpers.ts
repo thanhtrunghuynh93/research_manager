@@ -11,6 +11,19 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 export const PROF = { email: "prof@example.edu", password: "demo-password-change-me" };
 export const STUDENT = { email: "an.nguyen@example.edu", password: "demo-password-change-me" };
 
+/**
+ * A student no other spec depends on.
+ *
+ * Specs share one seeded dataset, so a spec that changes what a student is on changes what every
+ * other spec sees — `submit-weekly-package` counts An Nguyen's report tabs, and giving her another
+ * project is how that spec starts failing only when the suite runs in order. Anything that adds a
+ * project or a membership uses this account instead.
+ */
+export const STUDENT_SOLO = {
+  email: "farid.haddad@example.edu",
+  password: "demo-password-change-me",
+};
+
 /** Mailpit's HTTP API, so a delivered email can be read without a mailbox. */
 export const MAILPIT = process.env.E2E_MAILPIT_URL ?? "http://localhost:8025";
 
@@ -55,6 +68,20 @@ export async function signIn(page: Page, who: { email: string; password: string 
 export async function signOut(page: Page) {
   await page.getByRole("button", { name: /sign out/i }).click();
 }
+
+/**
+ * The student roll on `/people`, whichever workspace section holds it.
+ *
+ * Since ADR 0016 the roll is grouped by workspace and each list is keyed `students-{workspace.id}`,
+ * so a fixed test id no longer names anything. The prefix selector keeps the spec ignorant of ids
+ * it has no way to know. The demo professor belongs to one workspace; if that ever changes this
+ * resolves to several elements and fails loudly rather than silently reading the wrong one.
+ */
+export const studentRoll = (page: Page) => page.locator('[data-testid^="students-"]');
+
+/** One person's row on the roll, found by the address that is unique to them. */
+export const studentRow = (page: Page, email: string) =>
+  studentRoll(page).getByRole("listitem").filter({ hasText: email });
 
 type Message = { ID: string; To: { Address: string }[]; Subject: string };
 

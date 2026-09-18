@@ -10,6 +10,13 @@ import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/evidence/Badges";
+import { useSession } from "@/features/auth/queries";
+import {
+  AddMemberForm,
+  MembershipControls,
+  ProjectFieldsForm,
+  StatusControls,
+} from "@/features/projects/components/ProjectControls";
 import {
   useDecisions,
   useMembers,
@@ -35,12 +42,18 @@ export function ProjectPage() {
   const milestones = useMilestones(id);
   const decisions = useDecisions(id);
   const progress = useProgress(id);
+  const session = useSession();
+  // The route is signed-in, not professor-only: a student member can open their own project.
+  const isProf = session.data?.role === "prof";
 
   if (project.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (project.isError)
     return <p className="text-sm text-muted-foreground">{t("project.unavailable")}</p>;
 
   const data = project.data;
+  // AUTH-07: whoever started the project may keep its description right, for as long as it
+  // exists. Its standing — status, who may join, the AI restriction — stays the professor's.
+  const isCreator = Boolean(session.data && data.created_by === session.data.id);
   // PROJ-06 reports a 0–1 fraction (`accepted_completion` is Numeric(3, 2)), and Decimal crosses
   // the wire as a string — so 87.5% complete arrives as "0.8750". Scale it once, here: read as a
   // percentage it showed "0.875%", and a meter driven by it would sit almost empty.
@@ -61,6 +74,22 @@ export function ProjectPage() {
         {data.description && (
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink2">{data.description}</p>
         )}
+        {data.repo_url && (
+          <p className="mt-2 text-sm">
+            <a
+              href={data.repo_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="link"
+              data-testid="project-repo"
+            >
+              {data.repo_url}
+            </a>
+          </p>
+        )}
+        {isProf ? <StatusControls project={data} /> : null}
+        {isProf || isCreator ? <ProjectFieldsForm project={data} /> : null}
+        {!isProf ? <MembershipControls project={data} /> : null}
       </header>
 
       <div className="mt-7 grid gap-7 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
@@ -128,6 +157,7 @@ export function ProjectPage() {
               </li>
             )}
           </ul>
+          {isProf ? <AddMemberForm project={data} /> : null}
         </div>
 
         <div>
