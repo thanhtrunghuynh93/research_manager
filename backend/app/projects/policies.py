@@ -37,18 +37,38 @@ def _in_scope(
 
 @register_policy(Project)
 def project_visible_to(scope: Scope) -> ColumnElement[bool]:
-    """AUTH-07: the creator keeps the record they started, whether or not they are still on it.
+    """Who may read a project *record*: a member, its creator (AUTH-07), and anyone who was on it.
 
-    The extra term is on `Project` alone and not in `_in_scope`, which `Milestone`, `Task` and
+    The extra terms are on `Project` alone and not in `_in_scope`, which `Milestone`, `Task` and
     `ResearchDecision` share: widening it there would hand a non-member every milestone and every
-    decision in the workspace in the same edit. Here it grants exactly one row — the project whose
-    fields its creator is entitled to change, which they must be able to read to change.
+    decision in the workspace in the same edit. Here each grants exactly the row a person is
+    entitled to — the creator's, because they may change fields they must be able to read; and a
+    past member's, because their own history refers to it.
+
+    That last term is the one to read against AUTH-03, which says ending a membership "must
+    invalidate subsequent access" and, in the same breath, "preserve historical records for
+    authorized supervision". The access AUTH-03 is protecting is the project's *ongoing work* —
+    its milestones, its tasks including another student's blockers, its decisions, its evidence and
+    the identity of everyone on it — and `scope.project_ids` still gates every one of those, which
+    is what §8.4 means by a membership being the entire grant. What it does not need to protect is
+    the title of a project a student spent a term on: without it their own retained records — a
+    submitted report, an approved assessment, this week's obligation, all keyed to `student_id` and
+    all still theirs to read — render as a bare uuid, and the project page they arrive at from one
+    is a refusal. Leaving a project should end the work, not unname it.
     """
     if scope.is_prof:
         return scope.within(Project.workspace_id)
+    was_ever_on = select(ProjectMembership.project_id).where(
+        ProjectMembership.workspace_id == Project.workspace_id,
+        ProjectMembership.student_id == scope.user_id,
+    )
     return and_(
         scope.within(Project.workspace_id),
-        or_(Project.id.in_(scope.project_ids), Project.created_by == scope.user_id),
+        or_(
+            Project.id.in_(scope.project_ids),
+            Project.created_by == scope.user_id,
+            Project.id.in_(was_ever_on),
+        ),
     )
 
 

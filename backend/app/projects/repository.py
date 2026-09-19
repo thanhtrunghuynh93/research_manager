@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import date
 from uuid import UUID
 
@@ -117,6 +118,25 @@ async def get_membership(
     ).scalar_one_or_none()
 
 
+async def ended_membership_dates(
+    session: AsyncSession, workspace_id: UUID, student_id: UUID
+) -> dict[UUID, date]:
+    """When this student left each project they are no longer on (PROJ-02 keeps the row).
+
+    Keyed by project rather than by membership: a student who left and was later assigned again
+    has two rows, and the one that matters to a reader is the open one — which is absent here,
+    because an open membership has no `left_on` to report.
+    """
+    rows = await session.execute(
+        select(ProjectMembership.project_id, ProjectMembership.left_on).where(
+            ProjectMembership.workspace_id == workspace_id,
+            ProjectMembership.student_id == student_id,
+            ProjectMembership.left_on.is_not(None),
+        )
+    )
+    return {project_id: left_on for project_id, left_on in rows}
+
+
 async def list_memberships(
     session: AsyncSession, scope: Scope, project_id: UUID, *, include_past: bool
 ) -> list[tuple[ProjectMembership, str]]:
@@ -171,12 +191,34 @@ async def active_memberships_for_student(
     )
 
 
+async def memberships_open_through(
+    session: AsyncSession, membership_ids: Collection[UUID], *, through: date
+) -> set[UUID]:
+    """Of these memberships, the ones not already ended by `through`. `left_on` is exclusive."""
+    if not membership_ids:
+        return set()
+    rows = await session.execute(
+        select(ProjectMembership.id).where(
+            ProjectMembership.id.in_(list(membership_ids)),
+            or_(ProjectMembership.left_on.is_(None), ProjectMembership.left_on > through),
+        )
+    )
+    return set(rows.scalars().all())
+
+
 async def memberships_active_in_range(
     session: AsyncSession, scope: Scope, *, local_start: date, local_end: date
 ) -> list[ProjectMembership]:
     """REP-01: memberships that overlap the week on a project that is currently active.
 
-    `left_on` is exclusive, so a student who left on the Monday a period starts owes nothing for it.
+    `left_on` is exclusive and is compared against the *end* of the week: a report covers a week,
+    so a membership that did not last the week does not owe one. A student who leaves on the
+    Friday therefore owes nothing for that week, and neither does one who left the Monday before.
+
+    That is a change from the earlier rule, which compared against the start and so kept the week
+    in progress. It was defended on the grounds that leaving should not be a way to drop a report
+    already owed; the answer taken here is that a project you are no longer on should not sit on
+    your week at all, and that the professor and the student must agree about it either way.
 
     A membership acquired by joining an existing project owes only weeks that began after the
     student joined (PROJ-07). Joining on a Saturday would otherwise owe a report by Sunday 23:59,
@@ -201,7 +243,7 @@ async def memberships_active_in_range(
                     ),
                     or_(
                         ProjectMembership.left_on.is_(None),
-                        ProjectMembership.left_on > local_start,
+                        ProjectMembership.left_on > local_end,
                     ),
                 )
                 .order_by(ProjectMembership.id)

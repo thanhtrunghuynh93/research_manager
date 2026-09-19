@@ -41,6 +41,10 @@ class PeriodOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    # A professor's reads span every workspace they belong to (ADR 0016), and each workspace keeps
+    # its own calendar — so "this week" is one period per workspace, not one period. Without this
+    # the weeks came back in a single list with nothing to group them by.
+    workspace_id: UUID
     local_start: date
     local_end: date
     start_utc: datetime
@@ -61,6 +65,10 @@ class ObligationOut(BaseModel):
     state: ObligationState
     excuse_reason: str | None = None
     extension_until_utc: datetime | None = None
+    # REP-08: `state` says whether this project has to be in the package, never whether it is.
+    # Without this the student's screen had no way to tell a finished week from an untouched one,
+    # and rendered every obligation as outstanding however many times it had been submitted.
+    submitted: bool = False
 
 
 class ExcuseIn(BaseModel):

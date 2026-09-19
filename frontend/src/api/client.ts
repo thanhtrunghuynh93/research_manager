@@ -9,10 +9,64 @@ export type Problem = {
   type: string;
   title: string;
   status: number;
+  /** Always a string by the time it leaves here — see `asProblem`. */
   detail: string;
   request_id?: string;
   [extra: string]: unknown;
 };
+
+/**
+ * One entry of a non-conforming `detail`, as a sentence.
+ *
+ * The shape handled here is FastAPI's: `{loc, msg, type, input, ctx}`. `input` is the caller's own
+ * rejected value and is never read — it can be the whole payload, and the field name says where to
+ * look without putting it back on the screen.
+ */
+function oneDetail(entry: unknown): string {
+  if (typeof entry === "string") return entry;
+  if (typeof entry !== "object" || entry === null) return "";
+  const record = entry as Record<string, unknown>;
+  const message = typeof record.msg === "string" ? record.msg : "";
+  const field = Array.isArray(record.loc)
+    ? record.loc
+        .slice(1)
+        .map((part) => (typeof part === "number" ? `[${part}]` : `.${String(part)}`))
+        .join("")
+        .replace(/^\./, "")
+    : "";
+  if (!message) return field;
+  return field ? `${field}: ${message}` : message;
+}
+
+/**
+ * A problem document whose `detail` is a string, whatever the server actually sent.
+ *
+ * Every component that shows the API's own words renders `problem.detail` — and React renders an
+ * array by rendering each of its children, so an array of objects there is React error #31, which
+ * the router's error boundary turns into a blank page with no navigation on it. That is what a
+ * negative number in the report editor's optional Hours box used to do to the whole application.
+ *
+ * `app.api.problems` now answers validation failures in this shape, so this is the net rather than
+ * the fix: it holds for an endpoint that has not been reached yet, a proxy that rewrites an error,
+ * and any future handler that forgets. The unrecognised keys are kept, because callers read them —
+ * the editor names the projects missing from a package out of `missing_project_ids`.
+ */
+export function asProblem(body: unknown, response: Response): Problem {
+  const raw = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const detail = raw.detail;
+  return {
+    ...raw,
+    type: typeof raw.type === "string" ? raw.type : "about:blank",
+    title: typeof raw.title === "string" && raw.title ? raw.title : response.statusText,
+    status: typeof raw.status === "number" ? raw.status : response.status,
+    detail:
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map(oneDetail).filter(Boolean).join("; ")
+          : oneDetail(detail),
+  };
+}
 
 export class ApiError extends Error {
   constructor(
@@ -49,7 +103,7 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
   if (!accepted) {
     let problem: Problem;
     try {
-      problem = (await response.json()) as Problem;
+      problem = asProblem(await response.json(), response);
     } catch {
       problem = {
         type: "about:blank",

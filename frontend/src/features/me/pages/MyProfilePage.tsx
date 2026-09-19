@@ -17,11 +17,13 @@ import { Trajectory } from "@/features/assessments/components/Trajectory";
 import { useAssessments } from "@/features/assessments/queries";
 import { useSession } from "@/features/auth/queries";
 import { useProjects } from "@/features/report/queries";
+import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant } from "@/lib/dates";
 
 export function MyProfilePage() {
   const { t } = useTranslation();
   const session = useSession();
+  const timezone = useTimezone();
   const me = session.data?.id;
   const assessments = useAssessments({ studentId: me });
   const projects = useProjects();
@@ -66,7 +68,7 @@ export function MyProfilePage() {
                 reasons={(one.confidence_reasons ?? []).map(String)}
               />
               <span className="font-mono text-[11.5px] text-muted-foreground">
-                {one.published_at ? formatInstant(one.published_at) : ""}
+                {one.published_at ? formatInstant(one.published_at, timezone) : ""}
               </span>
             </span>
           </li>
@@ -77,7 +79,9 @@ export function MyProfilePage() {
           </li>
         )}
       </ul>
-      <p className="stamp mt-2">{t("me.releasedNote")}</p>
+      {/* The empty state's explanation, not a permanent footnote: under a list of assessments it
+          told the reader an assessment would appear once one had. */}
+      {released.length === 0 ? <p className="stamp mt-2">{t("me.releasedNote")}</p> : null}
     </section>
   );
 }

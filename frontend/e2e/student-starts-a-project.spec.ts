@@ -61,6 +61,11 @@ test("a student joins a project the professor opened, and can then leave it", as
   await page.getByRole("link", { name: title!.trim() }).click();
   await expect(page.getByTestId("membership-controls")).toBeVisible();
 
+  // Leaving asks first — a student cannot rejoin unless the professor opens the project again.
+  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByTestId("leave-project").click();
   await expect(page.getByTestId("leave-project")).toHaveCount(0);
+  // The notice is derived from the record rather than from the click, so it also greets them on
+  // the next visit — and it says when, and what the page is no longer showing them.
+  await expect(page.getByTestId("left-notice")).toBeVisible();
 });

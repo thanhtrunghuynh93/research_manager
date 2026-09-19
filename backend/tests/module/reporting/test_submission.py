@@ -30,10 +30,17 @@ TZ = "Asia/Ho_Chi_Minh"
 class Week:
     """One configured period with a student enrolled on two active projects."""
 
-    def __init__(self, period: object, projects: list[object], student_scope: Scope) -> None:
+    def __init__(
+        self,
+        period: object,
+        projects: list[object],
+        student_scope: Scope,
+        memberships: list[object] | None = None,
+    ) -> None:
         self.period = period
         self.projects = projects
         self.scope = student_scope
+        self.memberships = memberships or []
 
 
 async def _week(
@@ -54,19 +61,22 @@ async def _week(
         grace_minutes=grace_minutes,
     )
     projects = []
+    memberships = []
     for index in range(project_count):
         project = await projects_service.create_project(
             db, prof_scope, title=f"Project {index}", stage="implementation"
         )
         await projects_service.update_project(db, prof_scope, project.id, status="active")
-        await projects_service.add_member(
-            db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
+        memberships.append(
+            await projects_service.add_member(
+                db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
+            )
         )
         projects.append(project)
 
     period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
     await service.ensure_obligations(db, prof_scope, period.id)
-    return Week(period, projects, await identity_service.scope_for(db, student))
+    return Week(period, projects, await identity_service.scope_for(db, student), memberships)
 
 
 def _entry(project_id: object, work: str = "Implemented the data loader") -> dict[str, object]:
@@ -76,7 +86,7 @@ def _entry(project_id: object, work: str = "Implemented the data loader") -> dic
         "work_performed": work,
         "results": "The loader reproduces the published split sizes.",
         "deviations": "",
-        "next_plan": {"outcomes": ["Run the baseline end to end"]},
+        "next_plan": {"items": [{"planned_outcome": "Run the baseline end to end"}]},
         "questions": "",
     }
 
@@ -108,6 +118,68 @@ async def test_a_package_missing_a_required_project_is_refused(
         await service.submit_report(
             db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
         )
+
+
+async def test_a_package_with_nothing_written_in_it_is_refused(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """A week in which nothing was written is a mistake, not a week's work.
+
+    The editor seeds itself from the autosaved draft, and a report submitted without one — the
+    seed does this — used to reopen as empty boxes over a version that had content. Pressing
+    Submit then wrote that emptiness over the record.
+    """
+    week = await _week(db, prof_scope, student_a)
+    blank = [
+        {"project_id": project.id, "stage": "implementation", "work_performed": "", "results": ""}
+        for project in week.projects
+    ]
+
+    with pytest.raises(ValidationError):
+        await service.submit_report(db, week.scope, period_id=week.period.id, entries=blank)
+
+
+async def test_one_entry_with_something_in_it_is_enough(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """How much there is to say differs per project, and judging that is the professor's."""
+    week = await _week(db, prof_scope, student_a)
+
+    version = await service.submit_report(
+        db,
+        week.scope,
+        period_id=week.period.id,
+        entries=[
+            _entry(week.projects[0].id),
+            {"project_id": week.projects[1].id, "stage": "theory", "work_performed": ""},
+        ],
+    )
+
+    assert version.version_no == 1
+
+
+async def test_an_obligation_says_whether_its_entry_was_submitted(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """REP-08 on the obligation itself, so a screen can tell a finished week from a new one.
+
+    `state` is `required` or `excused` and never changes on submission, so the screen that rendered
+    it alone showed every project as outstanding however many times the week had been handed in.
+    """
+    week = await _week(db, prof_scope, student_a)
+
+    before = await service.list_obligations(db, week.scope, week.period.id)
+    assert {o.submitted for o in before} == {False}
+
+    await service.submit_report(
+        db,
+        week.scope,
+        period_id=week.period.id,
+        entries=[_entry(week.projects[0].id), _entry(week.projects[1].id)],
+    )
+
+    after = await service.list_obligations(db, week.scope, week.period.id)
+    assert {o.submitted for o in after} == {True}
 
 
 async def test_an_excused_project_needs_no_entry(
@@ -234,6 +306,111 @@ async def test_a_resubmission_keeps_the_unchanged_entry_pointing_at_its_old_vers
     unchanged = next(e for e in second.entries if e.project_id == week.projects[1].id)
     assert changed.content_changed_in_version_id == second.id
     assert unchanged.content_changed_in_version_id == first.id, "carried forward, not re-assessed"
+
+
+async def test_leaving_a_project_does_not_make_the_week_unsubmittable(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """The completeness check reads the obligations the student is actually shown.
+
+    Leaving takes the project off the week (REP-01), so the editor stops offering a tab for it and
+    the student cannot write an entry for it — and cannot rejoin, because that needs the professor.
+    Read straight from the table, the check went on demanding an entry for the departed project and
+    the week became permanently unsubmittable.
+    """
+    week = await _week(db, prof_scope, student_a)
+    # Through the professor, only because a student may leave only as of today and this week is in
+    # 2026. The state it produces is the one a student's own click produces.
+    await projects_service.end_membership(
+        db, prof_scope, week.memberships[0].id, left_on=date(2026, 9, 17)
+    )
+
+    still_owed = await service.list_obligations(db, week.scope, week.period.id)
+    assert [o.project_id for o in still_owed] == [week.projects[1].id]
+
+    version = await service.submit_report(
+        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[1].id)]
+    )
+
+    assert [e.project_id for e in version.entries] == [week.projects[1].id]
+
+
+async def test_a_resubmission_keeps_the_entry_for_a_project_since_left(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """PROJ-02 and the copy on the leave button: what was submitted stays on the record.
+
+    The new version becomes `current_version_id`, which is what the professor and the assessment
+    pipeline read. Writing only the entries in the payload meant the first resubmission after a
+    departure silently deleted a week's submitted work from the record it is read through.
+    """
+    week = await _week(db, prof_scope, student_a)
+    first = await service.submit_report(
+        db,
+        week.scope,
+        period_id=week.period.id,
+        entries=[
+            _entry(week.projects[0].id, work="Ran the ablation over the 2019 split"),
+            _entry(week.projects[1].id),
+        ],
+    )
+    await projects_service.end_membership(
+        db, prof_scope, week.memberships[0].id, left_on=date(2026, 9, 17)
+    )
+
+    second = await service.submit_report(
+        db,
+        week.scope,
+        period_id=week.period.id,
+        entries=[_entry(week.projects[1].id, work="Wrote the method section")],
+    )
+
+    carried = next(e for e in second.entries if e.project_id == week.projects[0].id)
+    assert carried.work_performed == "Ran the ablation over the 2019 split"
+    # Nothing about it changed, so AC-17 keeps it pointing at the version it was written in and no
+    # second assessment falls due for a project nobody reported on this week.
+    assert carried.content_changed_in_version_id == first.id
+
+
+async def test_the_version_number_counts_from_the_history_not_from_the_current_version(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """REP-05: a resubmission adds to the history, so the sequence belongs to the history.
+
+    `current_version_id` and the highest version are normally the same, and when they are not — a
+    current version pointed back at an earlier one by a restore or a correction — counting from the
+    current one reissues a number the table already holds. The unique constraint refuses the
+    insert, and the week becomes unsubmittable with nothing on screen but "that record already
+    exists". Reproduced on the live deployment, whose report had versions 1, 2 and 3 with 1 current.
+    """
+    week = await _week(db, prof_scope, student_a, project_count=1)
+    first = await service.submit_report(
+        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+    )
+    second = await service.submit_report(
+        db,
+        week.scope,
+        period_id=week.period.id,
+        entries=[_entry(week.projects[0].id, work="Second pass over the loader")],
+    )
+    assert (first.version_no, second.version_no) == (1, 2)
+
+    # Roll the report back to its first version, as a restore or a hand-applied correction would.
+    report = await service.get_report(db, week.scope, period_id=week.period.id)
+    await db.execute(
+        update(models.WeeklyReport)
+        .where(models.WeeklyReport.id == report.id)
+        .values(current_version_id=first.id)
+    )
+
+    third = await service.submit_report(
+        db,
+        week.scope,
+        period_id=week.period.id,
+        entries=[_entry(week.projects[0].id, work="Third pass, after the rollback")],
+    )
+
+    assert third.version_no == 3, "one past the highest, not one past the current"
 
 
 async def test_reported_hours_do_not_count_as_a_content_change(

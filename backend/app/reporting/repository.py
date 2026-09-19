@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
@@ -98,6 +98,18 @@ async def get_period(
                 ReportingPeriod.id == period_id, visible_to(scope, ReportingPeriod)
             )
         )
+    ).scalar_one_or_none()
+
+
+async def get_period_unscoped(session: AsyncSession, period_id: UUID) -> ReportingPeriod | None:
+    """One period, without a Scope — for REP-08's job-level reads.
+
+    Unscoped for the same reason `required_obligations_at` is: the missed-deadline sweep and the
+    professor's outstanding list are computed for a period across every student in it, and there
+    is no one caller whose visibility would be the right filter.
+    """
+    return (
+        await session.execute(select(ReportingPeriod).where(ReportingPeriod.id == period_id))
     ).scalar_one_or_none()
 
 
@@ -267,6 +279,21 @@ async def version_by_idempotency_key(
             )
         )
     ).scalar_one_or_none()
+
+
+async def highest_version_no(session: AsyncSession, report_id: UUID) -> int:
+    """The largest `version_no` this report carries, or 0 when it has none.
+
+    Unscoped and read straight from the versions, because it answers a question about the table's
+    own unique constraint rather than about what a caller may see.
+    """
+    return (
+        await session.execute(
+            select(func.coalesce(func.max(ReportVersion.version_no), 0)).where(
+                ReportVersion.report_id == report_id
+            )
+        )
+    ).scalar_one()
 
 
 async def get_version(

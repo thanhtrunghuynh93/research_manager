@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.projects.models import BaselineState as BaselineState
@@ -38,7 +38,15 @@ def normalize_repo_url(value: str | None) -> str | None:
     return cleaned
 
 
-RepoUrl = Annotated[str | None, AfterValidator(normalize_repo_url), Field(max_length=500)]
+# The length is constrained on the `str` member rather than on the union. Applied to the union it
+# is applied to whatever the validator returned, and `normalize_repo_url` returns None for the
+# blank and absent cases it exists to fold together — at which point pydantic raises TypeError
+# ("Unable to apply constraint 'max_length' to supplied value None") inside request validation,
+# and a student who left the optional field empty got a 500 instead of a project.
+RepoUrl = Annotated[
+    Annotated[str, StringConstraints(max_length=500)] | None,
+    AfterValidator(normalize_repo_url),
+]
 
 
 class ProjectOut(BaseModel):
@@ -62,6 +70,10 @@ class ProjectOut(BaseModel):
     # AUTH-07: the client decides who may edit from this, so it has to travel with the record.
     created_by: UUID | None = None
     created_at: datetime
+    # Caller-relative, and null for everyone still on the project (and for a professor, who is
+    # never a member). A student keeps the record of a project they have left, so a screen that
+    # shows it has to be able to say which of the two it is looking at.
+    viewer_left_on: date | None = None
 
 
 class JoinableProjectOut(BaseModel):

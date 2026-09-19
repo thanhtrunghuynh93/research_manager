@@ -2845,6 +2845,11 @@
             "format": "uuid",
             "title": "Student Id",
             "type": "string"
+          },
+          "submitted": {
+            "default": false,
+            "title": "Submitted",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2947,6 +2952,13 @@
               "type": "object"
             },
             "title": "Sync Issues",
+            "type": "array"
+          },
+          "week": {
+            "items": {
+              "$ref": "#/components/schemas/WeekWorkspace"
+            },
+            "title": "Week",
             "type": "array"
           }
         },
@@ -3099,10 +3111,16 @@
             "format": "date-time",
             "title": "Start Utc",
             "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
           }
         },
         "required": [
           "id",
+          "workspace_id",
           "local_start",
           "local_end",
           "start_utc",
@@ -3150,13 +3168,13 @@
           "repo_url": {
             "anyOf": [
               {
+                "maxLength": 500,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "maxLength": 500,
             "title": "Repo Url"
           },
           "research_questions": {
@@ -3368,6 +3386,18 @@
             ],
             "title": "Venue Target"
           },
+          "viewer_left_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Left On"
+          },
           "workspace_id": {
             "format": "uuid",
             "title": "Workspace Id",
@@ -3443,13 +3473,13 @@
           "repo_url": {
             "anyOf": [
               {
+                "maxLength": 500,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "maxLength": 500,
             "title": "Repo Url"
           },
           "research_questions": {
@@ -5037,6 +5067,127 @@
         ],
         "title": "Visibility",
         "type": "string"
+      },
+      "WeekProject": {
+        "properties": {
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_title": {
+            "title": "Project Title",
+            "type": "string"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/WeekStudent"
+            },
+            "title": "Students",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_title"
+        ],
+        "title": "WeekProject",
+        "type": "object"
+      },
+      "WeekStudent": {
+        "description": "One student's standing on one project this week, in the three states REP-06/REP-08 give.",
+        "properties": {
+          "excuse_reason": {
+            "default": "",
+            "title": "Excuse Reason",
+            "type": "string"
+          },
+          "extension_until_utc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Until Utc"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "string"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "student_id",
+          "student_name",
+          "state"
+        ],
+        "title": "WeekStudent",
+        "type": "object"
+      },
+      "WeekWorkspace": {
+        "description": "This week in one workspace: its period, and every report owed in it.\n\nGrouped per workspace because a professor's reads span all of them (ADR 0016) and each keeps\nits own calendar \u2014 so \"this week\" is one period per workspace rather than one period.",
+        "properties": {
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "local_end": {
+            "title": "Local End",
+            "type": "string"
+          },
+          "local_start": {
+            "title": "Local Start",
+            "type": "string"
+          },
+          "owed": {
+            "title": "Owed",
+            "type": "integer"
+          },
+          "period_id": {
+            "title": "Period Id",
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/WeekProject"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "submitted": {
+            "title": "Submitted",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "period_id",
+          "local_start",
+          "local_end",
+          "submitted",
+          "owed",
+          "excused"
+        ],
+        "title": "WeekWorkspace",
+        "type": "object"
       },
       "WorkspaceCreateIn": {
         "properties": {

@@ -12,11 +12,14 @@ import { Link } from "react-router-dom";
 import { Badge, FreshnessBadge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { useEnsureObligations, useOverview } from "@/features/overview/queries";
+import type { WeekStudent, WeekWorkspace } from "@/features/overview/types";
+import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant, formatLocalDate } from "@/lib/dates";
 
 export function OverviewPage() {
   const { t } = useTranslation();
   const overview = useOverview();
+  const timezone = useTimezone();
 
   if (overview.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (overview.isError)
@@ -26,6 +29,7 @@ export function OverviewPage() {
   const data = {
     ...raw,
     outstanding: { ...raw.outstanding, entries: raw.outstanding.entries ?? [] },
+    week: raw.week ?? [],
     review_queue: raw.review_queue ?? [],
     sync_issues: raw.sync_issues ?? [],
     stalled_analyses: raw.stalled_analyses ?? [],
@@ -77,6 +81,8 @@ export function OverviewPage() {
         </p>
       )}
 
+      <WeekBoard week={data.week} timezone={timezone} />
+
       <div className="mt-8 grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
         <Section
           title={t("overview.outstanding")}
@@ -84,7 +90,7 @@ export function OverviewPage() {
           count={data.outstanding.count}
           testId="outstanding"
           note={`${data.outstanding.note} ${t("overview.asOf", {
-            when: formatInstant(data.outstanding.as_of),
+            when: formatInstant(data.outstanding.as_of, timezone),
           })}`}
         >
           <li className="row">
@@ -95,8 +101,8 @@ export function OverviewPage() {
               key={`${String(entry.student_id)}:${String(entry.project_id)}:${index}`}
               className="row"
             >
-              <Link to={`/students/${String(entry.student_id)}`} className="font-mono text-[13px]">
-                {String(entry.student_id).slice(0, 8)}
+              <Link to={`/students/${String(entry.student_id)}`} className="text-[13px]">
+                {String(entry.student_name || "") || String(entry.student_id).slice(0, 8)}
               </Link>
               <span className="text-right text-[13px] text-muted-foreground">
                 {String(entry.project_title ?? "")}
@@ -218,6 +224,125 @@ function DeriveObligations({ periodId }: { periodId?: string }) {
       </button>
       <span className="stamp">{t("overview.deriveNote")}</span>
       <Failure error={ensure.error} />
+    </span>
+  );
+}
+
+/**
+ * The week itself: every report owed, by workspace, project and student (UI-01).
+ *
+ * `Outstanding` beside it is the same obligations read for one of their three states, and a list
+ * of absences is not something a supervisor can plan from — a student who has reported does not
+ * appear in it at all, and neither does a project where everyone has. This is the whole week,
+ * which is also why the rows carry names rather than the eight characters of a uuid that the
+ * outstanding list still shows.
+ *
+ * Grouped by workspace because a professor's reads span every workspace they belong to (ADR 0016)
+ * and each keeps its own calendar, so the weeks do not line up and must not be run together.
+ */
+function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string }) {
+  const { t } = useTranslation();
+
+  return (
+    <section className="mt-8" data-testid="week-board">
+      <h2 className="flex items-baseline gap-2.5">
+        <span className="section-title">{t("overview.week")}</span>
+        {week.length > 0 ? (
+          <span className="chip chip-neutral">
+            {t("overview.weekCount", {
+              submitted: week.reduce((total, one) => total + one.submitted, 0),
+              total: week.reduce((total, one) => total + one.submitted + one.owed + one.excused, 0),
+            })}
+          </span>
+        ) : null}
+      </h2>
+
+      {week.length === 0 ? (
+        <p className="panel mt-2.5 px-4 py-2.5 text-sm text-muted-foreground">
+          {t("overview.weekEmpty")}
+        </p>
+      ) : (
+        week.map((workspace) => (
+          <div key={workspace.workspace_id} className="mt-3.5">
+            {/* Named even when there is one: a professor who joins a second workspace should not
+                have to work out which week they are reading. */}
+            <p className="eyebrow">
+              {workspace.workspace_name} · {formatLocalDate(workspace.local_start)} –{" "}
+              {formatLocalDate(workspace.local_end)}
+            </p>
+            <div className="panel mt-2">
+              {(workspace.projects ?? []).map((project) => (
+                <div key={project.project_id} className="border-b border-border last:border-b-0">
+                  <Link
+                    to={`/projects/${project.project_id}`}
+                    className="link block px-4 pt-2.5 text-[13.5px] font-medium"
+                  >
+                    {project.project_title}
+                  </Link>
+                  <ul className="px-4 pb-2.5">
+                    {(project.students ?? []).map((student) => (
+                      <li
+                        key={student.student_id}
+                        className="flex flex-wrap items-baseline justify-between gap-3 py-1"
+                      >
+                        <Link
+                          to={`/students/${student.student_id}`}
+                          className="link text-[13px]"
+                          data-testid="week-student"
+                        >
+                          {student.student_name}
+                        </Link>
+                        <WeekState student={student} timezone={timezone} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+      <p className="stamp mt-2">{t("overview.weekNote")}</p>
+    </section>
+  );
+}
+
+/**
+ * The three states a professor acts on differently (REP-06, REP-08), each saying what it means.
+ *
+ * An excused row carries its reason and an extended one its new deadline, because "owed" and
+ * "owed until Thursday" call for different action and the colour alone cannot tell them apart.
+ */
+function WeekState({ student, timezone }: { student: WeekStudent; timezone: string }) {
+  const { t } = useTranslation();
+
+  if (student.state === "excused") {
+    return (
+      <span className="text-right font-mono text-[11.5px] text-faint">
+        {t("report.obligation.excused")}
+        {student.excuse_reason ? ` — ${student.excuse_reason}` : ""}
+      </span>
+    );
+  }
+  const submitted = student.state === "submitted";
+  return (
+    <span className="text-right">
+      <span
+        className={
+          submitted
+            ? "font-mono text-[11px] uppercase tracking-[0.06em] text-good"
+            : "font-mono text-[11px] uppercase tracking-[0.06em] text-warn"
+        }
+      >
+        {t(submitted ? "report.obligation.submitted" : "report.obligation.required")}
+      </span>
+      {!submitted && student.extension_until_utc ? (
+        <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+          {t("overview.extendedUntil", {
+            when: formatInstant(student.extension_until_utc, timezone),
+          })}
+        </span>
+      ) : null}
     </span>
   );
 }

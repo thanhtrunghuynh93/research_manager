@@ -8,6 +8,7 @@ here is read, granted by a membership (requirements §2).
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -244,8 +245,17 @@ async def ai_restricted_for_job(
     return True if row is None else bool(row)
 
 
+async def _left_on_for(session: AsyncSession, scope: Scope) -> dict[UUID, date]:
+    """Which of the caller's projects they have already left, and when. Empty for a professor."""
+    if scope.is_prof:
+        return {}
+    return await repository.ended_membership_dates(session, scope.workspace_id, scope.user_id)
+
+
 async def get_project(session: AsyncSession, scope: Scope, project_id: UUID) -> ProjectOut:
-    return ProjectOut.model_validate(await _require_project(session, scope, project_id))
+    project = await _require_project(session, scope, project_id)
+    left_on = (await _left_on_for(session, scope)).get(project.id)
+    return ProjectOut.model_validate(project).model_copy(update={"viewer_left_on": left_on})
 
 
 async def list_projects(
@@ -260,8 +270,16 @@ async def list_projects(
     rows, next_cursor = await repository.list_projects(
         session, scope, limit=size, cursor=cursor, status=status
     )
+    # One lookup for the page, not one per row: a student's ended memberships are few and the
+    # list is the only place that has to tell a project they are on from one they were on.
+    left_on = await _left_on_for(session, scope)
     return Page(
-        items=[ProjectOut.model_validate(row) for row in rows],
+        items=[
+            ProjectOut.model_validate(row).model_copy(
+                update={"viewer_left_on": left_on.get(row.id)}
+            )
+            for row in rows
+        ],
         next_cursor=next_cursor,
         limit=size,
     )
@@ -946,6 +964,24 @@ async def reporting_memberships(
         session, scope, local_start=local_start, local_end=local_end
     )
     return [MembershipOut.model_validate(row) for row in rows]
+
+
+async def memberships_still_owing(
+    session: AsyncSession, membership_ids: Collection[UUID], *, through: date
+) -> set[UUID]:
+    """Which of these memberships still owe a week ending on `through` (REP-01).
+
+    Scope-free on purpose: the professor's outstanding list is computed for every student at once
+    and has no caller scope to narrow by, and the answer is a property of the membership rather
+    than of who is asking.
+
+    Reporting calls this rather than reading membership rows itself, for the reason
+    `memberships_active_in_range` gives: the rule about exclusive leave dates lives here, and an
+    obligation already derived has to be judged by the same rule that would derive it today —
+    otherwise a student stops being shown a project they left while the professor is still told
+    they owe it.
+    """
+    return await repository.memberships_open_through(session, membership_ids, through=through)
 
 
 async def effective_baseline_for_student(

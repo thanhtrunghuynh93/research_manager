@@ -33,6 +33,7 @@ import {
 } from "@/features/people/queries";
 import type { Role, User } from "@/features/people/types";
 import type { Workspace } from "@/features/workspaces/types";
+import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant } from "@/lib/dates";
 
 const STATE_TONE = {
@@ -165,6 +166,7 @@ function Roll({
 
 function Person({ user, isYou, linkTo }: { user: User; isYou?: boolean; linkTo?: string }) {
   const { t } = useTranslation();
+  const timezone = useTimezone();
   return (
     <span className="min-w-0">
       <span className="flex flex-wrap items-center gap-2.5">
@@ -183,7 +185,7 @@ function Person({ user, isYou, linkTo }: { user: User; isYou?: boolean; linkTo?:
       <span className="mt-1 block font-mono text-[12px] text-faint">{user.email}</span>
       {user.state === "deactivated" && user.deactivated_at && (
         <span className="stamp mt-0.5 block">
-          {t("people.closedOn", { when: formatInstant(user.deactivated_at) })}
+          {t("people.closedOn", { when: formatInstant(user.deactivated_at, timezone) })}
         </span>
       )}
     </span>

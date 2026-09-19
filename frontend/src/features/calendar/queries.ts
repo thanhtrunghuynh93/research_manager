@@ -4,6 +4,7 @@ import { api } from "@/api/client";
 import type { CalendarConfig, CalendarConfigIn } from "@/features/calendar/types";
 import { periodsKey } from "@/features/report/queries";
 import type { Period } from "@/features/report/types";
+import { DEFAULT_TIMEZONE } from "@/lib/dates";
 
 export const calendarKey = ["calendar"] as const;
 
@@ -18,6 +19,24 @@ export function useCalendar() {
     queryKey: calendarKey,
     queryFn: () => api.get<CalendarConfig | null>("/api/v1/calendar"),
   });
+}
+
+/**
+ * The timezone every instant on screen is rendered in — the workspace's, not the viewer's.
+ *
+ * REP-01 computes every deadline in the workspace's zone, so that is the zone a deadline has to be
+ * read in: a student travelling does not get a different Friday. `lib/dates` has always taken the
+ * zone as an argument and has always defaulted it to Asia/Ho_Chi_Minh, and no caller passed one,
+ * so a workspace configured for anywhere else displayed every time in Vietnam's.
+ *
+ * The calendar is the right source and not a second one: it is what the deadlines were computed
+ * from, and `GET /calendar` answers for a student as well as a professor because everyone needs to
+ * know when their report is due. Until it arrives — and in a workspace with no calendar yet — the
+ * default stands.
+ */
+export function useTimezone(): string {
+  const calendar = useCalendar();
+  return calendar.data?.timezone ?? DEFAULT_TIMEZONE;
 }
 
 /**

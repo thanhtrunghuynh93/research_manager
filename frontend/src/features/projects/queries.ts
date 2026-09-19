@@ -24,35 +24,42 @@ export function useProject(id: string | undefined) {
   });
 }
 
-export function useMembers(id: string | undefined) {
+/**
+ * Everyone who has been on the project, past members included (PROJ-02, UI-03).
+ *
+ * `include_past` defaults to false on the route and no caller passed it, so PROJ-02's kept row was
+ * in the database and on no screen: a student who left vanished from the project they had worked
+ * on. The list renders `joined – left` for a closed membership already; it had nothing to render.
+ */
+export function useMembers(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "members"],
-    queryFn: () => api.get<ProjectMember[]>(`/api/v1/projects/${id}/members`),
-    enabled: Boolean(id),
+    queryFn: () => api.get<ProjectMember[]>(`/api/v1/projects/${id}/members?include_past=true`),
+    enabled: Boolean(id) && wanted,
   });
 }
 
-export function useMilestones(id: string | undefined) {
+export function useMilestones(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "milestones"],
     queryFn: () => api.get<Milestone[]>(`/api/v1/projects/${id}/milestones`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && wanted,
   });
 }
 
-export function useDecisions(id: string | undefined) {
+export function useDecisions(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "decisions"],
     queryFn: () => api.get<Decision[]>(`/api/v1/projects/${id}/decisions`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && wanted,
   });
 }
 
-export function useProgress(id: string | undefined) {
+export function useProgress(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "progress"],
     queryFn: () => api.get<ProjectProgress>(`/api/v1/projects/${id}/progress`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && wanted,
   });
 }
 
@@ -68,8 +75,7 @@ export const projectsListKey = (status?: string) => ["projects", "list", status 
 export function useProjectList(status?: string) {
   return useQuery({
     queryKey: projectsListKey(status),
-    queryFn: () =>
-      api.get<ProjectPage>(`/api/v1/projects${status ? `?status=${status}` : ""}`),
+    queryFn: () => api.get<ProjectPage>(`/api/v1/projects${status ? `?status=${status}` : ""}`),
   });
 }
 
@@ -141,10 +147,7 @@ export function useLeaveProject(projectId: string) {
   const queryClient = useQueryClient();
   const write = useProjectWrite(
     (membershipId: string) =>
-      api.post<ProjectMember>(
-        `/api/v1/projects/${projectId}/members/${membershipId}/end`,
-        {},
-      ),
+      api.post<ProjectMember>(`/api/v1/projects/${projectId}/members/${membershipId}/end`, {}),
     projectId,
   );
   return {

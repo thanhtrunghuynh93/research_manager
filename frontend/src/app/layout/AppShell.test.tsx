@@ -120,3 +120,67 @@ test("a student is offered their own progress, and never the professor's screens
   expect(links.filter((href) => href !== "/")).toEqual(["/me", "/projects"]);
   expect(screen.queryByRole("link", { name: /my progress/i })).not.toBeInTheDocument();
 });
+
+test("says why the reader is on their own home rather than the page they clicked", async () => {
+  // Both the role guard and the catch-all redirect rather than refuse, which is right — a dead end
+  // is worse — but it left the click unexplained.
+  server.use(
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        email: "an@example.edu",
+        role: "student",
+        display_name: "An",
+        workspace_id: "w1",
+      }),
+    ),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[{ pathname: "/me", state: { turnedAwayFrom: "/overview" } }]}>
+        <AppShell />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByRole("status")).toHaveTextContent("/overview is not a page");
+});
+
+test("the explanation is for the click, not for the history entry", async () => {
+  // It lived in the history entry's state, so reloading your own home repeated it — about a link
+  // followed long before, and again on every reload after that.
+  server.use(
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        email: "an@example.edu",
+        role: "student",
+        display_name: "An",
+        workspace_id: "w1",
+      }),
+    ),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { unmount } = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[{ pathname: "/me", state: { turnedAwayFrom: "/overview" } }]}>
+        <AppShell />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await screen.findByRole("status");
+  unmount();
+
+  // What a reload gets: the same entry, now with the message consumed out of it.
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[{ pathname: "/me", state: null }]}>
+        <AppShell />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await screen.findByTestId("greeting");
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});

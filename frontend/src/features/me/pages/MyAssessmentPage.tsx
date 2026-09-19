@@ -26,17 +26,18 @@ import { useParams } from "react-router-dom";
 import { ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { RatingList } from "@/features/assessments/components/RatingList";
-import {
-  useAssessment,
-  useFeedback,
-  useRequestCorrection,
-} from "@/features/assessments/queries";
-import { formatInstant } from "@/lib/dates";
+import { useAssessment, useFeedback, useRequestCorrection } from "@/features/assessments/queries";
+import { useTimezone } from "@/features/calendar/queries";
+import { usePeriods, useProjects } from "@/features/report/queries";
+import { formatInstant, formatLocalDate } from "@/lib/dates";
 
 export function MyAssessmentPage() {
   const { t } = useTranslation();
   const { assessmentId } = useParams<{ assessmentId: string }>();
   const assessment = useAssessment(assessmentId);
+  const projects = useProjects();
+  const periods = usePeriods();
+  const timezone = useTimezone();
 
   if (assessment.isPending) return <p className="stamp">{t("common.loading")}</p>;
   // A draft is a 404 for a student by policy, so there is nothing to distinguish here — and
@@ -45,30 +46,63 @@ export function MyAssessmentPage() {
     return <p className="text-sm text-muted-foreground">{t("myAssessment.unavailable")}</p>;
 
   const data = assessment.data;
+  const project =
+    projects.data?.items.find((one) => one.id === String(data.project_id))?.title ??
+    String(data.project_id);
+  // An assessment is weekly (AC-01: one per project per period), and the week was the one thing
+  // the heading never said — so a fortnight of assessments on one project read identically, and a
+  // student contesting a rating had nothing on screen naming what they were contesting.
+  const period = periods.data?.find((one) => one.id === String(data.period_id));
 
   return (
     <section className="max-w-2xl animate-rise-in">
       <header className="border-b border-border pb-5">
         <p className="eyebrow mb-1.5">{t("myAssessment.title")}</p>
         <h1 className="page-title">
-          {t("myAssessment.for", { project: String(data.project_id).slice(0, 8) })}
+          {/* The title, not eight characters of a UUID: every id in a workspace shares a prefix,
+              so the fragment did not even distinguish one assessment's project from another's. */}
+          {period
+            ? t("myAssessment.forWeek", {
+                project,
+                from: formatLocalDate(period.local_start),
+                to: formatLocalDate(period.local_end),
+              })
+            : t("myAssessment.for", { project })}
         </h1>
         {data.published_at ? (
           <p className="stamp mt-2" data-testid="released-at">
-            {t("myAssessment.releasedAt", { when: formatInstant(data.published_at) })}
+            {t("myAssessment.releasedAt", { when: formatInstant(data.published_at, timezone) })}
           </p>
         ) : null}
       </header>
 
-      <div className="panel mt-6 flex flex-wrap items-center justify-between gap-5 p-5">
-        <div>
-          <p className="eyebrow">{t("myAssessment.index")}</p>
-          <ProgressIndex value={data.progress_index} size="figure" />
+      <div className="panel mt-6 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-5">
+          <div>
+            <p className="eyebrow">{t("myAssessment.index")}</p>
+            <ProgressIndex value={data.progress_index} size="figure" />
+          </div>
+          <ConfidenceBadge
+            confidence={data.confidence}
+            reasons={(data.confidence_reasons ?? []).map(String)}
+          />
         </div>
-        <ConfidenceBadge
-          confidence={data.confidence}
-          reasons={(data.confidence_reasons ?? []).map(String)}
-        />
+        {/* ASSESS-06 and UI-01: the level is meaningless without the rules that produced it, and
+            as the badge's tooltip those rules did not exist on a touch device and were not
+            announced as content — the student read "LOW CONFIDENCE · 2" and could not find out
+            what the two were. This is the one screen where they cannot ask anything else. */}
+        {(data.confidence_reasons ?? []).length > 0 ? (
+          <ul className="mt-4 border-t border-border pt-3.5" data-testid="confidence-reasons">
+            {(data.confidence_reasons ?? []).map((reason) => (
+              <li
+                key={String(reason)}
+                className="text-[13px] leading-relaxed text-muted-foreground"
+              >
+                {String(reason)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
       <p className="stamp mt-2">{t("myAssessment.indexNote")}</p>
 
@@ -84,6 +118,7 @@ function FeedbackThread({ assessmentId }: { assessmentId: string }) {
   const { t } = useTranslation();
   const feedback = useFeedback(assessmentId);
   const correction = useRequestCorrection(assessmentId);
+  const timezone = useTimezone();
   const [body, setBody] = useState("");
 
   return (
@@ -95,7 +130,7 @@ function FeedbackThread({ assessmentId }: { assessmentId: string }) {
             <span className="text-[13px] leading-relaxed">{item.body}</span>
             <span className="text-right font-mono text-[11.5px] text-muted-foreground">
               {t(`assessment.feedbackKind.${item.kind}`, { defaultValue: item.kind })} ·{" "}
-              {formatInstant(item.created_at)}
+              {formatInstant(item.created_at, timezone)}
             </span>
           </li>
         ))}

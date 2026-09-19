@@ -148,12 +148,30 @@ test("the student who started the project may edit its record but not its standi
 test("a student member is offered the way out, posting to their own membership", async () => {
   const ended: string[] = [];
   renderPage(STUDENT, PROJECT, [
-    { id: "m1", project_id: "p1", student_id: STUDENT.id, student_name: "An", responsibility: "",
-      origin: "self_joined", joined_on: "2026-09-14", left_on: null, planned_allocation: null,
-      created_at: "2026-09-14T00:00:00Z" },
-    { id: "m2", project_id: "p1", student_id: "someone-else", student_name: "Bao",
-      responsibility: "", origin: "assigned", joined_on: "2026-09-14", left_on: null,
-      planned_allocation: null, created_at: "2026-09-14T00:00:00Z" },
+    {
+      id: "m1",
+      project_id: "p1",
+      student_id: STUDENT.id,
+      student_name: "An",
+      responsibility: "",
+      origin: "self_joined",
+      joined_on: "2026-09-14",
+      left_on: null,
+      planned_allocation: null,
+      created_at: "2026-09-14T00:00:00Z",
+    },
+    {
+      id: "m2",
+      project_id: "p1",
+      student_id: "someone-else",
+      student_name: "Bao",
+      responsibility: "",
+      origin: "assigned",
+      joined_on: "2026-09-14",
+      left_on: null,
+      planned_allocation: null,
+      created_at: "2026-09-14T00:00:00Z",
+    },
   ]);
   server.use(
     http.post("/api/v1/projects/p1/members/:membershipId/end", ({ params }) => {
@@ -166,9 +184,129 @@ test("a student member is offered the way out, posting to their own membership",
   // The copy is the student's: finishing their part, not abandoning something.
   expect(done).toHaveTextContent(/done this project/i);
 
+  // A student cannot rejoin unless the professor opens the project again, so it asks first.
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  await userEvent.click(done);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(ended).toEqual([]);
+
+  confirm.mockReturnValue(true);
   await userEvent.click(done);
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   // Their own membership, not the co-member's, which the page also lists.
   expect(ended).toEqual(["m1"]);
+  confirm.mockRestore();
+});
+
+test("a student who has left sees the record, and is told what is not shown", async () => {
+  // Leaving revokes the ongoing work, not the name: their reports and assessments still point at
+  // this project. The sections a past member cannot read answer empty rather than forbidden, so
+  // rendering them would assert "no milestones yet" to the one reader who cannot know that.
+  renderPage(
+    STUDENT,
+    {
+      ...PROJECT,
+      status: "active",
+      description: "Reproduce and extend the retrieval baselines.",
+      viewer_left_on: "2026-09-18",
+    },
+    [
+      {
+        id: "m1",
+        project_id: "p1",
+        student_id: STUDENT.id,
+        student_name: "An",
+        responsibility: "",
+        origin: "assigned",
+        joined_on: "2026-08-31",
+        left_on: "2026-09-18",
+        planned_allocation: null,
+        created_at: "2026-08-31T00:00:00Z",
+      },
+    ],
+  );
+
+  // The record is there, named.
+  expect(await screen.findByRole("heading", { name: /Retrieval baselines/ })).toBeInTheDocument();
+  expect(screen.getByText(/Reproduce and extend the retrieval baselines\./)).toBeInTheDocument();
+  expect(screen.getByTestId("left-notice")).toHaveTextContent(/You left this project/);
+
+  // And the working detail is absent rather than shown as empty.
+  expect(screen.queryByTestId("project-progress")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("decisions")).not.toBeInTheDocument();
+  expect(screen.queryByText(/No milestones yet/i)).not.toBeInTheDocument();
+  // Nothing to leave any more.
+  expect(screen.queryByTestId("leave-project")).not.toBeInTheDocument();
+});
+
+test("a student still on the project sees all of it, and no notice", async () => {
+  renderPage(STUDENT, { ...PROJECT, status: "active" }, [
+    {
+      id: "m1",
+      project_id: "p1",
+      student_id: STUDENT.id,
+      student_name: "An",
+      responsibility: "",
+      origin: "assigned",
+      joined_on: "2026-08-31",
+      left_on: null,
+      planned_allocation: null,
+      created_at: "2026-08-31T00:00:00Z",
+    },
+  ]);
+
+  await screen.findByRole("heading", { name: /Retrieval baselines/ });
+  expect(screen.queryByTestId("left-notice")).not.toBeInTheDocument();
+  expect(screen.getByTestId("project-progress")).toBeInTheDocument();
+  expect(screen.getByTestId("decisions")).toBeInTheDocument();
+});
+
+test("a project the student has left is not asked for what it will not show", async () => {
+  // Four requests per view, answered and then discarded, is the shape of a screen that decided
+  // what to show after deciding what to fetch — and one of them asked for a member list this
+  // reader is deliberately not given.
+  const asked: string[] = [];
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json(STUDENT)),
+    http.get("/api/v1/projects/p1", () =>
+      HttpResponse.json({ ...PROJECT, status: "active", viewer_left_on: "2026-09-18" }),
+    ),
+    http.get("/api/v1/projects/p1/members", ({ request }) => {
+      asked.push(new URL(request.url).pathname);
+      return HttpResponse.json([]);
+    }),
+    http.get("/api/v1/projects/p1/milestones", ({ request }) => {
+      asked.push(new URL(request.url).pathname);
+      return HttpResponse.json([]);
+    }),
+    http.get("/api/v1/projects/p1/decisions", ({ request }) => {
+      asked.push(new URL(request.url).pathname);
+      return HttpResponse.json([]);
+    }),
+    http.get("/api/v1/projects/p1/progress", ({ request }) => {
+      asked.push(new URL(request.url).pathname);
+      return HttpResponse.json({
+        weighted_completion: null,
+        completed_milestones: 0,
+        milestone_count: 0,
+        overdue_milestones: 0,
+      });
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/projects/p1"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await screen.findByTestId("left-notice");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  expect(asked).toEqual([]);
 });

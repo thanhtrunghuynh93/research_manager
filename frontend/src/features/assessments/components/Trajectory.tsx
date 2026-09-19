@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 
 import { ProgressIndex } from "@/components/evidence/Badges";
 import { useTrend } from "@/features/assessments/queries";
+import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant } from "@/lib/dates";
 
 export function Trajectory({
@@ -23,9 +24,16 @@ export function Trajectory({
 }) {
   const { t } = useTranslation();
   const trend = useTrend(studentId, projectId);
+  const timezone = useTimezone();
 
   const points = trend.data ?? [];
   const rubricVersions = new Set(points.map((point) => point.rubric_version_id));
+  // Rubrics are named by their order of appearance in this series — A, then B — rather than by
+  // eight characters of their UUID. The label exists so a reader can see which points share a
+  // measure, and a hex fragment answers that only for someone willing to compare hex fragments.
+  const rubricLabels = new Map(
+    [...rubricVersions].map((id, index) => [id, String.fromCharCode(65 + index)]),
+  );
 
   return (
     <div className="mt-8">
@@ -49,9 +57,11 @@ export function Trajectory({
               className={`card min-w-[8.5rem] ${brokenHere ? "border-l-[3px] border-l-warn-rule" : ""}`}
             >
               <ProgressIndex value={point.progress_index} />
-              <p className="stamp mt-2">{formatInstant(point.created_at)}</p>
+              <p className="stamp mt-2">{formatInstant(point.created_at, timezone)}</p>
               <p className="stamp">
-                {t("student.rubric", { id: (point.rubric_version_id ?? "").slice(0, 8) })}
+                {t("student.rubric", {
+                  label: rubricLabels.get(point.rubric_version_id) ?? "?",
+                })}
               </p>
             </li>
           );

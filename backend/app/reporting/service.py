@@ -227,8 +227,52 @@ async def ensure_obligations(
 async def list_obligations(
     session: AsyncSession, scope: Scope, period_id: UUID, *, student_id: UUID | None = None
 ) -> list[ObligationOut]:
-    rows = await repository.list_obligations(session, scope, period_id, student_id=student_id)
-    return [ObligationOut.model_validate(row) for row in rows]
+    """Each obligation the caller still owes, and whether the current version answers it.
+
+    Obligations for a project the student has since left are left out. The row stays — it is how
+    the week was derived and the professor's history reads it — but a project you are no longer on
+    should not sit on your week, and `_obligations_still_owed` is where that is decided for both
+    of the screens that ask.
+
+    `submitted` is read from the same place `unfulfilled_entries` reads it — the entries on the
+    report's current version — so the student's screen and the professor's outstanding list cannot
+    disagree about whether a week is done. One query per student, not per obligation.
+    """
+    period = await _require_period(session, scope, period_id)
+    rows = await _obligations_still_owed(session, period, scope=scope, student_id=student_id)
+    submitted_by_student: dict[UUID, set[UUID]] = {}
+    out = []
+    for row in rows:
+        if row.student_id not in submitted_by_student:
+            submitted_by_student[row.student_id] = await repository.submitted_project_ids(
+                session, period_id=period_id, student_id=row.student_id
+            )
+        out.append(
+            ObligationOut.model_validate(row).model_copy(
+                update={"submitted": row.project_id in submitted_by_student[row.student_id]}
+            )
+        )
+    return out
+
+
+async def _obligations_still_owed(
+    session: AsyncSession,
+    period: ReportingPeriod,
+    *,
+    scope: Scope,
+    student_id: UUID | None = None,
+) -> list[ReportingObligation]:
+    """The period's obligations, minus those whose membership did not last the week (REP-01).
+
+    A report covers a week, so a membership that ended inside it owes nothing for it — the rule
+    `memberships_active_in_range` derives by, applied again on the way out because an obligation
+    derived before someone left is still sitting in the table.
+    """
+    rows = await repository.list_obligations(session, scope, period.id, student_id=student_id)
+    still_owed = await projects_service.memberships_still_owing(
+        session, [row.membership_id for row in rows], through=period.local_end
+    )
+    return [row for row in rows if row.membership_id in still_owed]
 
 
 async def excuse_obligation(
@@ -322,12 +366,30 @@ async def _carried_plan(
     if entry is None:
         return [], None
 
-    items = entry.next_plan.get("items") if isinstance(entry.next_plan, dict) else None
-    if not isinstance(items, list) or not items:
-        return [], entry.id
-    return [
-        item for item in items if isinstance(item, dict) and item.get("planned_outcome")
-    ], entry.id
+    return _plan_items(entry.next_plan), entry.id
+
+
+def _plan_items(next_plan: Any) -> list[dict[str, Any]]:
+    """The commitments in a next-week plan, in the one shape a baseline is frozen from.
+
+    `next_plan` is free-form JSON (REP-03 leaves its structure to the client) and two shapes
+    reached the column. `{"items": [{"planned_outcome": …, "weight": …}]}` is the one a baseline
+    needs, because PROJ-04 weights the commitments; `{"outcomes": ["…"]}` is what the report editor
+    wrote, and nothing read it — so every plan a student typed was dropped on its way to becoming
+    next week's baseline, and the assessment that followed said "no plan baseline was in effect".
+
+    The editor now writes `items`. The other shape is still accepted because rows carrying it are
+    already stored, and a plan written last week has to be readable this week.
+    """
+    if not isinstance(next_plan, dict):
+        return []
+    items = next_plan.get("items")
+    if isinstance(items, list):
+        return [item for item in items if isinstance(item, dict) and item.get("planned_outcome")]
+    outcomes = next_plan.get("outcomes")
+    if isinstance(outcomes, list):
+        return [{"planned_outcome": str(outcome)} for outcome in outcomes if str(outcome).strip()]
+    return []
 
 
 # ------------------------------------------------------------------ drafts and submission
@@ -370,11 +432,16 @@ async def submit_report(
             return await _version_out(session, scope, existing)
 
     period = await _require_period(session, scope, period_id)
-    obligations = await repository.list_obligations(
-        session, scope, period_id, student_id=report.student_id
+    # The same set the editor builds its tabs from, and for the same reason: an obligation whose
+    # membership ended inside the week is not owed (REP-01). Read raw, the completeness check
+    # demanded an entry for a project the student had left — which they cannot write and cannot
+    # rejoin — so one departure made the week permanently unsubmittable.
+    obligations = await _obligations_still_owed(
+        session, period, scope=scope, student_id=report.student_id
     )
     submitted = {UUID(str(entry["project_id"])) for entry in entries}
     _check_package_is_complete(obligations, submitted)
+    _check_package_says_something(entries)
 
     at = now()
     previous_version_id = report.current_version_id
@@ -425,6 +492,16 @@ async def submit_report(
                 ),
             )
         )
+
+    # An entry the package no longer covers is carried across rather than dropped. The only way to
+    # be in this branch is a project that stopped being owed after it was written — one the student
+    # left, or one excused since — and the new version becomes `current_version_id`, which is what
+    # the professor and the assessment pipeline read. Leaving it out would let a resubmission
+    # delete submitted work from the record, against what ending a membership promises: "what you
+    # have already submitted stays on the record".
+    for project_id, entry in previous_entries.items():
+        if project_id not in submitted:
+            session.add(_carried_entry(entry, version.id))
 
     report.current_version_id = version.id
     report.workflow_state = (
@@ -634,7 +711,17 @@ async def unfulfilled_entries(
     unfulfilled: list[UnfulfilledEntry] = []
     submitted_by_student: dict[UUID, set[UUID]] = {}
 
-    for obligation in await repository.required_obligations_at(session, period_id, instant=instant):
+    period = await repository.get_period_unscoped(session, period_id)
+    required = await repository.required_obligations_at(session, period_id, instant=instant)
+    # The same rule the student's own screen applies, from the same place: without it a professor
+    # is told a student owes a report for a project that student can no longer even open.
+    if period is not None:
+        still_owed = await projects_service.memberships_still_owing(
+            session, [o.membership_id for o in required], through=period.local_end
+        )
+        required = [o for o in required if o.membership_id in still_owed]
+
+    for obligation in required:
         if obligation.student_id not in submitted_by_student:
             submitted_by_student[obligation.student_id] = await repository.submitted_project_ids(
                 session, period_id=period_id, student_id=obligation.student_id
@@ -930,6 +1017,33 @@ def _content_hash(payload: dict[str, Any]) -> bytes:
     ).digest()
 
 
+def _carried_entry(previous: ProjectReportEntry, version_id: UUID) -> ProjectReportEntry:
+    """A previous version's entry, copied onto a new version verbatim.
+
+    `content_hash` and `content_changed_in_version_id` come across untouched, which is the point:
+    nothing about the entry changed, so AC-17 keeps it pointing at the version it last changed in
+    and no new assessment falls due for a project nobody wrote about this week.
+    """
+    return ProjectReportEntry(
+        workspace_id=previous.workspace_id,
+        report_version_id=version_id,
+        project_id=previous.project_id,
+        stage=previous.stage,
+        milestone_ids=list(previous.milestone_ids or []),
+        planned_work_ref=dict(previous.planned_work_ref or {}),
+        work_performed=previous.work_performed,
+        results=previous.results,
+        experiments=list(previous.experiments or []),
+        deviations=previous.deviations,
+        next_plan=dict(previous.next_plan or {}),
+        questions=previous.questions,
+        evidence_refs=list(previous.evidence_refs or []),
+        hours=previous.hours,
+        content_hash=previous.content_hash,
+        content_changed_in_version_id=previous.content_changed_in_version_id,
+    )
+
+
 def _check_package_is_complete(
     obligations: list[ReportingObligation], submitted: set[UUID]
 ) -> None:
@@ -948,6 +1062,29 @@ def _check_package_is_complete(
             "an entry names a project with no reporting obligation this period",
             unexpected_project_ids=[str(project_id) for project_id in sorted(unexpected, key=str)],
         )
+
+
+def _check_package_says_something(entries: list[dict[str, Any]]) -> None:
+    """A package in which nothing was written is a mistake, not a week's work.
+
+    The editor recovers the autosaved draft, and a report submitted without one — the seed does
+    this, and so does any client that posts entries directly — used to reopen as empty boxes over
+    a version that had content. Pressing Submit then wrote that emptiness over the record, which
+    is how this deployment acquired a version whose every field was blank. Refusing here is the
+    half of the fix that does not depend on which screen the submission came from.
+
+    One non-empty field anywhere in the package is enough: entries per project differ in how much
+    there is to say, and judging a single entry's substance is the professor's, not this function's.
+    """
+    if any(
+        str(payload.get(field) or "").strip()
+        for payload in entries
+        for field in ("work_performed", "results", "deviations", "questions")
+    ):
+        return
+    if any(payload.get("next_plan") or payload.get("hours") is not None for payload in entries):
+        return
+    raise ValidationError("the package is empty — write something in at least one entry")
 
 
 def _timing_status(
@@ -983,10 +1120,19 @@ async def grace_minutes_for(session: AsyncSession, period: ReportingPeriod) -> i
 
 
 async def _next_version_no(session: AsyncSession, report: WeeklyReport) -> int:
-    if report.current_version_id is None:
-        return 1
-    current = await session.get(ReportVersion, report.current_version_id)
-    return 1 if current is None else current.version_no + 1
+    """One past the highest version this report has ever had (REP-05).
+
+    From the highest, not from `current_version_id`. The two are normally the same, and when they
+    are not — a current version rolled back to an earlier one, a restore, a correction applied by
+    hand — counting from the current one reissues a number the table already holds, and
+    `uq_report_versions_report_id_version_no` refuses the insert. The student then cannot submit
+    that week again at all, and the only thing on screen is "that record already exists".
+
+    REP-05 also settles which of the two is right: a resubmission *adds* to the history and never
+    replaces it, so the sequence belongs to the history rather than to whichever version is being
+    read today.
+    """
+    return await repository.highest_version_no(session, report.id) + 1
 
 
 async def _resolve_open_revision_requests(

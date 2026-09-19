@@ -3,8 +3,12 @@
  *
  * The file never passes through the API. The client hashes it, asks for permission to write one
  * key, PUTs the bytes straight to object storage, and then asks the server to confirm — which is
- * when the server checks the checksum and reads the text. Three steps rather than one, because the
- * middle one is the part that must not go through this application.
+ * when the server checks the checksum. Three steps rather than one, because the middle one is the
+ * part that must not go through this application.
+ *
+ * The text is read when the week is submitted, not as each file arrives, so a version attached and
+ * not yet submitted sits at `pending`. The badge says so in those words: it used to read "Reading…"
+ * over a file nothing was reading, which looked like a job that had hung.
  *
  * The extraction state is shown rather than hidden. A PDF the server could not read is not the
  * same as a PDF with nothing in it, and the student is the person best placed to fix it.
@@ -32,7 +36,29 @@ export type Attachment = {
   extraction_state: "pending" | "ok" | "failed" | "unsupported";
   extraction_note: string;
   truncated?: boolean;
+  /** Where a linked artifact points. A file has none, and that is how the two are told apart. */
+  source_url?: string | null;
+  /** What the student said this shows. Recorded on attach, and shown back on the row. */
+  supported_claim?: string;
 };
+
+/**
+ * Whether this is a link we would even try to fetch, checked before anything is created.
+ *
+ * The server records a refused link rather than rejecting it, deliberately — REPO-08: the record
+ * should say what the student pointed at and why we did not follow it. That is the right answer
+ * for a link that resolves somewhere we will not go, and the wrong one for a typo: `not a url`
+ * used to become a permanent attachment badged COULD NOT BE READ. A scheme this side of the
+ * request keeps the typo out and leaves the deliberate refusals to the server.
+ */
+function fetchableLink(value: string): boolean {
+  try {
+    const { protocol } = new URL(value.trim());
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 /** The browser's own SHA-256, so the server has something to verify the upload against. */
 async function sha256(file: File): Promise<string> {
@@ -112,6 +138,10 @@ export function Attachments({
 
   async function attachLink() {
     if (!link.trim()) return;
+    if (!fetchableLink(link)) {
+      setError(t("report.attachments.linkInvalid"));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -142,16 +172,56 @@ export function Attachments({
             key={`${attachment.artifact_id}:${attachment.version_no}`}
             className="row items-start"
           >
-            <span className="font-mono text-[12.5px]">{attachment.filename}</span>
+            <div className="min-w-0">
+              {/* A link's filename is derived from its path, so two links to different sites can
+                  both read "link". The address is the only thing that identifies one. */}
+              {attachment.source_url ? (
+                <a
+                  href={attachment.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="link block break-all font-mono text-[12.5px]"
+                >
+                  {attachment.source_url}
+                </a>
+              ) : (
+                <span className="block font-mono text-[12.5px]">{attachment.filename}</span>
+              )}
+              {/* The claim was written into a box labelled "What does this show?" and then never
+                  shown again, so nobody could check it, correct it, or notice it was empty. */}
+              {attachment.supported_claim ? (
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground" data-testid="claim">
+                  {attachment.supported_claim}
+                </p>
+              ) : null}
+              {/* Why a file or link could not be read, as text. It was the badge's `title`, which
+                  a phone has no way to show and a screen reader does not announce as content. */}
+              {attachment.extraction_state === "failed" && attachment.extraction_note ? (
+                <p className="mt-0.5 text-[12.5px] text-bad" data-testid="extraction-note">
+                  {attachment.extraction_note}
+                </p>
+              ) : null}
+            </div>
             <span className="flex items-center gap-2.5">
               <ExtractionBadge attachment={attachment} />
-              <button
-                type="button"
-                onClick={() => void openArtifact(attachment.artifact_id)}
-                className="btn-quiet"
-              >
-                {t("report.attachments.download")}
-              </button>
+              {/* A link has no stored bytes, so this asked for a download that 404s and threw
+                  into the console with nothing on screen. The address above is the way to open
+                  one, and it is already a link. */}
+              {attachment.source_url ? null : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void openArtifact(attachment.artifact_id).catch((problem: unknown) =>
+                      setError(
+                        problem instanceof ApiError ? problem.problem.detail : String(problem),
+                      ),
+                    );
+                  }}
+                  className="btn-quiet"
+                >
+                  {t("report.attachments.download")}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={busy}

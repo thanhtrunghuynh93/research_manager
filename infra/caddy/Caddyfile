@@ -14,7 +14,14 @@
 		# connect-src carries the object store because the browser PUTs an attachment straight to
 		# it and never through the API (REP-04). Without the origin listed, every upload is
 		# refused by the browser before a byte leaves it.
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://objects.{$RM_DOMAIN:localhost}; frame-ancestors 'none'"
+		#
+		# style-src and font-src carry Google Fonts because index.html links a stylesheet there and
+		# that stylesheet points at gstatic for the files. Both origins are needed and they are not
+		# the same one: without the first the stylesheet never loads, without the second it loads
+		# and every @font-face in it is blocked. Omitting them did not fail loudly — the page fell
+		# back to Georgia and a console warning nobody reads, so the whole type system was missing
+		# in production while every screenshot in development looked right.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://objects.{$RM_DOMAIN:localhost}; frame-ancestors 'none'"
 		-Server
 	}
 

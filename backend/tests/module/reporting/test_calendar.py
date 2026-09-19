@@ -16,6 +16,7 @@ from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import ForbiddenError, NotFoundError
 from app.identity import models as identity_models
+from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import models, service
 
@@ -159,6 +160,40 @@ async def test_a_departed_student_owes_nothing_for_later_weeks(
     assert second == []
 
 
+async def test_leaving_mid_week_takes_the_week_with_it(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """A report covers a week, so a membership that did not last the week owes nothing for it.
+
+    The earlier rule kept the week in progress, on the grounds that leaving should not be a way to
+    drop a report already owed. This is the other reading: a project you are no longer on should
+    not sit on your week at all.
+    """
+    await _calendar(db, prof_scope)
+    project = await projects_service.create_project(
+        db, prof_scope, title="Baseline", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    membership = await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    periods = await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20))
+    week = periods[0]
+    derived = await service.ensure_obligations(db, prof_scope, week.id)
+    assert [o.project_id for o in derived] == [project.id], "owed while they are on it"
+
+    # Thursday of a Monday-to-Sunday week.
+    await projects_service.end_membership(db, prof_scope, membership.id, left_on=date(2026, 9, 17))
+
+    # The student's own screen.
+    student_scope = await identity_service.scope_for(db, student_a)
+    assert await service.list_obligations(db, student_scope, week.id) == []
+
+    # And the professor's outstanding list, which must not say they owe a project they cannot open.
+    outstanding = await service.unfulfilled_entries(db, week.id)
+    assert [e.project_id for e in outstanding] == []
+
+
 async def test_an_exemption_records_its_reason_and_no_report_is_owed(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
@@ -276,6 +311,51 @@ async def test_freezing_carries_the_previous_weeks_plan_into_the_new_baseline(
         "Run the baseline end to end",
         "Draft the method section",
     ]
+
+
+async def test_a_plan_written_in_the_older_shape_still_carries(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """`next_plan` is free-form JSON, and the report editor wrote a shape nothing read.
+
+    It sent `{"outcomes": [text]}` where the baseline is frozen from `items[].planned_outcome`, so
+    every plan a student typed into the app was dropped on its way to PROJ-04 and the assessment
+    that followed reported that no baseline was in effect. The editor writes `items` now; rows in
+    the old shape are already stored, and a plan written last week has to be readable this week.
+    """
+    from app.identity import service as identity_service
+    from app.projects import service as projects_service
+
+    await _calendar(db, prof_scope)
+    project = await projects_service.create_project(
+        db, prof_scope, title="Baseline", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    periods = await service.ensure_periods(db, prof_scope, through=date(2026, 10, 4))
+    await service.ensure_obligations(db, prof_scope, periods[0].id)
+    student_scope = await identity_service.scope_for(db, student_a)
+    await service.submit_report(
+        db,
+        student_scope,
+        period_id=periods[0].id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Built the loader",
+                "next_plan": {"outcomes": ["Fit the seasonal term"]},
+            }
+        ],
+    )
+
+    await service.ensure_obligations(db, prof_scope, periods[1].id)
+    baselines = await service.freeze_baselines(db, prof_scope, periods[1].id)
+
+    assert [item.planned_outcome for item in baselines[0].items] == ["Fit the seasonal term"]
+    assert baselines[0].state.value == "frozen"
 
 
 async def test_freezing_with_no_previous_plan_records_an_empty_baseline(

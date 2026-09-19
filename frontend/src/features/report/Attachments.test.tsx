@@ -135,6 +135,21 @@ test("a link is attached through the API, which decides whether to follow it", a
   await waitFor(() => expect(onAttached).toHaveBeenCalled());
 });
 
+test("a link is listed by its address, which is the only thing that identifies one", async () => {
+  // A link's filename is derived from its path, so two links to different sites both read "link"
+  // or share a last segment — and the address was on no screen at all.
+  renderPanel([attachment({ filename: "link", source_url: "https://example.com/ablation-table" })]);
+
+  const shown = screen.getByRole("link", { name: "https://example.com/ablation-table" });
+  expect(shown).toHaveAttribute("href", "https://example.com/ablation-table");
+});
+
+test("a file, which has no address, is still listed by its filename", async () => {
+  renderPanel([attachment({ filename: "notes.md" })]);
+
+  expect(screen.getByText("notes.md")).toBeInTheDocument();
+});
+
 test("the panel says what the claim field is for", async () => {
   // REPO-08: what the student says a file shows is their claim, not a finding.
   renderPanel();
@@ -226,4 +241,95 @@ test("a file stays removable after the week is submitted", async () => {
   await userEvent.click(screen.getByTestId("remove-attachment"));
 
   await waitFor(() => expect(removed).toEqual(["a1"]));
+});
+
+test("a typo in the link box is caught before anything is created", async () => {
+  // The server records a refused link rather than rejecting it — deliberately, so the record says
+  // what the student pointed at (REPO-08). That is right for a link resolving somewhere we will
+  // not go, and wrong for `not a url`, which became a permanent row badged COULD NOT BE READ.
+  const posted: unknown[] = [];
+  server.use(
+    http.post("/api/v1/artifacts/links", async ({ request }) => {
+      posted.push(await request.json());
+      return HttpResponse.json(attachment({ source_url: "x" }), { status: 201 });
+    }),
+  );
+  renderPanel();
+  const user = userEvent.setup();
+
+  await user.type(screen.getByPlaceholderText(/https/i), "not a url");
+  await user.click(screen.getByRole("button", { name: /add link/i }));
+
+  expect(await screen.findByTestId("attachment-error")).toHaveTextContent(
+    /http:\/\/ or https:\/\//,
+  );
+  expect(posted).toEqual([]);
+});
+
+test("a real link is still sent", async () => {
+  const posted: unknown[] = [];
+  server.use(
+    http.post("/api/v1/artifacts/links", async ({ request }) => {
+      posted.push(await request.json());
+      return HttpResponse.json(attachment({ source_url: "https://example.org/run" }), {
+        status: 201,
+      });
+    }),
+  );
+  const { onAttached } = renderPanel();
+  const user = userEvent.setup();
+
+  await user.type(screen.getByPlaceholderText(/https/i), "https://example.org/run");
+  await user.click(screen.getByRole("button", { name: /add link/i }));
+
+  await waitFor(() => expect(onAttached).toHaveBeenCalled());
+  expect(posted).toHaveLength(1);
+});
+
+test("the claim the student wrote is shown back on the row", async () => {
+  // It was recorded and then appeared on no screen, so nobody could check it, correct it, or
+  // notice that a file had gone up without one.
+  renderPanel([attachment({ supported_claim: "the run log behind the nDCG number" })]);
+
+  expect(await screen.findByTestId("claim")).toHaveTextContent(
+    "the run log behind the nDCG number",
+  );
+});
+
+test("why a file could not be read is text, not a tooltip", async () => {
+  // As the badge's `title` it did not exist on a touch device and was not announced as content.
+  renderPanel([
+    attachment({
+      extraction_state: "failed",
+      extraction_note: "only http and https links can be fetched",
+    }),
+  ]);
+
+  expect(await screen.findByTestId("extraction-note")).toHaveTextContent(/only http and https/);
+});
+
+test("a link is not offered a download it has no bytes for", async () => {
+  // `/artifacts/{id}/download` 404s for a link, and the rejected promise reached the console and
+  // stopped there — from the student's side the button was simply dead.
+  renderPanel([attachment({ source_url: "https://example.org/run", filename: "run" })]);
+
+  expect(screen.queryByRole("button", { name: /download/i })).not.toBeInTheDocument();
+  // The address is the way to open one, and it is already a link.
+  expect(screen.getByRole("link", { name: "https://example.org/run" })).toBeInTheDocument();
+});
+
+test("a download that fails says so on the screen", async () => {
+  server.use(
+    http.get("/api/v1/artifacts/a1/download", () =>
+      HttpResponse.json(
+        { title: "Not found", status: 404, detail: "this artifact has no stored version" },
+        { status: 404 },
+      ),
+    ),
+  );
+  renderPanel([attachment()]);
+
+  await userEvent.click(screen.getByRole("button", { name: /download/i }));
+
+  expect(await screen.findByTestId("attachment-error")).toHaveTextContent(/no stored version/i);
 });

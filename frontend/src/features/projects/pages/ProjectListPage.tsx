@@ -83,9 +83,21 @@ export function ProjectListPage() {
                     {project.start_on ? ` · ${formatLocalDate(project.start_on)}` : ""}
                   </p>
                 </div>
-                <Badge tone={project.status === "active" ? "good" : "neutral"}>
-                  {t(`project.status.${project.status}`, { defaultValue: project.status })}
-                </Badge>
+                <span className="flex items-center gap-2">
+                  {/* A project the reader has left is still listed, because their own reports and
+                      assessments point at it — but it is not one of theirs any more, and a list
+                      that does not say so reads as a roster they are still on. */}
+                  {project.viewer_left_on ? (
+                    <Badge tone="neutral" data-testid="left-badge">
+                      {t("project.leftOn", {
+                        when: formatLocalDate(project.viewer_left_on),
+                      })}
+                    </Badge>
+                  ) : null}
+                  <Badge tone={project.status === "active" ? "good" : "neutral"}>
+                    {t(`project.status.${project.status}`, { defaultValue: project.status })}
+                  </Badge>
+                </span>
               </li>
             ))}
           </ul>

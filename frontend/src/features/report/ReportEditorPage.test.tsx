@@ -32,6 +32,9 @@ const OBLIGATIONS = [
 
 function renderPage(extra: Parameters<typeof server.use>[number][] = []) {
   server.use(
+    // First: within one `use` call msw matches in order, so a test's own handler has to come
+    // before the defaults it is replacing.
+    ...extra,
     http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
     http.get("/api/v1/periods/p1/obligations", () => HttpResponse.json(OBLIGATIONS)),
     http.get("/api/v1/projects", () => HttpResponse.json({ items: PROJECTS })),
@@ -50,7 +53,6 @@ function renderPage(extra: Parameters<typeof server.use>[number][] = []) {
         current_version_id: null,
       }),
     ),
-    ...extra,
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -129,7 +131,9 @@ test("submits one package for every required project with an idempotency key", a
   expect(submissions[0]!.key).toBeTruthy();
 });
 
-test("reports what the API says when the package is incomplete", async () => {
+test("names the projects the package is missing, rather than repeating the rule", async () => {
+  // The API says which ones; rendering `detail` alone told a student whose tabs were all full
+  // that the package was incomplete and left them to work out which project it meant.
   renderPage([
     http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
     http.post("/api/v1/periods/p1/report/submit", () =>
@@ -138,6 +142,7 @@ test("reports what the API says when the package is incomplete", async () => {
           title: "Validation failed",
           status: 422,
           detail: "the package is missing an entry for every required project",
+          missing_project_ids: ["pr2"],
         },
         { status: 422 },
       ),
@@ -147,7 +152,24 @@ test("reports what the API says when the package is incomplete", async () => {
 
   await user.click(await screen.findByRole("button", { name: /submit/i }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent(/missing an entry/i);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Theory of the estimator");
+});
+
+test("falls back to what the API said when it names no project", async () => {
+  renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
+    http.post("/api/v1/periods/p1/report/submit", () =>
+      HttpResponse.json(
+        { title: "Validation failed", status: 422, detail: "the package is empty" },
+        { status: 422 },
+      ),
+    ),
+  ]);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: /submit/i }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(/the package is empty/i);
 });
 
 test("shows the deadline for the week being reported", async () => {
@@ -329,4 +351,198 @@ test("the attachments already on an entry are read back from the server", async 
   await userEvent.click(await screen.findByRole("tab", { name: /Baseline evaluation/ }));
 
   expect(await screen.findByText("week3.pptx")).toBeInTheDocument();
+});
+
+test("a week already submitted reopens with what was submitted, not with empty boxes", async () => {
+  // The editor recovered the autosaved draft and nothing else. A report submitted without one —
+  // the seed does exactly this — reopened as blank fields over a version that had content, and
+  // pressing Submit wrote that blankness over the record as a new current version.
+  renderPage([
+    http.get("/api/v1/periods/p1/report", () =>
+      HttpResponse.json({
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "submitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T10:00:00Z",
+        current_version_id: "v1",
+      }),
+    ),
+    http.get("/api/v1/report-versions/v1", () =>
+      HttpResponse.json({
+        id: "v1",
+        report_id: "r1",
+        version_no: 1,
+        author_id: "s1",
+        submitted_at: "2026-09-17T10:00:00Z",
+        timing_status: "on_time",
+        entries: [
+          {
+            id: "e1",
+            report_version_id: "v1",
+            project_id: "pr1",
+            stage: "implementation",
+            milestone_ids: [],
+            planned_work_ref: {},
+            work_performed: "Reproduced the published split sizes.",
+            results: "nDCG within 0.01 of the paper.",
+            experiments: [],
+            deviations: "",
+            next_plan: { outcomes: ["Run the ablation"] },
+            questions: "",
+            evidence_refs: [],
+            hours: null,
+            content_changed_in_version_id: "v1",
+          },
+        ],
+      }),
+    ),
+  ]);
+
+  expect(
+    await screen.findByDisplayValue("Reproduced the published split sizes."),
+  ).toBeInTheDocument();
+  expect(screen.getByDisplayValue("nDCG within 0.01 of the paper.")).toBeInTheDocument();
+  // `next_plan` goes out as `{ outcomes: [text] }` and has to come back as the text.
+  expect(screen.getByDisplayValue("Run the ablation")).toBeInTheDocument();
+  // And the screen says the week is already in, which is what makes resubmitting a decision.
+  expect(screen.getByTestId("already-submitted")).toBeInTheDocument();
+});
+
+test("a period that is not one of theirs says so, rather than loading for ever", async () => {
+  // The loading guard waits for the drafts, the drafts wait for the obligations, and an
+  // inaccessible period 404s them — so the screen never reached the message written for this.
+  renderPage([
+    http.get("/api/v1/periods/p1/obligations", () =>
+      HttpResponse.json(
+        { title: "Not found", status: 404, detail: "period not found" },
+        { status: 404 },
+      ),
+    ),
+  ]);
+
+  expect(await screen.findByText(/does not exist, or is not one of yours/i)).toBeInTheDocument();
+});
+
+test("the next-week plan goes out in the shape a baseline is frozen from", async () => {
+  // It went out as `{ outcomes: [text] }`, and the baseline is frozen from
+  // `items[].planned_outcome` — so every plan a student typed was dropped on its way to PROJ-04.
+  const submissions: { entries: { project_id: string; next_plan: unknown }[] }[] = [];
+  renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
+    http.post("/api/v1/periods/p1/report/submit", async ({ request }) => {
+      submissions.push((await request.json()) as (typeof submissions)[number]);
+      return HttpResponse.json({
+        id: "v1",
+        report_id: "r1",
+        version_no: 1,
+        author_id: "s1",
+        submitted_at: "2026-09-20T10:00:00Z",
+        timing_status: "on_time",
+        entries: [],
+      });
+    }),
+  ]);
+  const user = userEvent.setup();
+
+  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  await user.type(screen.getByLabelText(/next-week plan/i), "Fit the seasonal term");
+  await user.click(screen.getByRole("button", { name: /submit/i }));
+
+  await waitFor(() => expect(submissions).toHaveLength(1));
+  const sent = submissions[0]!.entries.find((entry) => entry.project_id === "pr1")!;
+  expect(sent.next_plan).toEqual({ items: [{ planned_outcome: "Fit the seasonal term" }] });
+  // An entry with no plan sends no plan, rather than an item with an empty outcome in it.
+  const other = submissions[0]!.entries.find((entry) => entry.project_id === "pr2")!;
+  expect(other.next_plan).toEqual({});
+});
+
+test("each tab says whether its entry is already in the package", async () => {
+  // Nothing distinguished the one project a student still owed from the three they had written,
+  // which is the same defect `/me` had and the reason a week could look finished while it was not.
+  renderPage([
+    http.get("/api/v1/periods/p1/obligations", () =>
+      HttpResponse.json([
+        { ...OBLIGATIONS[0], submitted: true },
+        { ...OBLIGATIONS[1], submitted: false },
+      ]),
+    ),
+    http.get("/api/v1/periods/p1/report", () =>
+      HttpResponse.json({
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "submitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T10:00:00Z",
+        current_version_id: null,
+      }),
+    ),
+  ]);
+
+  expect(await screen.findByTestId("tab-state-pr1")).toHaveTextContent(/submitted/i);
+  expect(screen.getByTestId("tab-state-pr2")).toHaveTextContent(/required/i);
+  // And the header says the week is in but not finished, which "Submitted …" alone did not.
+  expect(screen.getByTestId("still-owed")).toHaveTextContent("1 project");
+});
+
+test("the tabs are a keyboard tab strip, not three buttons wearing the role", async () => {
+  // `role="tab"` with no panel, no `aria-controls` and every tab in the tab order: a screen
+  // reader was told "tab 1 of 2" and offered nowhere to go.
+  renderPage();
+  const user = userEvent.setup();
+
+  const first = await screen.findByRole("tab", { name: /Baseline evaluation/ });
+  const second = screen.getByRole("tab", { name: /Theory of the estimator/ });
+  expect(first).toHaveAttribute("aria-controls", "entry-panel-pr1");
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "entry-panel-pr1");
+  expect(first).toHaveAttribute("tabindex", "0");
+  expect(second).toHaveAttribute("tabindex", "-1");
+
+  first.focus();
+  await user.keyboard("{ArrowRight}");
+
+  expect(second).toHaveFocus();
+  expect(second).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "entry-panel-pr2");
+});
+
+test("shows a validation failure as a sentence instead of blanking the page", async () => {
+  // QA pass 3, defect #1. FastAPI answers its own validation errors with an array of objects under
+  // `detail`, where every other refusal in this API carries a string. React renders an array by
+  // rendering each of its children, so rendering that here was React error #31 — and the router's
+  // error boundary replaced the whole application, navigation included, with a blank error page.
+  // A student reached it by typing a negative number in the optional Hours box and pressing the
+  // one button on the screen.
+  renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
+    http.post("/api/v1/periods/p1/report/submit", () =>
+      HttpResponse.json(
+        {
+          detail: [
+            {
+              type: "greater_than_equal",
+              loc: ["body", "entries", 0, "hours"],
+              msg: "Input should be greater than or equal to 0",
+              input: -1,
+              ctx: { ge: 0 },
+            },
+          ],
+        },
+        { status: 422 },
+      ),
+    ),
+  ]);
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByRole("button", { name: /submit/i }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "entries[0].hours: Input should be greater than or equal to 0",
+  );
+  // The editor is still there to correct the entry in, which is the whole point.
+  expect(screen.getByRole("button", { name: /submit/i })).toBeInTheDocument();
 });

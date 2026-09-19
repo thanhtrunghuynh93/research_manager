@@ -1,6 +1,7 @@
 import { Moon, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useLogout, useSession } from "@/features/auth/queries";
 import { useCurrentWorkspace } from "@/features/workspaces/queries";
@@ -120,8 +121,46 @@ export function AppShell() {
         </nav>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-7 py-8">
+        <TurnedAwayNotice />
         <Outlet />
       </main>
     </div>
+  );
+}
+
+/**
+ * Why you are looking at your own home rather than the page you clicked.
+ *
+ * Both the role guard and the catch-all *redirect* rather than refuse, which is the right
+ * behaviour — a dead end is worse — but it left the click unexplained. One link inside the app
+ * already does this: the member names on `/projects/:id` point at `/students/:id`, and either role
+ * may open the page they are on.
+ */
+function TurnedAwayNotice() {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const arriving = (location.state as { turnedAwayFrom?: string } | null)?.turnedAwayFrom;
+  // Which path the message belongs to, so moving anywhere else clears it — and a snapshot, so
+  // that consuming the history state below does not erase the message along with it.
+  const [shown, setShown] = useState<{ at: string; from: string } | null>(null);
+
+  useEffect(() => {
+    if (arriving) {
+      setShown({ at: location.pathname, from: arriving });
+      // Consumed rather than kept. It lived in the history entry, so a reader who pressed reload
+      // on their own home was told again about a link they had followed long before — and again
+      // on every reload after that, because nothing ever cleared it.
+      navigate(location.pathname, { replace: true, state: null });
+    } else {
+      setShown((current) => (current?.at === location.pathname ? current : null));
+    }
+  }, [arriving, location.pathname, navigate]);
+
+  if (!shown) return null;
+  return (
+    <p className="panel mb-6 px-4 py-2.5 text-sm text-muted-foreground" role="status">
+      {t("app.turnedAway", { path: shown.from })}
+    </p>
   );
 }

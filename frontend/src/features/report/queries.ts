@@ -56,6 +56,27 @@ export function useReport(periodId: string | undefined) {
   });
 }
 
+/**
+ * One submitted version, so the editor can show what was sent rather than an empty form.
+ *
+ * A report carries a `draft_content` and a `current_version_id`, and the two can disagree: a
+ * submission made without an autosaved draft — the seed does this — leaves the draft empty over a
+ * version with content. Reading only the draft meant reopening such a week showed blank boxes, and
+ * submitting them wrote that blankness over the record.
+ */
+export function useVersion(versionId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["report-version", versionId ?? ""] as const,
+    queryFn: () => api.get<Version>(`/api/v1/report-versions/${versionId}`),
+    enabled: Boolean(versionId),
+    // Versions are immutable, so there is never a reason to ask twice.
+    staleTime: Infinity,
+    // The editor waits for this before seeding its fields; a version it cannot read should not
+    // hold the form shut while a retry runs. Failing once falls back to the draft.
+    retry: false,
+  });
+}
+
 export function useSaveDraft(periodId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -93,13 +114,14 @@ export function useSubmitReport(periodId: string) {
 export function currentPeriod(
   periods: Period[] | undefined,
   today = new Date(),
+  timeZone?: string,
 ): Period | undefined {
   if (!periods?.length) return undefined;
   // The workspace's date, not UTC's: `local_start`/`local_end` are workspace-local calendar
   // dates, so comparing them against `toISOString()` showed last week as "this week" for the
   // first seven hours of every day in a UTC+7 workspace — including a "Start this week" link
   // pointing at the previous period.
-  const iso = todayLocal(today);
+  const iso = todayLocal(today, timeZone);
   return (
     periods.find((period) => period.local_start <= iso && iso <= period.local_end) ??
     periods.find((period) => period.local_start > iso) ??
@@ -114,11 +136,18 @@ export function currentPeriod(
  * a reload showed an empty list over files that were sitting in the bucket, and the professor —
  * who never did the upload — had no way to see them at all.
  */
-export function useArtifacts(filters: {
-  periodId?: string;
-  projectId?: string;
-  studentId?: string;
-}) {
+export function useArtifacts(
+  filters: { periodId?: string; projectId?: string; studentId?: string },
+  /**
+   * Whether anything is reading these files right now — true once the week has been submitted.
+   *
+   * The text is read when the report is submitted, not as each file arrives, so before that a
+   * `pending` version stays pending however long anyone watches it. Polling was unconditional and
+   * therefore never stopped: a student who attached a file and left the tab open asked the server
+   * for the same unchanged list every three seconds until they closed it.
+   */
+  reading = false,
+) {
   const params = new URLSearchParams();
   if (filters.periodId) params.set("period_id", filters.periodId);
   if (filters.projectId) params.set("project_id", filters.projectId);
@@ -128,12 +157,12 @@ export function useArtifacts(filters: {
     queryKey: artifactsKey({ ...filters }),
     queryFn: () => api.get<Artifact[]>(`/api/v1/artifacts?${query}`),
     enabled: Boolean(query),
-    // Reading a file happens in a worker just after it is attached, so an attachment arrives
-    // `pending` and becomes `ok` a few seconds later. Poll only while something is pending: the
-    // alternative is a badge that says "Reading…" until the student reloads the page, which is
-    // the same silence the upload used to have, moved one step along.
+    // Submission queues the reading, so from then on a pending version does become `ok` a few
+    // seconds later and the badge has a reason to change.
     refetchInterval: (query) =>
-      (query.state.data ?? []).some((one) => one.extraction_state === "pending") ? 3000 : false,
+      reading && (query.state.data ?? []).some((one) => one.extraction_state === "pending")
+        ? 3000
+        : false,
   });
 }
 

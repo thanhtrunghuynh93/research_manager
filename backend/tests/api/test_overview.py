@@ -109,6 +109,8 @@ async def test_the_overview_counts_outstanding_obligations_from_the_table(
     assert body["outstanding"]["count"] == 1
     assert body["outstanding"]["as_of"]
     assert body["outstanding"]["entries"][0]["student_id"] == str(student_b.id)
+    # And by name: this list sits directly under a board that names everyone on it.
+    assert body["outstanding"]["entries"][0]["student_name"] == student_b.display_name
 
 
 async def test_the_overview_shows_an_empty_review_queue_rather_than_omitting_it(
@@ -205,3 +207,97 @@ async def test_an_invitation_that_never_sent_reaches_the_overview(
     # Named as an enrolment that did not happen, not as a generic mail problem: the person it was
     # for has no session, no in-app message, and no other way into an invitation-only system.
     assert "cannot sign in" in body["mail"]["reason"]
+
+
+async def test_the_week_lists_every_report_owed_and_which_of_them_are_in(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+) -> None:
+    """UI-01: the week as a whole, not only its absences.
+
+    `outstanding` is the same obligations read for one of their three states, and a supervisor
+    cannot plan from a list of absences: a student who has reported does not appear in it at all.
+    """
+    period, project = await _week(db, prof_scope, [student_a, student_b])
+    scope = await identity_service.scope_for(db, student_a)
+    await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Ran the baseline.",
+                "results": "nDCG@10 is 0.412.",
+            }
+        ],
+    )
+    await _login(client, prof)
+
+    body = (await client.get("/api/v1/overview")).json()
+
+    assert len(body["week"]) == 1, "one workspace"
+    board = body["week"][0]
+    assert board["workspace_name"]
+    assert (board["local_start"], board["local_end"]) == ("2026-09-14", "2026-09-20")
+    assert (board["submitted"], board["owed"], board["excused"]) == (1, 1, 0)
+
+    assert [one["project_title"] for one in board["projects"]] == ["Retrieval baselines"]
+    students = board["projects"][0]["students"]
+    by_id = {one["student_id"]: one for one in students}
+    assert by_id[str(student_a.id)]["state"] == "submitted"
+    assert by_id[str(student_b.id)]["state"] == "owed"
+    # The name, not eight characters of a uuid: the point of the board is to be read.
+    assert by_id[str(student_a.id)]["student_name"] == student_a.display_name
+
+
+async def test_an_excused_obligation_is_listed_and_marked_rather_than_counted_as_owed(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+) -> None:
+    # REP-06: leave and holidays are recorded, not treated as a missing report — so the row has to
+    # be on the board saying why, rather than absent from it or amber in it.
+    period, _ = await _week(db, prof_scope, [student_a])
+    obligations = await reporting_service.list_obligations(db, prof_scope, period.id)
+    await reporting_service.excuse_obligation(
+        db, prof_scope, obligations[0].id, reason="Approved leave"
+    )
+    await _login(client, prof)
+
+    board = (await client.get("/api/v1/overview")).json()["week"][0]
+
+    assert (board["submitted"], board["owed"], board["excused"]) == (0, 0, 1)
+    student = board["projects"][0]["students"][0]
+    assert student["state"] == "excused"
+    assert student["excuse_reason"] == "Approved leave"
+
+
+async def test_a_week_with_no_obligations_yet_is_an_empty_board_rather_than_a_missing_one(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+) -> None:
+    # Every section is always present: a missing one reads as a broken screen.
+    await reporting_service.configure_calendar(
+        db,
+        prof_scope,
+        timezone="Asia/Ho_Chi_Minh",
+        meeting_weekday=0,
+        week_start_weekday=0,
+        effective_from=date(2026, 9, 14),
+    )
+    await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20))
+    await _login(client, prof)
+
+    body = (await client.get("/api/v1/overview")).json()
+
+    assert body["week"] == []

@@ -2772,6 +2772,11 @@ export interface components {
              * Format: uuid
              */
             student_id: string;
+            /**
+             * Submitted
+             * @default false
+             */
+            submitted: boolean;
         };
         /**
          * ObligationState
@@ -2823,6 +2828,8 @@ export interface components {
             sync_issues?: {
                 [key: string]: unknown;
             }[];
+            /** Week */
+            week?: components["schemas"]["WeekWorkspace"][];
         };
         /** Page[ProjectOut] */
         Page_ProjectOut_: {
@@ -2902,6 +2909,11 @@ export interface components {
              * Format: date-time
              */
             start_utc: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
         };
         /** ProfilePatch */
         ProfilePatch: {
@@ -2995,6 +3007,8 @@ export interface components {
             title: string;
             /** Venue Target */
             venue_target?: string | null;
+            /** Viewer Left On */
+            viewer_left_on?: string | null;
             /**
              * Workspace Id
              * Format: uuid
@@ -3620,6 +3634,61 @@ export interface components {
          * @enum {string}
          */
         Visibility: "professor_only" | "student_private" | "project_shared";
+        /** WeekProject */
+        WeekProject: {
+            /** Project Id */
+            project_id: string;
+            /** Project Title */
+            project_title: string;
+            /** Students */
+            students?: components["schemas"]["WeekStudent"][];
+        };
+        /**
+         * WeekStudent
+         * @description One student's standing on one project this week, in the three states REP-06/REP-08 give.
+         */
+        WeekStudent: {
+            /**
+             * Excuse Reason
+             * @default
+             */
+            excuse_reason: string;
+            /** Extension Until Utc */
+            extension_until_utc?: string | null;
+            /** State */
+            state: string;
+            /** Student Id */
+            student_id: string;
+            /** Student Name */
+            student_name: string;
+        };
+        /**
+         * WeekWorkspace
+         * @description This week in one workspace: its period, and every report owed in it.
+         *
+         *     Grouped per workspace because a professor's reads span all of them (ADR 0016) and each keeps
+         *     its own calendar — so "this week" is one period per workspace rather than one period.
+         */
+        WeekWorkspace: {
+            /** Excused */
+            excused: number;
+            /** Local End */
+            local_end: string;
+            /** Local Start */
+            local_start: string;
+            /** Owed */
+            owed: number;
+            /** Period Id */
+            period_id: string;
+            /** Projects */
+            projects?: components["schemas"]["WeekProject"][];
+            /** Submitted */
+            submitted: number;
+            /** Workspace Id */
+            workspace_id: string;
+            /** Workspace Name */
+            workspace_name: string;
+        };
         /** WorkspaceCreateIn */
         WorkspaceCreateIn: {
             /** Name */

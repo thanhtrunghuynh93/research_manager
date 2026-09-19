@@ -2,6 +2,7 @@
   "app": {
     "title": "Research Management",
     "greeting": "Hello {{name}}",
+    "turnedAway": "{{path}} is not a page your account can open, so this is your own home instead.",
     "toDark": "Switch to dark",
     "toLight": "Switch to light",
     "tagline": "supervision"
@@ -50,11 +51,13 @@
   "me": {
     "title": "This week",
     "dueBy": "Due by",
-    "obligations": "Reports owed",
+    "obligations": "Projects this week",
     "nothingOwed": "Nothing is owed for this week.",
     "noPeriod": "No reporting period has been configured yet.",
     "startWeek": "Start this week",
     "openWeek": "Open this week",
+    "partlySubmitted_one": "Submitted — {{count}} project still owed",
+    "partlySubmitted_other": "Submitted — {{count}} projects still owed",
     "releasedNote": "An assessment appears here once your professor has approved it.",
     "pastWeeks": "Earlier weeks",
     "toProfile": "Your assessments and your progress on every project →"
@@ -64,6 +67,11 @@
     "tabs": "Project entries",
     "submit": "Submit report",
     "submitted": "Submitted as version {{version}}.",
+    "alreadySubmitted": "Submitted {{when}} — sending again replaces it",
+    "stillOwed_one": "{{count}} project still has no entry in it",
+    "stillOwed_other": "{{count}} projects still have no entry in it",
+    "missingEntries": "No entry for {{projects}}. The package has to cover every project you are on this week.",
+    "unknownPeriod": "That reporting week does not exist, or is not one of yours.",
     "state": {
       "not_started": "Not started",
       "draft": "Draft",
@@ -74,6 +82,7 @@
     },
     "obligation": {
       "required": "Required",
+      "submitted": "Submitted",
       "excused": "Excused"
     },
     "autosave": {
@@ -95,21 +104,22 @@
       "title": "Evidence",
       "claim": "What does this show?",
       "claimPlaceholder": "The run log behind the nDCG number",
-      "claimNote": "Your description of what this supports. Recorded as your claim, not as a finding.",
+      "claimNote": "Your description of what this supports, applied to the next file or link you attach. Recorded as your claim, not as a finding.",
       "file": "Attach a file",
       "link": "Or a link",
       "addLink": "Add link",
+      "linkInvalid": "That is not a web address. A link has to start with http:// or https://.",
       "download": "Download",
       "none": "Nothing attached yet.",
       "limit": "Up to 25 MB per file. Slides (PPTX), documents (DOCX), Markdown, HTML, PDF, figures, notebooks and data files.",
       "truncated": "truncated",
       "state": {
-        "pending": "Reading…",
+        "pending": "Read when you submit",
         "ok": "Text extracted",
         "failed": "Could not be read",
         "unsupported": "Stored, no text"
       },
-      "sending": "Sending {{name}} — this takes a few seconds while the text is read out of it.",
+      "sending": "Sending {{name}}…",
       "remove": "Remove",
       "removeConfirm": "Remove {{name}}? The file and its extracted text are deleted, and it stops being searchable."
     }
@@ -130,6 +140,11 @@
     "stalledNote": "Each of these is retryable and none of them changed a report or its timestamp.",
     "asOf": "as of {{when}}",
     "currentPeriod": "Current period",
+    "week": "This week's reports",
+    "weekCount": "{{submitted}} of {{total}} in",
+    "weekEmpty": "No reports are owed this week. Derive the obligations below once projects are active and students are on them.",
+    "weekNote": "One row per reporting obligation, so an excused or extended one is listed and marked rather than counted as owed. Submission is read from the report's current version, which is the same place the student's own screen reads it.",
+    "extendedUntil": "extended to {{when}}",
     "deriveObligations": "Derive this week's obligations",
     "deriveNote": "The nightly job does this too."
   },
@@ -262,14 +277,18 @@
     "openToJoin": "Open to joining",
     "openToJoinNote": "A student can put themselves on an open project without being assigned. Being on a project shows them its plan, milestones, tasks and decisions, and who else works on it.",
     "leave": "Done this project",
-    "leaveNote": "This ends your part in it. You stop owing a weekly report for this project from next week, what you have already submitted stays on the record, and the project itself carries on for whoever else is on it.",
+    "leaveNote": "This ends your part in it. The project stops appearing in your week, including this one, what you have already submitted stays on the record, and the project itself carries on for whoever else is on it.",
+    "leaveConfirm": "Leave {{title}}? You cannot rejoin unless your professor opens the project again.",
+    "leftOn": "Left {{when}}",
+    "backToProjects": "Your projects →",
+    "leftNotice": "You left this project on {{when}}. The record stays readable because your reports and assessments refer to it; its milestones, decisions and members are no longer shown.",
     "saveFields": "Save"
   },
   "student": {
     "title": "Research profile",
     "trajectory": "Trajectory on {{project}}",
     "rubricBreak": "These points span {{count}} rubric versions and are not one comparable series.",
-    "rubric": "rubric {{id}}",
+    "rubric": "rubric {{label}}",
     "noApproved": "No approved assessment yet.",
     "assessments": "Assessments",
     "noAssessments": "No assessment has been produced yet.",
@@ -371,7 +390,7 @@
     "none": "No projects yet.",
     "filter": "Status",
     "all": "All",
-    "createNoteStudent": "Your project is active as soon as you create it, and you are on it — so a report for it is owed from next week.",
+    "createNoteStudent": "Your project is active as soon as you create it, and you are on it — so a report for it is owed for this week, from now.",
     "joinable": "Projects you can join",
     "joinableNote": "Your professor has opened these. Joining puts a weekly report for the project on your plate from next week.",
     "join": "Join",
@@ -383,6 +402,7 @@
   "myAssessment": {
     "title": "Released assessment",
     "for": "Week on project {{project}}",
+    "forWeek": "{{from}} – {{to}} on {{project}}",
     "releasedAt": "Released to you on {{when}}.",
     "index": "Progress index",
     "indexNote": "Read the index beside its components below, not on its own.",

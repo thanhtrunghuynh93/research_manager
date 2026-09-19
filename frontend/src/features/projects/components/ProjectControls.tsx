@@ -58,9 +58,7 @@ export function StatusControls({ project }: { project: Project }) {
           <select
             aria-label={t("project.setStatus")}
             value={project.status}
-            onChange={(event) =>
-              update.mutate({ status: event.target.value as ProjectStatus })
-            }
+            onChange={(event) => update.mutate({ status: event.target.value as ProjectStatus })}
             className="select"
             data-testid="project-status"
           >
@@ -93,20 +91,29 @@ export function StatusControls({ project }: { project: Project }) {
 /**
  * What a student may do to their own standing on a project (PROJ-07).
  *
- * Leaving is the counterpart of joining and is deliberately not dressed up as an undo: it stops
- * future weeks being owed and keeps the history, and it does not clear a report already owed for
- * the week in progress. The copy has to say so, or a student will leave on Sunday evening and
- * expect the deadline to go with them.
+ * Leaving is the counterpart of joining and is deliberately not dressed up as an undo: it takes
+ * the project off every week still open, including the one in progress (REP-01 — a membership that
+ * ended inside a week owes nothing for it), and it keeps the history. The copy has to say both
+ * halves, because a student who reads only the first will expect their submitted work to go too.
  */
 export function MembershipControls({ project }: { project: Project }) {
   const { t } = useTranslation();
   const session = useSession();
-  const members = useMembers(project.id);
   const leave = useLeaveProject(project.id);
+  // The record answers this itself now, so a reader who has left needs no member list — which is
+  // just as well, because the route withholds it from them.
+  const left = Boolean(project.viewer_left_on);
+  const members = useMembers(project.id, !left);
+
+  // Once they have left there is no control, and no need for one here to say so: the page's own
+  // notice is derived from the same field and carries the date and what is now withheld. Two
+  // messages saying the same thing was the previous answer to "the button just vanished".
+  if (left) return null;
 
   const mine = (members.data ?? []).find(
     (member) => member.student_id === session.data?.id && !member.left_on,
   );
+  // Not a member at all — someone else's project, opened from the list.
   if (!mine) return null;
 
   return (
@@ -114,7 +121,13 @@ export function MembershipControls({ project }: { project: Project }) {
       <button
         type="button"
         disabled={leave.isPending}
-        onClick={() => leave.mutate(mine.id)}
+        // A student cannot undo this — rejoining needs the professor to have opened the project —
+        // so it asks, as removing a single attachment already does.
+        onClick={() => {
+          if (window.confirm(t("project.leaveConfirm", { title: project.title }))) {
+            leave.mutate(mine.id);
+          }
+        }}
         className="btn-primary"
         data-testid="leave-project"
       >
@@ -236,7 +249,10 @@ export function AddMemberForm({ project }: { project: Project }) {
   if (!candidates.length) {
     return (
       <p className="stamp mt-3" data-testid="no-students">
-        {t("project.noStudents")} <Link to="/people" className="link">{t("people.title")}</Link>
+        {t("project.noStudents")}{" "}
+        <Link to="/people" className="link">
+          {t("people.title")}
+        </Link>
       </p>
     );
   }
@@ -249,7 +265,12 @@ export function AddMemberForm({ project }: { project: Project }) {
         event.preventDefault();
         add.mutate(
           { student_id: studentId, responsibility, joined_on: joinedOn },
-          { onSuccess: () => { setStudentId(""); setResponsibility(""); } },
+          {
+            onSuccess: () => {
+              setStudentId("");
+              setResponsibility("");
+            },
+          },
         );
       }}
     >

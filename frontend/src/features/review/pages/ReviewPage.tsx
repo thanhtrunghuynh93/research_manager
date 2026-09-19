@@ -16,6 +16,7 @@ import { useParams } from "react-router-dom";
 import { Badge, ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
 import { useApprove, useAssessment, useAssessmentEvidence } from "@/features/review/queries";
 import { DIMENSIONS, ratingOf } from "@/features/review/types";
+import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant } from "@/lib/dates";
 
 /** Claim status earns a coloured edge on the card — the reader scans the edges first. */
@@ -32,6 +33,7 @@ export function ReviewPage() {
   const assessment = useAssessment(assessmentId);
   const evidence = useAssessmentEvidence(assessmentId);
   const approve = useApprove(assessmentId ?? "");
+  const timezone = useTimezone();
 
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [rationale, setRationale] = useState("");
@@ -214,7 +216,10 @@ export function ReviewPage() {
             {approve.isSuccess && (
               <p className="mt-2.5 font-mono text-[11.5px] text-good" data-testid="published">
                 {t("review.published", {
-                  when: formatInstant(approve.data.published_at ?? new Date().toISOString()),
+                  when: formatInstant(
+                    approve.data.published_at ?? new Date().toISOString(),
+                    timezone,
+                  ),
                 })}
               </p>
             )}

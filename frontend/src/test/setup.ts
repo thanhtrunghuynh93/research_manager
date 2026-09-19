@@ -1,9 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll } from "vitest";
+import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
 // Feature tests register handlers with server.use(...) per test.
-export const server = setupServer();
+//
+// The calendar is the one exception, and it is here rather than in each test because every screen
+// that prints a time asks for it: instants are rendered in the workspace's timezone (REP-01) and
+// `useTimezone` reads it from the calendar in force. A suite that does not care about times should
+// not have to say so, and `onUnhandledRequest: "error"` means leaving it out is not an option.
+export const server = setupServer(http.get("/api/v1/calendar", () => HttpResponse.json(null)));
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());

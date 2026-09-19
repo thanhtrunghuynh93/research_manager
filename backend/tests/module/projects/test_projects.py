@@ -117,6 +117,48 @@ async def test_ending_a_membership_removes_access_and_advances_the_epoch(
     assert scope.access_epoch > before
 
 
+async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """AUTH-03 revokes the ongoing work; it does not unname the project.
+
+    A student keeps their reports, assessments and obligations for a project they have left — all
+    keyed to `student_id` — and every one of those refers to the project by id. Without the record
+    they render as a bare uuid and the page they link to is a refusal.
+    """
+    project = await _project(db, prof_scope)
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    await service.create_milestone(db, prof_scope, project.id, title="Baseline reproduced")
+    await service.record_decision(
+        db, prof_scope, project.id, decision="Freeze the split", rationale="Comparability"
+    )
+
+    await service.end_membership(db, prof_scope, membership.id)
+    scope = await identity_service.scope_for(db, student_a)
+
+    # The record, and the fact that they are no longer on it.
+    record = await service.get_project(db, scope, project.id)
+    assert record.title == "Baseline evaluation"
+    assert record.viewer_left_on == now().date()
+
+    # But nothing of what the project is currently doing: `_in_scope` is untouched, so the
+    # milestones and decisions a membership grants stay behind with the membership (§8.4).
+    assert scope.project_ids == frozenset(), "the work is still revoked"
+    assert await service.list_milestones(db, scope, project.id) == []
+    assert await service.list_decisions(db, scope, project.id) == []
+
+
+async def test_a_project_never_worked_on_stays_invisible(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """The widening is "was ever on it", not "is in the workspace"."""
+    project = await _project(db, prof_scope, title="Someone else's project")
+    scope = await identity_service.scope_for(db, student_a)
+
+    with pytest.raises(NotFoundError):
+        await service.get_project(db, scope, project.id)
+
+
 async def test_a_departure_dated_in_the_future_keeps_access_until_then(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:

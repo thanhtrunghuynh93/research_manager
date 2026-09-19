@@ -43,6 +43,24 @@ function renderPage(assessment: object | null = ASSESSMENT, feedback: object[] =
         : HttpResponse.json({ title: "Not found" }, { status: 404 }),
     ),
     http.get("/api/v1/assessments/a1/feedback", () => HttpResponse.json(feedback)),
+    http.get("/api/v1/projects", () =>
+      HttpResponse.json({ items: [{ id: "p1", title: "Retrieval baselines" }] }),
+    ),
+    // An assessment is weekly (AC-01), so the heading needs the week the period id names.
+    http.get("/api/v1/periods", () =>
+      HttpResponse.json([
+        {
+          id: "per1",
+          local_start: "2026-09-14",
+          local_end: "2026-09-20",
+          start_utc: "2026-09-13T17:00:00Z",
+          end_utc: "2026-09-20T17:00:00Z",
+          meeting_date: "2026-09-21",
+          deadline_utc: "2026-09-20T16:59:00Z",
+          reminder_due_utc: "2026-09-20T17:00:00Z",
+        },
+      ]),
+    ),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -55,6 +73,18 @@ function renderPage(assessment: object | null = ASSESSMENT, feedback: object[] =
     </QueryClientProvider>,
   );
 }
+
+test("the assessment is headed by the project's title and the week it covers", async () => {
+  renderPage();
+
+  // Every id in a workspace shares a prefix, so the eight characters this used to print did not
+  // even tell two projects' assessments apart. And an assessment is weekly, so a fortnight of them
+  // on one project read identically until the week was named.
+  const heading = await screen.findByRole("heading", { level: 1 });
+  expect(heading).toHaveTextContent("Retrieval baselines");
+  expect(heading).toHaveTextContent("14");
+  expect(heading).toHaveTextContent("20");
+});
 
 test("the ratings and their rationales are shown as they stand", async () => {
   renderPage();
@@ -124,4 +154,29 @@ test("an assessment the student may not read says only that, never why", async (
   renderPage(null);
 
   expect(await screen.findByText(/not available to you/i)).toBeInTheDocument();
+});
+
+test("the reasons the confidence is low are on the page, not in a tooltip", async () => {
+  // ASSESS-06 and UI-01: a level is meaningless without the rules that produced it, and as the
+  // badge's `title` those rules did not exist on a touch device and were not announced as
+  // content — the student read "LOW CONFIDENCE · 2" and could not find out what the two were.
+  renderPage({
+    ...ASSESSMENT,
+    confidence: "low",
+    confidence_reasons: [
+      "no report was submitted for this week",
+      "no plan baseline was in effect, so commitment completion is unavailable",
+    ],
+  });
+
+  const reasons = await screen.findByTestId("confidence-reasons");
+  expect(reasons).toHaveTextContent("no report was submitted for this week");
+  expect(reasons).toHaveTextContent("no plan baseline was in effect");
+});
+
+test("an assessment with nothing qualifying it shows no empty reason list", async () => {
+  renderPage();
+
+  await screen.findByRole("heading", { level: 1 });
+  expect(screen.queryByTestId("confidence-reasons")).not.toBeInTheDocument();
 });

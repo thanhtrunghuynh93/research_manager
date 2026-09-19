@@ -86,7 +86,7 @@ dead end rather than about security.
 | `/me/profile` | student | a link on `/me` — it is not on the navigation bar, and `/me` no longer lists assessments itself | Trajectory per project, every released assessment |
 | `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: ratings, rationales, feedback, and a correction request |
 | `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments and links; submit |
-| `/overview` | professor | nav, and the professor's home | Budget and mail warnings, outstanding reports, review queue, sync issues, stalled analyses |
+| `/overview` | professor | nav, and the professor's home | Budget and mail warnings, this week's reports by workspace, project and student, outstanding reports, review queue, sync issues, stalled analyses |
 | `/people` | professor | nav | Everyone in every workspace they belong to, grouped by workspace; invite, move, suspend / restore / remove |
 | `/workspaces` | professor | nav | The workspaces they belong to or own; join, leave, create, archive. The reporting calendar, and the weeks it opens |
 | `/projects` | signed in | nav (both roles since PROJ-07; a student's bar is their week, then this); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
@@ -110,10 +110,12 @@ professor, `/me` for a student.
 
 That last rule has an edge the navigation cannot show. Both the guard and the catch-all *redirect*
 rather than refuse, so a person who follows a link into a page their role cannot open does not see
-a refusal: they arrive at their own home, having lost what they clicked and with nothing to say
-why. One link inside the app already does this — the member names on `/projects/:id` point at
-`/students/:id`, which is professor-only, from a screen either role may open — and §8.2 is where it
-happens in normal use.
+a refusal: they arrive at their own home. The redirect now carries the path it turned them away
+from, and the shell says so above the page — *"/overview is not a page your account can open, so
+this is your own home instead"* — because without it the click was simply swallowed. One link
+inside the app does this in normal use: the member names on `/projects/:id` point at
+`/students/:id`, which is professor-only, from a screen either role may open. §8.2 is where it
+happens.
 
 ## 2 Professor
 
@@ -306,7 +308,7 @@ membership are the rest of the workbench rather than the chain that makes a repo
 | --- | --- | --- |
 | List reporting periods | `GET /periods` | 🖥️ |
 | **Read the calendar in force** | `GET /calendar` | 🖥️ |
-| See who owes a report this period | `GET /periods/{id}/obligations` | 🚧 |
+| **See who owes a report this period, and who has reported** | `GET /periods/{id}/obligations` | 🖥️ — via the week's board on `GET /overview` |
 | **Configure the reporting calendar** — timezone, week start, meeting day, grace | `PUT /calendar` | 🖥️ |
 | Materialise periods up to a date | `POST /periods/ensure` | 🖥️ |
 | Derive obligations for a period | `POST /periods/{id}/obligations/ensure` | 🖥️ |
@@ -327,9 +329,23 @@ path: `ensure_periods` runs nightly and derives both for every workspace with a 
 there so that a professor setting a workspace up does not have to wait until tomorrow to see the
 first week open.
 
-`GET /periods/{id}/obligations` stays 🚧: `useObligations` is called from `/me` and
-`/report/:periodId`, and the professor's role is turned away from both. What a professor sees of
-the obligations is the outstanding list on `GET /overview` (§2.9).
+`GET /periods/{id}/obligations` was 🚧 and is not any more, though the route itself is still one a
+professor never calls directly: `useObligations` is called from `/me` and `/report/:periodId`, and
+the professor's role is turned away from both. The obligations reach them through the week's board
+on `GET /overview` (§2.9), which reads the same table through the same service function.
+
+That board is what replaced "the outstanding list" as the answer to *what is happening this week*.
+Outstanding is the same obligations read for one of their three states, and it is the state a
+supervisor can do least with: a student who has reported never appears in it, nor does a project
+where everyone has, so the screen said nothing about the week that was actually going well. The
+board carries all three states — submitted, owed, excused — one row per obligation, grouped by
+workspace and then by project, with names rather than the first eight characters of a uuid.
+
+It is grouped by workspace because a professor's reads span every workspace they belong to
+(ADR 0016) and each keeps its own reporting calendar. There is therefore no single "this week" for
+them: `GET /overview` still carries one `current_period` for the header, and the board computes one
+period per workspace. `PeriodOut` gained `workspace_id` for exactly this — without it the periods
+came back in one list with nothing to group them by.
 
 The deadline is fixed by rule rather than chosen per period: 23:59 local on the day before the
 weekly meeting. The calendar decides the rest. Until it is configured, every screen that needs a
@@ -413,10 +429,15 @@ actually retrieved, and an invented one is dropped and the drop is stated.
 
 | Use case | Endpoint | |
 | --- | --- | --- |
-| The current week at a glance — outstanding reports, review queue, stale repositories, stalled analyses, AI budget, failed mail | `GET /overview` | 🖥️ |
+| The current week at a glance — **this week's reports by workspace, project and student**, outstanding reports, review queue, stale repositories, stalled analyses, AI budget, failed mail | `GET /overview` | 🖥️ |
 | See model spend this month | `GET /admin/ai/usage` | ⚙️ |
 | See and set the monthly AI budgets | `GET`/`PUT /admin/ai/budgets` | ⚙️ |
 | See repository sync health | `GET /admin/sync` | ⚙️ |
+
+The week's board is the section a professor opens this screen for, and §2.4 has why it replaced the
+outstanding list as the answer to *what is happening this week*. Both are still here: the board is
+the week in all three of its states, and outstanding is the count of one of them with the instant it
+was true attached, which is what REP-08 asks for.
 
 No budget configured means no limit, not a limit of zero. Since the budget can only be set through
 the API, a deployment with a live model key spends without a ceiling until someone sets one by

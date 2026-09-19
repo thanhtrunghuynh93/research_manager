@@ -4,7 +4,13 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { formatLocalDate, localDateToInstant, todayLocal } from "@/lib/dates";
+import {
+  formatInstant,
+  formatLocalDate,
+  formatTimeOfDay,
+  localDateToInstant,
+  todayLocal,
+} from "@/lib/dates";
 
 describe("a workspace-local calendar date", () => {
   test("renders as itself, whatever timezone the viewer is in", () => {
@@ -51,5 +57,24 @@ describe("a calendar date turned into an instant", () => {
     expect(localDateToInstant("2026-09-14", "start", "Asia/Kolkata")).toBe(
       "2026-09-13T18:30:00.000Z",
     );
+  });
+});
+
+describe("an instant", () => {
+  test("is rendered in the workspace's zone, not the viewer's", () => {
+    // Every call site took the default, so a workspace configured for anywhere else still read
+    // its deadlines in Vietnam's clock.
+    expect(formatInstant("2026-09-20T16:59:00Z", "Asia/Ho_Chi_Minh")).toContain("23:59");
+    expect(formatInstant("2026-09-20T16:59:00Z", "Europe/Berlin")).toContain("18:59");
+  });
+
+  test("shows its clock time in that same zone, and says which zone", () => {
+    // The autosave stamp used `toLocaleTimeString`, which answers in the viewer's zone — so it
+    // sat on the same line as the deadline in a different clock. Naming the zone is what makes
+    // the two comparable to a reader who is in neither.
+    const at = new Date("2026-09-20T16:59:00Z");
+
+    expect(formatTimeOfDay(at, "Asia/Ho_Chi_Minh")).toBe("23:59:00 GMT+7");
+    expect(formatTimeOfDay(at, "UTC")).toBe("16:59:00 UTC");
   });
 });

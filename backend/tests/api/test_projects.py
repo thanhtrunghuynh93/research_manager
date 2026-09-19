@@ -265,3 +265,56 @@ async def test_a_repository_link_must_be_one_a_browser_could_follow(
     )
     assert accepted.status_code == 201
     assert accepted.json()["repo_url"] == "https://github.com/lab/mine"
+
+
+async def test_the_optional_repository_field_may_be_left_empty(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    """The field is labelled optional on the form, and leaving it blank used to return a 500.
+
+    `max_length` was constrained on `str | None` rather than on the `str` in it, so it was applied
+    to the None that `normalize_repo_url` folds blank and absent into, and pydantic raised
+    TypeError inside request validation. A student starting a project before there is a repository
+    — the ordinary case — could not create one at all from their own screen.
+    """
+    await _sign_in(client, student_a)
+
+    for sent in ({}, {"repo_url": None}, {"repo_url": ""}, {"repo_url": "   "}):
+        created = await client.post(
+            "/api/v1/projects", json={"title": "No repo yet", "stage": "theory", **sent}
+        )
+
+        assert created.status_code == 201, created.text
+        assert created.json()["repo_url"] is None
+
+
+async def test_a_repository_link_can_be_taken_off_a_project(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    await _sign_in(client, student_a)
+    created = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "https://github.com/lab/mine"},
+    )
+    assert created.status_code == 201
+
+    cleared = await client.patch(f"/api/v1/projects/{created.json()['id']}", json={"repo_url": ""})
+
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["repo_url"] is None
+
+
+async def test_a_repository_link_longer_than_the_column_is_refused(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    # Still refused, and as a validation failure rather than as a crash: the length constraint
+    # moved, it did not go away.
+    await _sign_in(client, student_a)
+
+    response = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "https://x.dev/" + "y" * 600},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith("repo_url:")
