@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditEvent
 from app.core.authz import Scope
-from app.core.clock import now
+from app.core.clock import local_date, now
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.types import Role
 from app.identity import models as identity_models
@@ -18,6 +18,15 @@ from app.identity import service as identity_service
 from app.projects import models, service
 
 pytestmark = pytest.mark.module
+
+
+def _workspace_today() -> date:
+    """Today on the workspace's calendar, which is the calendar a membership date is written on.
+
+    The fixtures put the workspace in Asia/Ho_Chi_Minh. Reading these dates as UTC's made the
+    assertions below pass for seventeen hours of every day and fail for the other seven.
+    """
+    return local_date(now(), "Asia/Ho_Chi_Minh")
 
 
 async def _project(db: AsyncSession, scope: Scope, title: str = "Baseline evaluation") -> object:
@@ -139,7 +148,7 @@ async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
     # The record, and the fact that they are no longer on it.
     record = await service.get_project(db, scope, project.id)
     assert record.title == "Baseline evaluation"
-    assert record.viewer_left_on == now().date()
+    assert record.viewer_left_on == _workspace_today()
 
     # But nothing of what the project is currently doing: `_in_scope` is untouched, so the
     # milestones and decisions a membership grants stay behind with the membership (§8.4).
@@ -164,7 +173,7 @@ async def test_a_departure_dated_in_the_future_keeps_access_until_then(
 ) -> None:
     project = await _project(db, prof_scope)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
-    later = now().date() + timedelta(days=30)
+    later = _workspace_today() + timedelta(days=30)
 
     await service.end_membership(db, prof_scope, membership.id, left_on=later)
 
@@ -418,7 +427,7 @@ async def test_a_student_leaves_a_project_they_joined(
     scope = await identity_service.scope_for(db, student_a)
     ended = await service.end_membership(db, scope, membership.id)
 
-    assert ended.left_on == now().date(), "PROJ-02 keeps the row rather than deleting it"
+    assert ended.left_on == _workspace_today(), "PROJ-02 keeps the row rather than deleting it"
     assert await _epoch(db, workspace.id) > epoch, "AUTH-03: leaving revokes cached reads too"
     assert project.id not in (await identity_service.scope_for(db, student_a)).project_ids
 
@@ -466,7 +475,7 @@ async def test_a_student_cannot_back_date_their_own_leave(
     scope = await identity_service.scope_for(db, student_a)
     with pytest.raises(ValidationError):
         await service.end_membership(
-            db, scope, membership.id, left_on=now().date() - timedelta(days=7)
+            db, scope, membership.id, left_on=_workspace_today() - timedelta(days=7)
         )
 
 
@@ -561,3 +570,56 @@ async def test_the_creator_may_change_the_repository_link(
     )
 
     assert updated.repo_url == "git@github.com:lab/mine.git"
+
+
+# ---------------------------------------------------------------- the workspace's day, not UTC's
+#
+# `joined_on` and `left_on` are plain calendar dates in the workspace's timezone, and every
+# reporting week is derived on that same calendar. The access check read them against UTC, so for
+# the seven hours a UTC+7 workspace is a day ahead the two disagreed.
+
+
+async def test_a_membership_created_after_local_midnight_grants_access_at_once(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A project that owes a report this week is a project its member may write to.
+
+    17:30 UTC is 00:30 the next day in Asia/Ho_Chi_Minh. The membership was written with the
+    workspace's date and checked against UTC's, so the student saw the project and owed its
+    weekly entry but could not attach a file to it: "not a member of this project".
+    """
+    just_after_local_midnight = datetime(2026, 9, 19, 17, 30, tzinfo=UTC)
+    monkeypatch.setattr("app.identity.service.now", lambda: just_after_local_midnight, raising=True)
+
+    project = await _project(db, prof_scope, title="Assigned just after midnight")
+    await service.update_project(db, prof_scope, project.id, status="active")
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+
+    assert membership.joined_on == date(2026, 9, 20), "written on the workspace's calendar"
+
+    scope = await identity_service.scope_for(db, student_a)
+    assert project.id in scope.project_ids, "and read back on the same one"
+    scope.require_project(project.id)  # what an upload does, and what used to raise
+
+
+async def test_a_student_may_leave_on_the_workspaces_today(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The date a student is offered to leave on is the one the refusal is checked against."""
+    just_after_local_midnight = datetime(2026, 9, 19, 17, 30, tzinfo=UTC)
+    monkeypatch.setattr("app.identity.service.now", lambda: just_after_local_midnight, raising=True)
+
+    project = await _project(db, prof_scope, title="Left just after midnight")
+    await service.update_project(db, prof_scope, project.id, status="active")
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    scope = await identity_service.scope_for(db, student_a)
+
+    ended = await service.end_membership(db, scope, membership.id, left_on=date(2026, 9, 20))
+
+    assert ended.left_on == date(2026, 9, 20)

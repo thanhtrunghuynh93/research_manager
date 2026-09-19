@@ -13,7 +13,14 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment import service as assessment_service
-from app.assistant.facts.base import Citation, Fact, FactQuery, display_name, fact
+from app.assistant.facts.base import (
+    Citation,
+    Fact,
+    FactQuery,
+    assessment_locator,
+    display_name,
+    fact,
+)
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 
@@ -61,7 +68,7 @@ async def review_queue(session: AsyncSession, query: FactQuery) -> Fact:
             Citation(
                 source_kind="assessment_version",
                 source_id=draft.id,
-                locator=f"/review/{draft.id}",
+                locator=assessment_locator(query.scope, assessment_id=draft.id),
                 label=f"draft v{draft.version_no}",
             )
             for draft in drafts
@@ -121,7 +128,9 @@ async def progress_series(session: AsyncSession, query: FactQuery) -> Fact | Non
             Citation(
                 source_kind="assessment_version",
                 source_id=point.assessment_id,
-                locator=f"/review/{point.assessment_id}",
+                # A student asking about their own trajectory is reading released assessments,
+                # and /review is a route their role cannot open.
+                locator=assessment_locator(query.scope, assessment_id=point.assessment_id),
                 label=f"assessment for period {point.period_id}",
             )
             for point in points

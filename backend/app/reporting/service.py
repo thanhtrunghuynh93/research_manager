@@ -186,9 +186,20 @@ async def get_period(session: AsyncSession, scope: Scope, period_id: UUID) -> Pe
 
 
 async def list_periods(
-    session: AsyncSession, scope: Scope, *, through: date | None = None
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    through: date | None = None,
+    across_workspaces: bool = False,
 ) -> list[PeriodOut]:
-    rows = await repository.list_periods(session, scope, through=through)
+    """The reporting weeks of the workspace being worked in (REP-01).
+
+    `across_workspaces` widens it to every workspace the caller belongs to, which only a caller
+    that then groups its results by workspace has any business asking for.
+    """
+    rows = await repository.list_periods(
+        session, scope, through=through, across_workspaces=across_workspaces
+    )
     return [PeriodOut.model_validate(row) for row in rows]
 
 

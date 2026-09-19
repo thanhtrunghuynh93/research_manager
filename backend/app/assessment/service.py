@@ -954,32 +954,73 @@ async def progress_series(
 ) -> list[TrendPoint]:
     """ASSESS-10/AC-10: approved points, each labelled with the rubric that produced it."""
     rows = await repo.approved_series(session, scope, student_id, project_id)
-    return [
-        TrendPoint(
-            period_id=row.period_id,
-            assessment_id=row.id,
-            progress_index=row.progress_index,
-            plan_completion=row.plan_completion,
-            confidence=row.confidence,
-            rubric_version_id=row.rubric_version_id,
-            created_at=row.created_at,
+    # The overrides that were approved with these points: a trajectory drawn from the drafts'
+    # own numbers plots a value the professor replaced, and an overridden point reads as the
+    # student's progress rather than as the professor's correction of it.
+    reviews = await repo.reviews_for(session, [row.id for row in rows])
+    points = []
+    for row in rows:
+        effective = _apply_override(row.ratings, reviews.get(row.id))
+        rubric = await repo.rubric_by_id(session, row.rubric_version_id)
+        points.append(
+            TrendPoint(
+                period_id=row.period_id,
+                assessment_id=row.id,
+                progress_index=_index_of(effective, rubric),
+                plan_completion=row.plan_completion,
+                confidence=row.confidence,
+                rubric_version_id=row.rubric_version_id,
+                created_at=row.created_at,
+            )
         )
-        for row in rows
-    ]
+    return points
+
+
+def _apply_override(ratings: dict[str, Any], review: Any) -> dict[str, Any]:
+    """The ratings that stand: the model's, with the professor's patch over them (ASSESS-08)."""
+    effective = dict(ratings)
+    if review is not None and review.override:
+        for name, patch in (review.override.get("ratings") or {}).items():
+            effective[name] = {**effective.get(name, {}), **patch}
+    return effective
+
+
+def _index_of(ratings: dict[str, Any], rubric: RubricVersion | None) -> int | None:
+    """Recompute ASSESS-04 over whatever ratings stand now.
+
+    The draft's index is computed once, from the model's ratings, and stored. Overriding a
+    component afterwards left that number behind: four dimensions overridden to Unknown still
+    published the 0/100 the model's four zeroes had produced — the one reading the requirements
+    forbid, since an unknown is an absence of evidence and never a zero. So the index a reader
+    sees is derived from the ratings that reader is shown, against the weights of the rubric that
+    produced them rather than whichever rubric is current.
+
+    Without a rubric there are no weights and so no index: `None` is "Not rated", which is the
+    right answer when the measure itself cannot be read.
+    """
+    if rubric is None:
+        return None
+    weights = _weights(rubric)
+    return progress_index(
+        {name: ratings.get(name, {}).get("rating", UNKNOWN) for name in weights}, weights
+    )
 
 
 async def _assessment_out(session: AsyncSession, assessment: AssessmentVersion) -> AssessmentOut:
     """The stored version, plus what stands after any professor override (ASSESS-08)."""
     review = await repo.review_for(session, assessment.id)
-    effective = dict(assessment.ratings)
-    if review is not None and review.override:
-        for name, patch in (review.override.get("ratings") or {}).items():
-            effective[name] = {**effective.get(name, {}), **patch}
+    effective = _apply_override(assessment.ratings, review)
+    rubric = await repo.rubric_by_id(session, assessment.rubric_version_id)
 
     out = AssessmentOut.model_validate(assessment)
     return out.model_copy(
         update={
             "effective_ratings": effective,
+            # `progress_index` is what stands, because that is what every screen renders and a
+            # screen that forgets to ask for the overridden number publishes the wrong one. The
+            # draft's own index stays beside it, under a name that says whose it is.
+            "progress_index": _index_of(effective, rubric),
+            "model_progress_index": assessment.progress_index,
             "review_state": review.state if review else None,
             "published_at": review.published_at if review else None,
         }

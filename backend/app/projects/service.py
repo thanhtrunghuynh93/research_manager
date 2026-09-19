@@ -290,7 +290,9 @@ async def project_progress(
 ) -> ProjectProgressOut:
     """PROJ-06: milestone weights and accepted fractions; never an average of student scores."""
     await _require_project(session, scope, project_id)
-    today = now().date()
+    # A due date is a workspace-local calendar date, so what counts as overdue has to be read on
+    # the same calendar: against UTC, a milestone due today was already overdue all local morning.
+    today = await identity_service.workspace_today(session, scope.workspace_id)
     count, fraction, completed, overdue = await repository.milestone_progress(
         session, scope, project_id, today=today
     )
@@ -364,7 +366,9 @@ async def _enrol(
         student_id=student_id,
         responsibility=responsibility,
         origin=origin,
-        joined_on=joined_on or now().date(),
+        # The workspace's day, not UTC's: a membership dated in UTC is a date nothing else in the
+        # system uses, and the access check and the reporting week both read it as workspace-local.
+        joined_on=joined_on or await identity_service.workspace_today(session, scope.workspace_id),
         planned_allocation=planned_allocation,
     )
     session.add(membership)
@@ -414,15 +418,18 @@ async def end_membership(
     membership = await repository.get_membership(session, scope, membership_id)
     if membership is None:
         raise NotFoundError("membership not found")
+    # "Today" is the workspace's, the same day `joined_on` was written on and the same one the
+    # access check reads it against.
+    today = await identity_service.workspace_today(session, scope.workspace_id)
     if not scope.is_prof:
         if membership.student_id != scope.user_id:
             raise ForbiddenError("only the professor or the student on it may end this membership")
-        if left_on is not None and left_on != now().date():
+        if left_on is not None and left_on != today:
             raise ValidationError("a student may only leave as of today")
     if membership.left_on is not None:
         return MembershipOut.model_validate(membership)
 
-    membership.left_on = left_on or now().date()
+    membership.left_on = left_on or today
     await identity_service.advance_access_epoch(session, scope.workspace_id)
     _audit(
         session,
@@ -445,7 +452,10 @@ async def _on_user_removed(event: Any, session: AsyncSession) -> None:
     `end_membership`: there is no Scope here, and the epoch has already been advanced by the
     removal itself, so bumping it once per project would be noise.
     """
-    left_on = event.at.date()
+    # The removal's day in the workspace, not in UTC: `left_on` is exclusive, so a removal just
+    # after local midnight recorded against the UTC date would end the membership the day before
+    # it happened and revoke a day of access retroactively.
+    left_on = await identity_service.workspace_today(session, event.workspace_id)
     memberships = await repository.active_memberships_for_student(
         session, event.workspace_id, event.user_id
     )
@@ -643,10 +653,12 @@ async def record_decision(
 ) -> ResearchDecisionOut:
     scope.require_prof()
     project = await _require_project(session, scope, project_id)
+    if decided_on is None:
+        decided_on = await identity_service.workspace_today(session, scope.workspace_id)
     row = ResearchDecision(
         workspace_id=scope.workspace_id,
         project_id=project.id,
-        decided_on=decided_on or now().date(),
+        decided_on=decided_on,
         decision=decision,
         rationale=rationale,
         participant_ids=participant_ids or [],

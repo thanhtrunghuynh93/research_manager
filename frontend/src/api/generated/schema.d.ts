@@ -797,7 +797,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List reporting periods */
+        /**
+         * List reporting periods
+         * @description The weeks of the workspace being worked in, or of all of them when asked.
+         *
+         *     The default is the one workspace, because a screen that describes a workspace has to describe
+         *     the one it is on. A professor's reads may span the workspaces they belong to (ADR 0016), and
+         *     a screen that labels records from any of them — a review, a student's history — asks for the
+         *     wide list by name. Each period carries its `workspace_id` either way.
+         */
         get: operations["list_periods_api_v1_periods_get"];
         put?: never;
         post?: never;
@@ -1811,6 +1819,8 @@ export interface components {
             id: string;
             /** Model Name */
             model_name?: string | null;
+            /** Model Progress Index */
+            model_progress_index?: number | null;
             /** Narrative */
             narrative: {
                 [key: string]: unknown;
@@ -5152,6 +5162,7 @@ export interface operations {
         parameters: {
             query?: {
                 through?: string | null;
+                across_workspaces?: boolean;
             };
             header?: never;
             path?: never;

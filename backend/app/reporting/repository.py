@@ -77,13 +77,27 @@ async def period_before(
 
 
 async def list_periods(
-    session: AsyncSession, scope: Scope, *, through: date | None = None
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    through: date | None = None,
+    across_workspaces: bool = False,
 ) -> list[ReportingPeriod]:
+    """The weeks the caller may see, in the workspace they are working in.
+
+    `visible_to` spans every workspace a professor belongs to (ADR 0016), which is right for a
+    question asked about all of them and wrong for a panel that describes one. The calendar screen
+    read the wide list and reported another workspace's nine open weeks under a workspace whose
+    own calendar it had just said was not configured. So the narrow read is the default and the
+    wide one is asked for by name.
+    """
     statement = (
         select(ReportingPeriod)
         .where(visible_to(scope, ReportingPeriod))
         .order_by(ReportingPeriod.local_start)
     )
+    if not across_workspaces:
+        statement = statement.where(ReportingPeriod.workspace_id == scope.workspace_id)
     if through is not None:
         statement = statement.where(ReportingPeriod.local_start <= through)
     return list((await session.execute(statement)).scalars().all())

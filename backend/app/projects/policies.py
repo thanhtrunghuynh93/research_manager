@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from app.core.authz import Scope, register_policy, register_project_ids_loader
-from app.core.clock import now
+from app.identity import service as identity_service
 from app.projects.models import (
     Milestone,
     PlanBaseline,
@@ -128,8 +128,13 @@ async def load_membership_project_ids(
 
     Project status does not gate access: a paused or archived project stays readable to the people
     who worked on it, which is what supervision history is for.
+
+    The day is the *workspace's*, not UTC's. Both dates are plain calendar dates written in the
+    workspace's timezone, and comparing them against a UTC date made a membership created just
+    after local midnight invisible until UTC caught up — while the same membership already owed a
+    report, because obligations were derived on the workspace's calendar all along.
     """
-    today = now().date()
+    today = await identity_service.workspace_today(session, workspace_id)
     rows = await session.execute(
         select(ProjectMembership.project_id).where(
             ProjectMembership.workspace_id == workspace_id,

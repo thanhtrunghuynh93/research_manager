@@ -20,7 +20,7 @@ import {
 import { Trajectory } from "@/features/assessments/components/Trajectory";
 import { useUser } from "@/features/people/queries";
 import type { Assessment } from "@/features/review/types";
-import { openArtifact, useArtifacts, usePeriods, useProjects } from "@/features/report/queries";
+import { openArtifact, useArtifacts, useAllPeriods, useProjects } from "@/features/report/queries";
 import { formatLocalDate } from "@/lib/dates";
 
 export function StudentProfilePage() {
@@ -38,7 +38,7 @@ export function StudentProfilePage() {
   // the record a professor cannot read and the project list that paged past the end.
   const student = useUser(id);
   const projects = useProjects();
-  const periods = usePeriods();
+  const periods = useAllPeriods();
 
   const titleOf = (projectId: string) =>
     projects.data?.items.find((project) => project.id === projectId)?.title ??

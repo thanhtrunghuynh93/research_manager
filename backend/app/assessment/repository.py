@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
@@ -32,6 +33,41 @@ async def latest_rubric(session: AsyncSession, workspace_id: UUID) -> RubricVers
             .limit(1)
         )
     ).scalar_one_or_none()
+
+
+async def rubric_by_id(session: AsyncSession, rubric_id: UUID | None) -> RubricVersion | None:
+    """The rubric that produced one assessment, not whichever is latest (ASSESS-10, AC-10).
+
+    A number is only meaningful against the measure it was computed with, so recomputing an index
+    after an override has to use the same weights the draft used. `session.get` rather than a
+    `select` because a list of assessments is usually a list under one rubric, and the identity
+    map then answers every call after the first without another round trip.
+    """
+    if rubric_id is None:
+        return None
+    return await session.get(RubricVersion, rubric_id)
+
+
+async def reviews_for(
+    session: AsyncSession, assessment_ids: Sequence[UUID]
+) -> dict[UUID, AssessmentReview]:
+    """The newest review of each of these assessments, in one query rather than one per row."""
+    if not assessment_ids:
+        return {}
+    rows = (
+        (
+            await session.execute(
+                select(AssessmentReview)
+                .where(AssessmentReview.assessment_version_id.in_(list(assessment_ids)))
+                .order_by(AssessmentReview.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Ascending, so the last write for an id wins and each entry is that id's newest review —
+    # the same choice `review_for` makes for a single assessment.
+    return {row.assessment_version_id: row for row in rows}
 
 
 async def snapshot_items_with_text(session: AsyncSession, snapshot_id: UUID) -> list[object]:

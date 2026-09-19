@@ -21,6 +21,7 @@ import {
   usePeriods,
   useProjects,
   useReport,
+  useRevisionRequests,
   useSaveDraft,
   useSubmitReport,
   useVersion,
@@ -43,6 +44,7 @@ export function ReportEditorPage() {
   const obligations = useObligations(periodId);
   const projects = useProjects();
   const report = useReport(periodId);
+  const revisions = useRevisionRequests(report.data?.id);
   const submittedVersion = useVersion(report.data?.current_version_id);
   const saveDraft = useSaveDraft(periodId);
   const submit = useSubmitReport(periodId);
@@ -53,6 +55,13 @@ export function ReportEditorPage() {
 
   const period = periods.data?.find((candidate) => candidate.id === periodId);
   const required = (obligations.data ?? []).filter((item) => item.state === "required");
+  // REP-05: the professor asked for one project's entry to be changed. The request was on the
+  // student's home screen and in the read-only reader, and absent from the one screen where the
+  // change is actually made — so a student arrived at the editor knowing a revision was wanted
+  // and with nothing to say which entry or why.
+  const openRequests = (revisions.data ?? []).filter((request) => !request.resolved_in_version_id);
+  const requestsFor = (projectId: string) =>
+    openRequests.filter((request) => String(request.project_id) === projectId);
   const titleOf = (projectId: string) =>
     projects.data?.items.find((project) => project.id === projectId)?.title ?? projectId;
   const stageOf = (projectId: string) =>
@@ -68,7 +77,18 @@ export function ReportEditorPage() {
   // missing: a report submitted without an autosaved draft — the seed does exactly this — reopened
   // as blank boxes over a version that had content, and submitting them overwrote it.
   const versionReady = !report.data?.current_version_id || submittedVersion.isFetched;
-  if (drafts === null && obligations.data && report.isFetched && projects.data && versionReady) {
+  // The revision requests are in the guard for the same reason the projects are: the tab this
+  // opens on is chosen from them, and seeding before they arrive opened the first project every
+  // time — including when the professor had asked about the third.
+  const revisionsReady = !report.data?.id || revisions.isFetched;
+  if (
+    drafts === null &&
+    obligations.data &&
+    report.isFetched &&
+    projects.data &&
+    versionReady &&
+    revisionsReady
+  ) {
     const saved = (report.data?.draft_content as { entries?: Drafts } | undefined)?.entries ?? {};
     const sent = new Map(
       (submittedVersion.data?.entries ?? []).map((entry) => [
@@ -84,7 +104,11 @@ export function ReportEditorPage() {
         emptyEntry(obligation.project_id, stageOf(obligation.project_id));
     }
     setDrafts(initial);
-    setActive(required[0]?.project_id ?? null);
+    // Open on the entry that was asked about, when one was: it is the reason the student is here.
+    const asked = required.find((obligation) =>
+      openRequests.some((request) => String(request.project_id) === obligation.project_id),
+    );
+    setActive(asked?.project_id ?? required[0]?.project_id ?? null);
   }
 
   // `drafts`, not `drafts ?? {}`: an empty object would be taken as the loaded draft, and merely
@@ -215,6 +239,7 @@ export function ReportEditorPage() {
           projectId: obligation.project_id,
           title: titleOf(obligation.project_id),
           submitted: obligation.submitted,
+          revisionRequested: requestsFor(obligation.project_id).length > 0,
         }))}
         active={active}
         onSelect={setActive}
@@ -230,6 +255,18 @@ export function ReportEditorPage() {
           <p className="stamp mt-3.5">
             Entry stage: {stageOf(active)} · one submission covers every required entry
           </p>
+          {requestsFor(active).map((request) => (
+            <p
+              key={request.id}
+              className="mt-3.5 border-l-[3px] border-l-warn-rule bg-muted px-3.5 py-2.5 text-[13px] text-warn"
+              data-testid="revision-request"
+            >
+              {t("report.reader.revisionAsked", {
+                when: formatInstant(request.created_at, timezone),
+              })}{" "}
+              {request.reason}
+            </p>
+          ))}
           <EntryForm
             entry={drafts[active]}
             onChange={(entry) => setDrafts({ ...drafts, [entry.project_id]: entry })}
@@ -274,7 +311,12 @@ export function ReportEditorPage() {
   );
 }
 
-type TabDescriptor = { projectId: string; title: string; submitted: boolean };
+type TabDescriptor = {
+  projectId: string;
+  title: string;
+  submitted: boolean;
+  revisionRequested: boolean;
+};
 
 /**
  * The tab per required project (REP-02), as the ARIA tabs pattern rather than as its appearance.
@@ -341,15 +383,23 @@ function EntryTabs({
             }
           >
             {tab.title}
+            {/* A requested revision outranks "Submitted": the entry is in, and it is the one
+                thing on this screen that still wants doing. */}
             <span
               className={
-                tab.submitted
-                  ? "ml-2 font-mono text-[10px] uppercase tracking-[0.06em] text-good"
-                  : "ml-2 font-mono text-[10px] uppercase tracking-[0.06em] text-warn"
+                tab.revisionRequested || !tab.submitted
+                  ? "ml-2 font-mono text-[10px] uppercase tracking-[0.06em] text-warn"
+                  : "ml-2 font-mono text-[10px] uppercase tracking-[0.06em] text-good"
               }
               data-testid={`tab-state-${tab.projectId}`}
             >
-              {t(tab.submitted ? "report.obligation.submitted" : "report.obligation.required")}
+              {t(
+                tab.revisionRequested
+                  ? "report.state.revision_requested"
+                  : tab.submitted
+                    ? "report.obligation.submitted"
+                    : "report.obligation.required",
+              )}
             </span>
           </button>
         );

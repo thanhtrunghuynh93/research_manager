@@ -58,7 +58,11 @@ class AssessmentOut(BaseModel):
     rubric_version_id: UUID | None = None
     analysis_run_id: UUID | None = None
     ratings: dict[str, Any]
+    # What stands after any override. `None` is "Not rated", never zero (ASSESS-04).
     progress_index: int | None = None
+    # The draft's own index, before the professor touched it. Kept so the override is legible as
+    # a change rather than silently becoming the only number there ever was.
+    model_progress_index: int | None = None
     plan_completion: Decimal | None = None
     coverage_pct: Decimal
     confidence: str

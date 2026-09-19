@@ -102,6 +102,42 @@ async def run(session: AsyncSession, name: str, query: FactQuery) -> Fact | None
     return await function(session, query)
 
 
+# ---------------------------------------------------------------- where a citation points
+#
+# A citation is only a citation if its reader can open it (QA-03). The routes are not shared
+# between the two roles — a student reads their own week at /report/{period}, a professor reads
+# somebody's at /students/{student}/reports/{period} — and every fact here emitted the student's
+# one. A professor following a source landed on a route their role cannot open and was redirected
+# to the overview with an access warning, which reads as the record being missing rather than as
+# the link being wrong.
+
+
+def report_locator(
+    scope: Scope, *, student_id: UUID, period_id: UUID, project_id: UUID | None = None
+) -> str:
+    """One student's week, on the route this reader is allowed through."""
+    anchor = f"#{project_id}" if project_id is not None else ""
+    if scope.is_prof:
+        return f"/students/{student_id}/reports/{period_id}{anchor}"
+    return f"/report/{period_id}{anchor}"
+
+
+def week_locator(scope: Scope, *, period_id: UUID) -> str:
+    """A week with no one student in it: the professor's board, or the student's own week.
+
+    A deadline belongs to everybody in the workspace, so there is no student whose reader it
+    could open. The professor's equivalent is the overview the week is tracked on.
+    """
+    return "/overview" if scope.is_prof else f"/report/{period_id}"
+
+
+def assessment_locator(scope: Scope, *, assessment_id: UUID) -> str:
+    """One assessment: the professor reviews it, the student reads what was released to them."""
+    if scope.is_prof:
+        return f"/review/{assessment_id}"
+    return f"/me/assessments/{assessment_id}"
+
+
 async def display_name(session: AsyncSession, query: FactQuery, student_id: UUID) -> str:
     """The student's name, or their id shortened when the caller may not read their user row.
 

@@ -298,6 +298,41 @@ invisible to every membership-keyed read; and the answer cache was still validat
 anchor's `access_epoch` alone, which ADR 0016's last bullet had predicted in writing. The third
 needed migration 0022 and is now keyed to the whole read-set.
 
+**A live functional test of the deployed system found six more, and they share a shape too:** each
+was a place where two parts of the product answered the same question on different terms.
+
+- **A stored number and the ratings it came from drifted apart (ASSESS-04).** The progress index
+  was computed once from the model's ratings and written down. Overriding every dimension to
+  Unknown therefore published the 0/100 those ratings had produced — the one reading the
+  requirements forbid, on the professor's page, on the student's released assessment and as a
+  point in the trajectory. The index a reader sees is now derived from the ratings that reader is
+  shown, against the rubric that produced them; the draft's own index stays beside it as
+  `model_progress_index`.
+- **Membership was written on one calendar and read on another (PROJ-02, AUTH-03).** `joined_on`
+  and `left_on` are plain dates in the workspace's timezone; the access check compared them
+  against UTC's. For the seven hours a UTC+7 workspace is a day ahead, a student assigned to a
+  project saw it, owed its weekly entry, and could not attach a file to it — "not a member of this
+  project". `identity.workspace_today` is now the one answer to what day it is, and the milestone
+  overdue count and a removal's leave date were reading UTC too.
+- **Citations pointed at routes their readers cannot open (QA-03).** Every fact emitted the
+  student's report route, so a professor following a source was redirected to the overview with an
+  access warning — which reads as the record being missing rather than the link being wrong. The
+  locators are role-aware, and a week now cites one report per student rather than one place for
+  all of them.
+- **A read that spans workspaces described one (ADR 0016).** The calendar panel listed every
+  period the professor could see, so a new workspace reported another's nine open weeks in the
+  same breath as saying it had no calendar. Listing periods is scoped to the workspace being
+  worked in; the screens that legitimately name a record from any of them ask for the wide list
+  by name.
+- **A cache was refreshed for half of what depends on it.** Submission invalidated the report and
+  not the obligations, and whether a project still owes an entry is read from the obligations — so
+  the editor confirmed version 2 over "1 project still has no entry in it", and navigating away
+  and back fixed it.
+- **A request was shown everywhere except where it is acted on (REP-05).** A revision request
+  reached the student's home screen and the read-only reader, and not the editor, which is the one
+  screen where the correction is made. It is now carried into the tab it is about, and that tab is
+  the one the editor opens on.
+
 ## 3 What is deliberately not built
 
 | Gap | Requirement | Why |

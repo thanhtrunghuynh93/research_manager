@@ -55,9 +55,21 @@ async def current_calendar(scope: ScopeDep, session: SessionDep) -> CalendarConf
 
 @router.get("/periods", summary="List reporting periods")
 async def list_periods(
-    scope: ScopeDep, session: SessionDep, through: date | None = None
+    scope: ScopeDep,
+    session: SessionDep,
+    through: date | None = None,
+    across_workspaces: bool = False,
 ) -> list[PeriodOut]:
-    return await service.list_periods(session, scope, through=through)
+    """The weeks of the workspace being worked in, or of all of them when asked.
+
+    The default is the one workspace, because a screen that describes a workspace has to describe
+    the one it is on. A professor's reads may span the workspaces they belong to (ADR 0016), and
+    a screen that labels records from any of them — a review, a student's history — asks for the
+    wide list by name. Each period carries its `workspace_id` either way.
+    """
+    return await service.list_periods(
+        session, scope, through=through, across_workspaces=across_workspaces
+    )
 
 
 @router.post("/periods/ensure", summary="Materialise periods up to a date")

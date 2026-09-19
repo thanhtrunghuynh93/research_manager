@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
 from app.core.authz import Scope, load_project_ids
-from app.core.clock import now
+from app.core.clock import local_date, now
 from app.core.config import get_settings
 from app.core.errors import (
     ConflictError,
@@ -228,6 +228,24 @@ async def system_scope(session: AsyncSession, workspace_id: UUID) -> Scope:
 async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]:
     """Job-level read: who to address a professor-facing notification to (UI-07)."""
     return await repository.professor_ids(session, workspace_id)
+
+
+async def workspace_today(session: AsyncSession, workspace_id: UUID) -> date:
+    """What day it is *in the workspace*, which is the only calendar its records are written on.
+
+    `joined_on`, `left_on` and the reporting week are plain calendar dates in the workspace's own
+    timezone, and `now().date()` is a date in UTC. The two disagree for seven hours of every day
+    in a UTC+7 workspace, and the disagreement was not cosmetic: a student assigned to a project
+    just after midnight local got a membership dated today-there and an access check run against
+    yesterday-in-UTC, so the project owed them a report they could not attach a file to.
+
+    A workspace that no longer exists has no local calendar to read, and UTC is then as good an
+    answer as any — nothing can be written against it.
+    """
+    workspace = await session.get(Workspace, workspace_id)
+    if workspace is None:
+        return now().date()
+    return local_date(now(), workspace.timezone)
 
 
 async def workspace_for_job(session: AsyncSession, workspace_id: UUID) -> WorkspaceOut | None:

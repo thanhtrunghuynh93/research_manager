@@ -20,7 +20,7 @@ import {
   ProgressIndex,
 } from "@/components/evidence/Badges";
 import { useUser } from "@/features/people/queries";
-import { usePeriods, useProjects } from "@/features/report/queries";
+import { useAllPeriods, useProjects } from "@/features/report/queries";
 import { useApprove, useAssessment, useAssessmentEvidence } from "@/features/review/queries";
 import { DIMENSIONS, ratingOf } from "@/features/review/types";
 import { useTimezone } from "@/features/calendar/queries";
@@ -43,7 +43,7 @@ export function ReviewPage() {
   const timezone = useTimezone();
   const student = useUser(assessment.data?.student_id);
   const projects = useProjects();
-  const periods = usePeriods();
+  const periods = useAllPeriods();
 
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [rationale, setRationale] = useState("");
@@ -116,12 +116,16 @@ export function ReviewPage() {
         <div className="mt-4 flex items-end gap-4">
           <ProgressIndex value={data.progress_index} size="figure" />
           <div className="max-w-sm flex-1 pb-1.5">
-            <span className="meter">
-              <span
-                className="meter-fill"
-                style={{ width: `${Math.max(0, Math.min(100, data.progress_index ?? 0))}%` }}
-              />
-            </span>
+            {/* No scale without a number on it: an empty meter beside "Not rated" reads as a
+                score of zero, which is the one thing an unrated week does not mean. */}
+            {data.progress_index === null || data.progress_index === undefined ? null : (
+              <span className="meter">
+                <span
+                  className="meter-fill"
+                  style={{ width: `${Math.max(0, Math.min(100, data.progress_index))}%` }}
+                />
+              </span>
+            )}
             <p className="stamp mt-1.5">
               Progress index — read beside its components and its confidence, never alone.
             </p>

@@ -532,3 +532,30 @@ async def test_the_professor_assigning_mid_week_still_owes_that_week(
     assert [
         o.student_id for o in await service.ensure_obligations(db, prof_scope, periods[0].id)
     ] == [student_a.id]
+
+
+# ---------------------------------------------------------------- one workspace at a time
+#
+# A professor's reads span every workspace they belong to (ADR 0016). The calendar panel is about
+# one workspace, and reading the wide list made a brand-new workspace report the other one's open
+# weeks in the same breath as saying it had no calendar at all.
+
+
+async def test_periods_are_listed_for_the_workspace_being_worked_in(
+    db: AsyncSession, prof: identity_models.User, prof_scope: Scope
+) -> None:
+    await _calendar(db, prof_scope)
+    await service.ensure_periods(db, prof_scope, through=date(2026, 10, 12))
+    home = prof_scope.workspace_id
+
+    # Creating a workspace moves the professor there and keeps the one they were in.
+    second = await identity_service.create_workspace(db, prof_scope, name="QA Lab")
+    spanning = await identity_service.scope_for(db, prof)
+    assert spanning.workspace_id == second.id
+    assert home in spanning.workspace_ids, "still a member of the first"
+
+    assert await service.list_periods(db, spanning) == [], "the new workspace has no weeks yet"
+
+    wide = await service.list_periods(db, spanning, across_workspaces=True)
+    assert wide, "and the widened read still reaches the other workspace's"
+    assert {period.workspace_id for period in wide} == {home}

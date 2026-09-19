@@ -38,6 +38,8 @@ function renderPage(extra: Parameters<typeof server.use>[number][] = []) {
     http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
     http.get("/api/v1/periods/p1/obligations", () => HttpResponse.json(OBLIGATIONS)),
     http.get("/api/v1/projects", () => HttpResponse.json({ items: PROJECTS })),
+    // REP-05: the editor shows any outstanding revision request beside the entry it is about.
+    http.get("/api/v1/reports/r1/revisions", () => HttpResponse.json([])),
     // The editor reads its attachments back from the server rather than remembering them, so a
     // reloaded page shows the files that are actually in the bucket.
     http.get("/api/v1/artifacts", () => HttpResponse.json([])),
@@ -612,4 +614,106 @@ test("a resubmitted week names the version on the record, not the first one", as
   expect(notice).toHaveTextContent(/version 5/);
   expect(notice).toHaveTextContent(/Sep 18/);
   expect(notice).not.toHaveTextContent(/Sep 17/);
+});
+
+const SUBMITTED_REPORT = {
+  id: "r1",
+  student_id: "s1",
+  period_id: "p1",
+  workflow_state: "submitted",
+  draft_content: {},
+  draft_saved_at: null,
+  first_submitted_at: "2026-09-17T03:54:00Z",
+  current_version_id: null,
+};
+
+test("submitting the entry a project was missing clears its Required badge", async () => {
+  // The success notice and the warning stood side by side: "Submitted as version 2" over
+  // "1 project still has no entry in it", because both are read from the obligations and only
+  // the report was refetched. Navigating away and back fixed it, which is not a fix.
+  let submitted = false;
+  renderPage([
+    http.get("/api/v1/periods/p1/obligations", () =>
+      HttpResponse.json([
+        { ...OBLIGATIONS[0], submitted: true },
+        { ...OBLIGATIONS[1], submitted },
+      ]),
+    ),
+    http.get("/api/v1/periods/p1/report", () => HttpResponse.json(SUBMITTED_REPORT)),
+    http.post("/api/v1/periods/p1/report/submit", () => {
+      submitted = true;
+      return HttpResponse.json({
+        id: "v2",
+        report_id: "r1",
+        version_no: 2,
+        submitted_at: "2026-09-20T10:00:00Z",
+        timing_status: "on_time",
+        entries: [],
+      });
+    }),
+  ]);
+  const user = userEvent.setup();
+
+  expect(await screen.findByTestId("still-owed")).toHaveTextContent("1 project");
+  await user.click(screen.getByRole("button", { name: /submit/i }));
+
+  await waitFor(() => expect(screen.queryByTestId("still-owed")).not.toBeInTheDocument());
+  expect(screen.getByTestId("tab-state-pr2")).toHaveTextContent(/submitted/i);
+});
+
+test("an outstanding revision request is shown beside the entry it asks about", async () => {
+  // The request reached the student's home screen and the read-only reader. The editor — the one
+  // screen where the correction is made — showed every tab as Submitted and said nothing about
+  // which entry was wanted or why.
+  renderPage([
+    http.get("/api/v1/periods/p1/obligations", () =>
+      HttpResponse.json([
+        { ...OBLIGATIONS[0], submitted: true },
+        { ...OBLIGATIONS[1], submitted: true },
+      ]),
+    ),
+    http.get("/api/v1/periods/p1/report", () =>
+      HttpResponse.json({ ...SUBMITTED_REPORT, workflow_state: "revision_requested" }),
+    ),
+    http.get("/api/v1/reports/r1/revisions", () =>
+      HttpResponse.json([
+        {
+          id: "rq1",
+          report_id: "r1",
+          project_id: "pr2",
+          reason: "Say which estimator the bound is for.",
+          created_at: "2026-09-19T02:00:00Z",
+          resolved_in_version_id: null,
+        },
+      ]),
+    ),
+  ]);
+
+  const request = await screen.findByTestId("revision-request");
+  expect(request).toHaveTextContent("Say which estimator the bound is for.");
+  // On the tab it is about, and that tab is the one open: the student arrived here to fix it.
+  expect(screen.getByTestId("tab-state-pr2")).toHaveTextContent(/revision requested/i);
+  expect(screen.getByTestId("tab-state-pr1")).toHaveTextContent(/submitted/i);
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "entry-panel-pr2");
+});
+
+test("a request already answered by a later version is not still asked for", async () => {
+  renderPage([
+    http.get("/api/v1/periods/p1/report", () => HttpResponse.json(SUBMITTED_REPORT)),
+    http.get("/api/v1/reports/r1/revisions", () =>
+      HttpResponse.json([
+        {
+          id: "rq1",
+          report_id: "r1",
+          project_id: "pr2",
+          reason: "Say which estimator the bound is for.",
+          created_at: "2026-09-19T02:00:00Z",
+          resolved_in_version_id: "v2",
+        },
+      ]),
+    ),
+  ]);
+
+  await screen.findByRole("tab", { name: /Baseline evaluation/ });
+  expect(screen.queryByTestId("revision-request")).not.toBeInTheDocument();
 });
