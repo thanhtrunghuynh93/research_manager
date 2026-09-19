@@ -184,6 +184,51 @@ def _is_transient(error: BaseException) -> bool:
     return bool(names & _TRANSIENT_NAMES)
 
 
+# How long a failure may be before it stops being a sentence and starts being a payload.
+_PUBLIC_ERROR_LIMIT = 200
+
+
+def _describe(error: BaseException) -> tuple[str, str]:
+    """A provider failure as (what a professor may read, what an operator needs).
+
+    These were one string, and it was the class name alone — so the overview said
+    `rate_rubric: BadRequestError` thirteen times and there was nothing to act on. The split is
+    the point: the detail carries the provider's own message and goes only to the log, while the
+    public half is assembled from machine fields.
+
+    The provider's free text is deliberately not in the public half. On a schema rejection it
+    quotes only our own schema, which would be harmless — but the same field carries content-filter
+    and moderation text on other paths, and that is one relay away from a student's sentence
+    appearing on a professor's dashboard. What the public half says instead is which *kind* of
+    failure it was, which is what decides whether a retry is worth anything.
+    """
+    from app.ai.redaction import redact
+
+    name = type(error).__name__
+    body = getattr(error, "body", None)
+    fields = body.get("error") if isinstance(body, dict) else None
+    kind = str(fields.get("type") or "") if isinstance(fields, dict) else ""
+    param = str(fields.get("param") or "") if isinstance(fields, dict) else ""
+    code = str(fields.get("code") or "") if isinstance(fields, dict) else ""
+
+    status = getattr(error, "status_code", None)
+    detail = f"{name}{f' [{status}]' if status else ''}: {error}"
+
+    if param == "response_format" or "schema" in str(code):
+        # Ours to fix, not the professor's to retry, so the sentence has to say so.
+        public = f"{name}: the provider rejected this system's response schema"
+    elif name in {"AuthenticationError", "PermissionDeniedError"}:
+        public = f"{name}: the model provider rejected the configured credentials"
+    elif name == "RateLimitError":
+        public = f"{name}: the model provider is rate-limiting this workspace"
+    elif kind:
+        public = f"{name}: {kind}"
+    else:
+        public = name
+
+    return redact(public)[:_PUBLIC_ERROR_LIMIT], detail
+
+
 @dataclass
 class OpenAIGateway:
     """The one place this system talks to a model provider (ADR 0007).
@@ -252,14 +297,19 @@ class OpenAIGateway:
                     timeout=self.timeout_seconds,
                 )
             except Exception as error:  # noqa: BLE001 - a provider failure is a state, not a crash
-                last_error = f"{type(error).__name__}"
+                last_error, detail = _describe(error)
                 if not _is_transient(error) or attempt >= self.max_attempts:
+                    # The terminal failure used to log nothing at all — only the retrying branch
+                    # below did — so the one failure worth reading left no trace beyond a class
+                    # name on a dashboard. `rate_rubric` failed this way 13 times and the reason
+                    # had to be reconstructed from the schema rather than read.
+                    log.error("model call %s failed: %s", prompt.label, detail)
                     break
                 log.warning(
                     "model call %s attempt %d failed (%s); retrying",
                     prompt.label,
                     attempt,
-                    last_error,
+                    detail,
                 )
                 await sleep(self.backoff_seconds * attempt)
                 continue

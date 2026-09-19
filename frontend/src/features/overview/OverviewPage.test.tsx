@@ -1,6 +1,7 @@
 /** UI-01: the professor's week, with every condition named rather than implied. */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 
@@ -278,4 +279,39 @@ test("the outstanding list names the student, as the board above it does", async
 
   expect(outstanding).toHaveTextContent("Bao Tran");
   expect(outstanding).not.toHaveTextContent("s2");
+});
+
+test("offers a retry on a stalled analysis, and sends the subject rather than the run", async () => {
+  // AC-13 asks for a retry to be an informed decision. The endpoint has existed since the
+  // pipeline did and no screen called it, so the reason was shown and the remedy was a terminal.
+  const retries: string[] = [];
+  server.use(
+    http.post("/api/v1/admin/assessments/retry", ({ request }) => {
+      retries.push(new URL(request.url).search);
+      return HttpResponse.json(null);
+    }),
+  );
+  renderPage({
+    ...EMPTY,
+    stalled_analyses: [
+      {
+        run_id: "r1",
+        state: "partial",
+        reason: "rate_rubric: the provider rejected this system's response schema",
+        student_id: "s1",
+        project_id: "pr1",
+        period_id: "p1",
+      },
+    ],
+  });
+  const user = userEvent.setup();
+
+  await user.click(await screen.findByTestId("retry-analysis"));
+
+  await waitFor(() => expect(retries).toHaveLength(1));
+  // The subject, not the run id: re-running means "assess this student, on this project, this
+  // week", and the API re-resolves all three through the caller's own scope (AUTH-02).
+  expect(retries[0]).toContain("student_id=s1");
+  expect(retries[0]).toContain("project_id=pr1");
+  expect(retries[0]).toContain("period_id=p1");
 });

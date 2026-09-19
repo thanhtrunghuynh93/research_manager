@@ -73,8 +73,11 @@ DEFAULT_DIMENSIONS: dict[str, Any] = {
 PROMPT_VERSION = "v1"
 # Per-prompt overrides. `rate_rubric` v2 supplies the plan baseline the v1 template already asked
 # for but was never given, and tells the model to rate every rubric dimension rather than only the
-# ones it has something to say about (ASSESS-05, ASSESS-06).
-PROMPT_VERSIONS: dict[str, str] = {"rate_rubric": "v2"}
+# ones it has something to say about (ASSESS-05, ASSESS-06). v3 carries that unchanged and adds the
+# `dimension_id` the ratings list now needs, the list having replaced a map the provider's strict
+# mode could not express. v2 is kept rather than edited: ASSESS-09 versions prompts so an
+# assessment drafted under one stays explainable by the template that drafted it.
+PROMPT_VERSIONS: dict[str, str] = {"rate_rubric": "v3"}
 
 
 # ------------------------------------------------------------------ rubric
@@ -496,16 +499,40 @@ async def _call(
     )
 
 
-def validate_output(output: RubricOutput, *, allowed_evidence_ids: set[UUID]) -> dict[str, Any]:
+def validate_output(
+    output: RubricOutput,
+    *,
+    allowed_evidence_ids: set[UUID],
+    allowed_dimensions: set[str] | None = None,
+) -> dict[str, Any]:
     """AC-07/AC-12: a citation that is not in the snapshot cannot survive.
 
     Any evidence id the model invented is dropped, and a rating that rested on one is downgraded to
     `unknown` with the reason recorded, because a rating whose support has gone is not a rating.
+
+    This is also where the model's list of ratings becomes the map keyed by dimension that every
+    caller and `assessment_versions.ratings` expects, so the wire shape can change without anything
+    downstream — or already stored — noticing.
+
+    A list admits what a map could not: a dimension the rubric does not have, and the same one
+    twice. `allowed_dimensions` drops the first and takes first-wins on the second, both recorded
+    rather than silent, because either would otherwise land in JSONB and be rendered to the
+    professor as though the rubric had asked for it. Passing None allows any id, which is what the
+    evaluation harness wants.
     """
     allowed = {str(value) for value in allowed_evidence_ids}
     validated: dict[str, Any] = {}
+    unknown_dimensions = 0
+    duplicate_dimensions = 0
 
-    for name, rating in output.dimensions.items():
+    for rating in output.dimensions:
+        name = rating.dimension_id
+        if allowed_dimensions is not None and name not in allowed_dimensions:
+            unknown_dimensions += 1
+            continue
+        if name in validated:
+            duplicate_dimensions += 1
+            continue
         kept = [ref for ref in rating.evidence_ref_ids if ref in allowed]
         dropped = [ref for ref in rating.evidence_ref_ids if ref not in allowed]
         notes: list[str] = []
@@ -526,6 +553,16 @@ def validate_output(output: RubricOutput, *, allowed_evidence_ids: set[UUID]) ->
             "evidence_ref_ids": kept,
             "validation_notes": notes,
         }
+
+    if unknown_dimensions or duplicate_dimensions:
+        # Not a failure: the assessment is still usable, and the professor's screen should not
+        # carry a note about the model's bookkeeping. But it is the signal that a prompt and a
+        # rubric have drifted apart, so it belongs where an operator reads.
+        log.warning(
+            "rate_rubric returned %d rating(s) for dimensions not in the rubric, %d duplicate(s)",
+            unknown_dimensions,
+            duplicate_dimensions,
+        )
     return validated
 
 
@@ -566,7 +603,11 @@ async def _record_assessment(
         }
         narrative: dict[str, Any] = {"limitations": ["Not rated — restricted"]}
     else:
-        ratings = validate_output(output, allowed_evidence_ids=snapshot_item_ids)
+        ratings = validate_output(
+            output,
+            allowed_evidence_ids=snapshot_item_ids,
+            allowed_dimensions=set(weights),
+        )
         for name in excluded:
             if name in ratings:
                 ratings[name]["rating"] = NOT_APPLICABLE

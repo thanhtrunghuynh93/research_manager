@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
 
 import { Badge, FreshnessBadge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
-import { useEnsureObligations, useOverview } from "@/features/overview/queries";
+import { useEnsureObligations, useOverview, useRetryAnalysis } from "@/features/overview/queries";
 import type { WeekStudent, WeekWorkspace } from "@/features/overview/types";
 import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant, formatLocalDate } from "@/lib/dates";
@@ -20,6 +20,7 @@ export function OverviewPage() {
   const { t } = useTranslation();
   const overview = useOverview();
   const timezone = useTimezone();
+  const retry = useRetryAnalysis();
 
   if (overview.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (overview.isError)
@@ -154,11 +155,28 @@ export function OverviewPage() {
           note={t("overview.stalledNote")}
         >
           {data.stalled_analyses.map((run, index) => (
-            <li key={`${String(run.run_id)}:${index}`} className="px-4 py-2.5 text-[13px]">
-              <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-warn">
-                {String(run.state)}
+            <li key={`${String(run.run_id)}:${index}`} className="row items-start">
+              <span className="min-w-0 text-[13px]">
+                <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-warn">
+                  {String(run.state)}
+                </span>
+                <span className="text-muted-foreground"> — {String(run.reason || "")}</span>
               </span>
-              <span className="text-muted-foreground"> — {String(run.reason || "")}</span>
+              <button
+                type="button"
+                disabled={retry.isPending}
+                onClick={() =>
+                  retry.mutate({
+                    student_id: String(run.student_id),
+                    project_id: String(run.project_id),
+                    period_id: String(run.period_id),
+                  })
+                }
+                className="btn-quiet shrink-0"
+                data-testid="retry-analysis"
+              >
+                {t("overview.retry")}
+              </button>
             </li>
           ))}
         </Section>

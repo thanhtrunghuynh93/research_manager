@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.assessment.models import (
     AnalysisRun,
@@ -292,7 +293,30 @@ async def review_queue(
 
 
 async def partial_runs(session: AsyncSession, scope: Scope) -> list[AnalysisRun]:
-    """Runs that stopped short: a failed model step, or a budget that ran out (AC-13)."""
+    """Runs that stopped short and have not since been redone (AC-13).
+
+    A retry does not repair the old row, it writes a new one — so without the second condition
+    this list is an append-only log presented to the professor as a worklist. Retrying thirteen
+    stalled runs would have left all thirteen on the overview for ever, beside whatever the
+    retries produced, and the remedy would have looked exactly like a failure.
+
+    Superseded means a *later* run for the same week, student and project got somewhere: either it
+    completed, or it was refused because the project restricts what may reach a model, which is an
+    answer rather than a stall.
+    """
+    later = aliased(AnalysisRun)
+    redone = (
+        select(later.id)
+        .where(
+            later.workspace_id == AnalysisRun.workspace_id,
+            later.student_id == AnalysisRun.student_id,
+            later.project_id == AnalysisRun.project_id,
+            later.period_id == AnalysisRun.period_id,
+            later.started_at > AnalysisRun.started_at,
+            later.state.in_([RunState.COMPLETED, RunState.RESTRICTED]),
+        )
+        .exists()
+    )
     return list(
         (
             await session.execute(
@@ -302,6 +326,7 @@ async def partial_runs(session: AsyncSession, scope: Scope) -> list[AnalysisRun]
                     AnalysisRun.state.in_(
                         [RunState.PARTIAL, RunState.FAILED, RunState.DELAYED_BUDGET]
                     ),
+                    ~redone,
                 )
                 .order_by(AnalysisRun.started_at.desc())
             )

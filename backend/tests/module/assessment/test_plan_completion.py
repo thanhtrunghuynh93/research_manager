@@ -103,9 +103,11 @@ async def test_a_completed_plan_is_not_reported_as_zero(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(rating="3", rationale="done", evidence_ref_ids=[])
-                },
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress", rating="3", rationale="done", evidence_ref_ids=[]
+                    )
+                ],
                 plan_items=[
                     PlanItemAssessment(
                         item_id=str(item.id),
@@ -143,9 +145,11 @@ async def test_completion_is_weighted_by_the_frozen_weights(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(rating="3", rationale="done", evidence_ref_ids=[])
-                },
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress", rating="3", rationale="done", evidence_ref_ids=[]
+                    )
+                ],
                 plan_items=[
                     PlanItemAssessment(
                         item_id=str(heavy.id),
@@ -239,11 +243,14 @@ async def test_a_dimension_the_model_omitted_counts_against_coverage(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(
-                        rating="3", rationale="the loader runs", evidence_ref_ids=[]
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress",
+                        rating="3",
+                        rationale="the loader runs",
+                        evidence_ref_ids=[],
                     )
-                }
+                ]
             )
         }
     )

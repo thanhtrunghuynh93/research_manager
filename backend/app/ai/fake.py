@@ -24,6 +24,7 @@ from app.ai.schemas import (
     PlanItemAssessment,
     RoutePlan,
     RubricOutput,
+    strict,
 )
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
@@ -53,6 +54,19 @@ class FakeGateway:
         context: CallContext,
     ) -> Result[Schema]:
         self.calls.append(prompt_id)
+
+        # The provider refuses a schema its strict mode cannot express, and for as long as this
+        # did not, the fake was the reason nobody noticed: `rate_rubric` failed on every real call
+        # for weeks while every test using this gateway passed. A fake that accepts what the
+        # provider rejects does not prove the pipeline works — it only proves the pipeline works
+        # against the fake.
+        broken = strict.violations(schema)
+        if broken:
+            raise ValueError(
+                f"{schema.__name__} is not a schema the provider would accept, so this fake will "
+                "not pretend otherwise:\n  " + "\n  ".join(broken)
+            )
+
         if prompt_id in self.fail_prompts:
             return Result(
                 value=None,
@@ -173,18 +187,21 @@ class FakeGateway:
             for item in (baseline if isinstance(baseline, list) else [])
             if isinstance(item, dict)
         ]
-        rated = {}
+        rated = []
         for dimension in dimensions:
             # Without evidence there is nothing to rate, which is `unknown`, not zero.
             rating = self.default_rating if evidence_ids else "unknown"
-            rated[dimension] = DimensionRating(
-                rating=rating,
-                rationale=(
-                    f"derived from {len(evidence_ids)} piece(s) of evidence in the snapshot"
-                    if evidence_ids
-                    else "no evidence in the snapshot supports a rating for this dimension"
-                ),
-                evidence_ref_ids=evidence_ids[:2],
+            rated.append(
+                DimensionRating(
+                    dimension_id=dimension,
+                    rating=rating,
+                    rationale=(
+                        f"derived from {len(evidence_ids)} piece(s) of evidence in the snapshot"
+                        if evidence_ids
+                        else "no evidence in the snapshot supports a rating for this dimension"
+                    ),
+                    evidence_ref_ids=evidence_ids[:2],
+                )
             )
         return RubricOutput(
             dimensions=rated,

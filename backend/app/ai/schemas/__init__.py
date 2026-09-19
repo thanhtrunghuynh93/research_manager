@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 RatingLiteral = Literal["0", "1", "2", "3", "4", "unknown"]
 ClaimStatus = Literal["supported", "partially_supported", "unsupported", "unverifiable"]
@@ -39,8 +39,14 @@ class ClaimVerdicts(BaseModel):
 
 
 class DimensionRating(BaseModel):
-    """`not_applicable` is deliberately absent: only the rubric may decide that (ASSESS-04)."""
+    """`not_applicable` is deliberately absent: only the rubric may decide that (ASSESS-04).
 
+    `dimension_id` is the rubric dimension this rates, copied from the rubric supplied in the
+    prompt. It is a field rather than a mapping key because the provider's strict mode cannot
+    express an open-ended map — see `app.ai.schemas.strict`.
+    """
+
+    dimension_id: str
     rating: RatingLiteral
     rationale: str
     evidence_ref_ids: list[str] = Field(default_factory=list)
@@ -54,15 +60,33 @@ class PlanItemAssessment(BaseModel):
     """
 
     item_id: str
-    proposed_completion: float = Field(ge=0, le=1)
+    # The range is enforced here rather than declared on the field: `ge`/`le` reach the wire as
+    # `minimum`/`maximum`, which strict mode may refuse, and a bound the provider ignores is worth
+    # nothing anyway. Clamping rather than raising is deliberate — `metrics.plan_completion` raises
+    # on a fraction outside [0, 1], so letting one through would turn a recoverable PARTIAL run
+    # into an unhandled exception in the worker.
+    proposed_completion: float
     reason: str
     evidence_ref_ids: list[str] = Field(default_factory=list)
 
+    @field_validator("proposed_completion", mode="after")
+    @classmethod
+    def _within_unit_interval(cls, value: float) -> float:
+        return min(1.0, max(0.0, value))
+
 
 class RubricOutput(BaseModel):
-    """What the rating step must return (architecture §9.3)."""
+    """What the rating step must return (architecture §9.3).
 
-    dimensions: dict[str, DimensionRating] = Field(default_factory=dict)
+    `dimensions` is a list, not a map keyed by dimension id. The map was the shape the rubric
+    itself has and it read better, but it made this the one schema the provider refused: strict
+    mode has no way to express an object whose keys are not known in advance, so every call
+    carrying it came back 400 and no assessment was ever produced from real model output.
+    `validate_output` turns the list back into a map, so nothing downstream — including what is
+    already stored in `assessment_versions.ratings` — sees the difference.
+    """
+
+    dimensions: list[DimensionRating] = Field(default_factory=list)
     plan_items: list[PlanItemAssessment] = Field(default_factory=list)
     accomplishments: list[str] = Field(default_factory=list)
     blockers: list[str] = Field(default_factory=list)

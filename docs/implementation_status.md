@@ -88,6 +88,27 @@ All are fixed, each with a test that fails without the fix. What remains before 
 is still calibration and operation rather than construction: the rubric has to be rated against
 real work, and the professor still owes the decisions in §5.
 
+**Version 0.6 found the first shape again, from the outside.** QA of the professor role on the
+deployment found that `rate_rubric` had failed on *every* call for as long as a real key had been
+configured — 13 of 13 runs, no assessment ever produced from model output, every one on screen
+still the seed's. `RubricOutput.dimensions` was `dict[str, DimensionRating]`, and the provider's
+strict mode cannot express an object whose keys are not known in advance, so each request came
+back 400. It is the same lesson as the fourth seam with one turn added, worth recording because
+the obvious guard would not have caught it either:
+
+- **The SDK's own strict converter accepts a schema the server rejects.**
+  `_ensure_strict_json_schema` fills in `additionalProperties: false` only where the key is
+  *absent*; a `dict[str, X]` emits the key already holding a `$ref`, so the converter walks past
+  it and `to_strict_json_schema(RubricOutput)` succeeds. A check written the obvious way — hand
+  the model to the SDK, assert it does not raise — agrees with the bug. The rules have to be
+  reimplemented against the *server's* contract, which is what `app/ai/schemas/strict.py` does.
+- **The fake was the reason nobody noticed.** It never built a JSON schema, so the entire suite
+  ran through the defect. It now refuses any schema the provider would refuse, which makes every
+  pipeline, acceptance and evaluation test that touches `rate_rubric` a guard against this class.
+- **The failure was recorded as a class name.** The gateway stored `type(error).__name__` and
+  nothing else, so thirteen identical `BadRequestError` rows sat on the professor's overview with
+  nothing to act on and the cause had to be reconstructed from the schema rather than read.
+
 ## 2 What each finished step delivers
 
 ### Step 2 — `identity/` (AUTH-01..03)
