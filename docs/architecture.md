@@ -122,12 +122,14 @@ A module reads another module's data only through that module's `service.py`; it
 | `/me` | Student overview: obligations, draft state, next deadline, released feedback, timeline | UI-02 |
 | `/projects/:id` | Project workspace: goals, members, milestones, artifacts, repositories, decisions | UI-03 |
 | `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
+| `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left, and the professor's revision request | REP-02, REP-05, UI-04 |
 | `/people` | The roll across every workspace the professor belongs to, grouped by workspace: invite, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
 | `/workspaces` | Workspaces this professor belongs to or owns: create, join, leave, rename, archive | UI-08, AUTH-04, AUTH-05 |
 | `/accept-invitation` | Set a password from an invitation link; public, no session | AUTH-01 |
 | `/reset-password` | Set a password from a recovery link; public, no session | AUTH-01 |
 | `/review/:assessmentId` | Review workspace: claims, evidence, draft assessment, freshness, approve/override | UI-05 |
 | `/report/:periodId` | One weekly submission flow with a tab per required project entry | REP-02, REP-03 |
+| `/report/:periodId/submitted` | What the student actually submitted, as against the draft the editor shows | REP-02, REP-05 |
 | `/assistant` | Professor assistant with visible active scope | QA-01…QA-07 |
 | `/login` | Sign in; public, no session | AUTH-01 |
 | `/status` | Readiness of database, object store, worker, and mail relay; public | — |

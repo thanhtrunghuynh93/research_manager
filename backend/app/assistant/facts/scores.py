@@ -8,18 +8,37 @@ AC-10 exists to prevent.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment import service as assessment_service
-from app.assistant.facts.base import Citation, Fact, FactQuery, fact
+from app.assistant.facts.base import Citation, Fact, FactQuery, display_name, fact
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 
 
 @fact("review_queue")
 async def review_queue(session: AsyncSession, query: FactQuery) -> Fact:
-    """UI-01: drafts waiting on the professor. A student's queue is empty by construction."""
+    """UI-01: drafts waiting on the professor. A student's queue is empty by construction.
+
+    The names travel with the rows, as they already do for `week_reports`. Without them the panel
+    read "Draft for 01a0ad80" — and because these are UUIDv7 sharing a timestamp prefix, every
+    draft on the screen showed the *same* eight characters, so three waiting assessments were
+    indistinguishable from one another.
+    """
     drafts = await assessment_service.review_queue(session, query.scope, as_of=query.as_of)
+
+    titles: dict[UUID, str] = {}
+    names: dict[UUID, str] = {}
+    for draft in drafts:
+        if draft.project_id not in titles:
+            titles[draft.project_id] = await projects_service.project_title(
+                session, draft.project_id
+            )
+        if draft.student_id not in names:
+            names[draft.student_id] = await display_name(session, query, draft.student_id)
+
     return Fact(
         name="review_queue",
         label="Assessments awaiting review",
@@ -29,7 +48,9 @@ async def review_queue(session: AsyncSession, query: FactQuery) -> Fact:
             {
                 "assessment_id": str(draft.id),
                 "student_id": str(draft.student_id),
+                "student_name": names[draft.student_id],
                 "project_id": str(draft.project_id),
+                "project_title": titles[draft.project_id],
                 "period_id": str(draft.period_id),
                 "confidence": draft.confidence,
                 "progress_index": draft.progress_index,

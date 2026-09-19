@@ -11,10 +11,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
-import { Badge, ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
+import {
+  Badge,
+  ConfidenceBadge,
+  ConfidenceReasons,
+  ProgressIndex,
+} from "@/components/evidence/Badges";
 import { Trajectory } from "@/features/assessments/components/Trajectory";
+import { useUser } from "@/features/people/queries";
 import type { Assessment } from "@/features/review/types";
-import { openArtifact, useArtifacts } from "@/features/report/queries";
+import { openArtifact, useArtifacts, usePeriods, useProjects } from "@/features/report/queries";
+import { formatLocalDate } from "@/lib/dates";
 
 export function StudentProfilePage() {
   const { t } = useTranslation();
@@ -25,19 +32,62 @@ export function StudentProfilePage() {
     queryFn: () => api.get<Assessment[]>(`/api/v1/assessments?student_id=${id}`),
     enabled: Boolean(id),
   });
+  // This page is about a person, and it used to name them — and their projects, and their weeks —
+  // with eight characters of a uuid. These being UUIDv7, the eight characters were identical on
+  // every row, so three assessments all read "Week 01a0ad80". The ids stay as the fallback, for
+  // the record a professor cannot read and the project list that paged past the end.
+  const student = useUser(id);
+  const projects = useProjects();
+  const periods = usePeriods();
+
+  const titleOf = (projectId: string) =>
+    projects.data?.items.find((project) => project.id === projectId)?.title ??
+    projectId.slice(0, 8);
+  const weekOf = (periodId: string) => {
+    const period = periods.data?.find((one) => one.id === periodId);
+    return period
+      ? `${formatLocalDate(period.local_start)} – ${formatLocalDate(period.local_end)}`
+      : t("student.week", { period: periodId.slice(0, 8) });
+  };
 
   const projectIds = Array.from(new Set((assessments.data ?? []).map((row) => row.project_id)));
 
   return (
     <section className="animate-rise-in">
       <header>
-        <p className="eyebrow mb-1.5">{t("student.label", { id: id?.slice(0, 8) ?? "" })}</p>
-        <h1 className="page-title">{t("student.title")}</h1>
+        <p className="eyebrow mb-1.5">{t("student.label")}</p>
+        <h1 className="page-title">{student.data?.display_name ?? t("student.title")}</h1>
       </header>
 
       {projectIds.map((projectId) => (
-        <Trajectory key={projectId} studentId={id!} projectId={projectId} />
+        <Trajectory
+          key={projectId}
+          studentId={id!}
+          projectId={projectId}
+          title={titleOf(projectId)}
+        />
       ))}
+
+      {/* Every week this student could have reported, each a click from its text. The reader
+          itself says "nothing was started" for a week with nothing in it, so no probing is
+          needed here — and a professor with no list had no way into a report at all. */}
+      <h2 className="section-title mt-8">{t("report.reader.weekly")}</h2>
+      <ul className="panel mt-2.5" data-testid="weekly-reports">
+        {(periods.data ?? [])
+          .slice()
+          .reverse()
+          .slice(0, 8)
+          .map((period) => (
+            <li key={period.id} className="row">
+              <Link to={`/students/${id}/reports/${period.id}`} className="link text-[13.5px]">
+                {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
+              </Link>
+              <span className="font-mono text-[11.5px] text-muted-foreground">
+                {t("report.reader.openWeek")}
+              </span>
+            </li>
+          ))}
+      </ul>
 
       <Materials studentId={id!} />
 
@@ -46,7 +96,8 @@ export function StudentProfilePage() {
         {assessments.data?.map((assessment) => (
           <li key={assessment.id} className="row">
             <Link to={`/review/${assessment.id}`} className="text-[13.5px]">
-              {t("student.week", { period: assessment.period_id.slice(0, 8) })}
+              {weekOf(assessment.period_id)}
+              <span className="ml-2 text-muted-foreground">{titleOf(assessment.project_id)}</span>
             </Link>
             <span className="flex flex-wrap items-center gap-2.5">
               <ProgressIndex value={assessment.progress_index} />
@@ -60,6 +111,10 @@ export function StudentProfilePage() {
                 })}
               </Badge>
             </span>
+            <ConfidenceReasons
+              reasons={(assessment.confidence_reasons ?? []).map(String)}
+              className="w-full"
+            />
           </li>
         ))}
         {assessments.data?.length === 0 && (

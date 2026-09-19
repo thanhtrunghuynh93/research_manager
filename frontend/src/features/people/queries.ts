@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import type { Invitation, Role, User, UserPage } from "@/features/people/types";
@@ -28,6 +28,23 @@ export function usePeople() {
     select: (data) => ({
       users: data.pages.flatMap((page) => page.items),
     }),
+  });
+}
+
+export const userKey = (id: string) => ["people", "user", id] as const;
+
+/**
+ * One account, by id — the name to put at the top of a screen that is about a person.
+ *
+ * `GET /users/{id}` has existed since enrolment did and no screen called it, so every page keyed
+ * by a student id introduced them as eight characters of a uuid. Worse, these are UUIDv7 and share
+ * a timestamp prefix, so the eight characters were the *same* on every row.
+ */
+export function useUser(id: string | undefined) {
+  return useQuery({
+    queryKey: userKey(id ?? ""),
+    queryFn: () => api.get<User>(`/api/v1/users/${id}`),
+    enabled: Boolean(id),
   });
 }
 

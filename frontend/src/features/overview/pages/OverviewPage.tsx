@@ -120,7 +120,12 @@ export function OverviewPage() {
           {data.review_queue.map((draft, index) => (
             <li key={`${String(draft.assessment_id)}:${index}`} className="row">
               <Link to={`/review/${String(draft.assessment_id)}`} className="text-[13px]">
-                {t("overview.draftFor", { student: String(draft.student_id).slice(0, 8) })}
+                {t("overview.draftFor", {
+                  student: String(draft.student_name || "") || String(draft.student_id).slice(0, 8),
+                })}
+                {draft.project_title ? (
+                  <span className="ml-2 text-muted-foreground">{String(draft.project_title)}</span>
+                ) : null}
               </Link>
               <Badge tone={draft.confidence === "high" ? "good" : "warn"}>
                 {t(`assessment.confidence.${String(draft.confidence)}`, {
@@ -310,7 +315,11 @@ function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string
                         >
                           {student.student_name}
                         </Link>
-                        <WeekState student={student} timezone={timezone} />
+                        <WeekState
+                          student={student}
+                          timezone={timezone}
+                          periodId={workspace.period_id}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -331,7 +340,15 @@ function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string
  * An excused row carries its reason and an extended one its new deadline, because "owed" and
  * "owed until Thursday" call for different action and the colour alone cannot tell them apart.
  */
-function WeekState({ student, timezone }: { student: WeekStudent; timezone: string }) {
+function WeekState({
+  student,
+  timezone,
+  periodId,
+}: {
+  student: WeekStudent;
+  timezone: string;
+  periodId: string;
+}) {
   const { t } = useTranslation();
 
   if (student.state === "excused") {
@@ -343,17 +360,32 @@ function WeekState({ student, timezone }: { student: WeekStudent; timezone: stri
     );
   }
   const submitted = student.state === "submitted";
+  const mark = (
+    <span
+      className={
+        submitted
+          ? "font-mono text-[11px] uppercase tracking-[0.06em] text-good"
+          : "font-mono text-[11px] uppercase tracking-[0.06em] text-warn"
+      }
+    >
+      {t(submitted ? "report.obligation.submitted" : "report.obligation.required")}
+    </span>
+  );
   return (
     <span className="text-right">
-      <span
-        className={
-          submitted
-            ? "font-mono text-[11px] uppercase tracking-[0.06em] text-good"
-            : "font-mono text-[11px] uppercase tracking-[0.06em] text-warn"
-        }
-      >
-        {t(submitted ? "report.obligation.submitted" : "report.obligation.required")}
-      </span>
+      {/* The professor's one click from "this week is in" to what is actually in it. Until this
+          page linked to it there was no route to a submitted report's text at all. */}
+      {submitted ? (
+        <Link
+          to={`/students/${student.student_id}/reports/${periodId}`}
+          className="link"
+          data-testid="read-submitted"
+        >
+          {mark}
+        </Link>
+      ) : (
+        mark
+      )}
       {!submitted && student.extension_until_utc ? (
         <span className="ml-2 font-mono text-[11px] text-muted-foreground">
           {t("overview.extendedUntil", {

@@ -16,6 +16,7 @@ import { PeoplePage } from "@/features/people/pages/PeoplePage";
 import { ProjectListPage } from "@/features/projects/pages/ProjectListPage";
 import { ProjectPage } from "@/features/projects/pages/ProjectPage";
 import { ReportEditorPage } from "@/features/report/pages/ReportEditorPage";
+import { ReportReaderPage } from "@/features/report/pages/ReportReaderPage";
 import { ReviewPage } from "@/features/review/pages/ReviewPage";
 import { StudentProfilePage } from "@/features/students/pages/StudentProfilePage";
 import { WorkspacesPage } from "@/features/workspaces/pages/WorkspacesPage";
@@ -53,6 +54,8 @@ export const router = createBrowserRouter([
         children: [
           { path: "/me", element: <StudentHomePage /> }, // UI-02
           { path: "/report/:periodId", element: <ReportEditorPage /> }, // REP-02, REP-03
+          // What was actually submitted, as against the draft the editor shows. REP-02, REP-05.
+          { path: "/report/:periodId/submitted", element: <ReportReaderPage /> },
           // The destination the professor's "publish to the student" has always named.
           { path: "/me/profile", element: <MyProfilePage /> }, // UI-02, UI-04
           { path: "/me/assessments/:assessmentId", element: <MyAssessmentPage /> }, // UI-02
@@ -65,6 +68,8 @@ export const router = createBrowserRouter([
           { path: "/people", element: <PeoplePage /> }, // AUTH-01
           { path: "/workspaces", element: <WorkspacesPage /> }, // ADR 0012
           { path: "/students/:id", element: <StudentProfilePage /> }, // UI-04
+          // The read half of REP-02..05, which had no surface at either end until now.
+          { path: "/students/:studentId/reports/:periodId", element: <ReportReaderPage /> },
           { path: "/review/:assessmentId", element: <ReviewPage /> }, // UI-05
           { path: "/assistant", element: <AssistantPage /> }, // QA-01..07
         ],

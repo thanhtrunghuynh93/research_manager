@@ -122,8 +122,18 @@ export function Attachments({
     }
   }
 
-  async function remove(artifactId: string, filename: string) {
-    if (!window.confirm(t("report.attachments.removeConfirm", { name: filename }))) return;
+  /**
+   * `name` identifies the thing to the person removing it, and `isLink` decides what is said
+   * about it. Both used to be wrong for a link: the name came from `filename`, which is derived
+   * from the URL's path — so every link without one was called "link" — and the warning said "the
+   * file and its extracted text are deleted", which is not what happens. Nothing of the page at
+   * the other end is deleted; it is not the student's to delete.
+   */
+  async function remove(artifactId: string, name: string, isLink: boolean) {
+    const key = isLink
+      ? "report.attachments.removeLinkConfirm"
+      : "report.attachments.removeConfirm";
+    if (!window.confirm(t(key, { name }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -225,7 +235,13 @@ export function Attachments({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void remove(attachment.artifact_id, attachment.filename)}
+                onClick={() =>
+                  void remove(
+                    attachment.artifact_id,
+                    attachment.source_url ?? attachment.filename,
+                    Boolean(attachment.source_url),
+                  )
+                }
                 className="btn-quiet"
                 data-testid="remove-attachment"
               >

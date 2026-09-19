@@ -22,6 +22,7 @@ from app.reporting.schemas import (
     RevisionRequestOut,
     SubmitIn,
     VersionOut,
+    VersionSummaryOut,
 )
 
 router = APIRouter(tags=["reporting"])
@@ -148,6 +149,18 @@ async def request_revision(
     return await service.request_revision(
         session, scope, report_id=report_id, project_id=payload.project_id, reason=payload.reason
     )
+
+
+@router.get("/reports/{report_id}/versions", summary="Every submitted version of one report")
+async def list_versions(
+    report_id: UUID, scope: ScopeDep, session: SessionDep
+) -> list[VersionSummaryOut]:
+    """REP-05: a resubmission adds a version and never replaces history — so history needs a reader.
+
+    `ScopeDep`, not `ProfScopeDep`: a student is entitled to their own, and the visibility
+    predicate already confines them to it.
+    """
+    return await service.list_versions(session, scope, report_id=report_id)
 
 
 @router.get("/reports/{report_id}/revisions", summary="Outstanding revision requests")

@@ -333,3 +333,19 @@ test("a download that fails says so on the screen", async () => {
 
   expect(await screen.findByTestId("attachment-error")).toHaveTextContent(/no stored version/i);
 });
+
+test("removing a link says what actually happens to it, and names it by its address", async () => {
+  // Both halves were wrong. The name came from `filename`, which is derived from the URL's path,
+  // so every link without one was called "link" — and the warning promised that "the file and its
+  // extracted text are deleted", which is not what removing a link does to a page on the internet.
+  server.use(http.delete("/api/v1/artifacts/a1", () => new HttpResponse(null, { status: 204 })));
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderPanel([attachment({ filename: "link", source_url: "https://example.com/" })]);
+
+  await userEvent.click(screen.getByTestId("remove-attachment"));
+
+  const asked = confirm.mock.calls[0]![0] as string;
+  expect(asked).toContain("https://example.com/");
+  expect(asked).not.toContain("The file and its extracted text are deleted");
+  expect(asked).toMatch(/page itself is untouched/);
+});

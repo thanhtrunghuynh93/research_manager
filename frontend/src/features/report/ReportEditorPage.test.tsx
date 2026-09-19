@@ -546,3 +546,70 @@ test("shows a validation failure as a sentence instead of blanking the page", as
   // The editor is still there to correct the entry in, which is the whole point.
   expect(screen.getByRole("button", { name: /submit/i })).toBeInTheDocument();
 });
+
+test("an hours figure the server would refuse is stopped here, with the tab named", async () => {
+  // The box advertised min/max and enforced neither, so a negative number reached the API, came
+  // back 422 in a shape nothing could render, and blanked the whole application. That crash is
+  // fixed at both ends; this is the half that stops a student meeting it.
+  const submissions: unknown[] = [];
+  renderPage([
+    http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
+    http.post("/api/v1/periods/p1/report/submit", async ({ request }) => {
+      submissions.push(await request.json());
+      return HttpResponse.json({ version_no: 1 }, { status: 201 });
+    }),
+  ]);
+  const user = userEvent.setup();
+
+  await user.type(await screen.findByLabelText(/hours/i), "-1");
+  await user.click(screen.getByRole("button", { name: /submit/i }));
+
+  expect(await screen.findByTestId("hours-error")).toBeInTheDocument();
+  expect(await screen.findByTestId("submit-blocked")).toHaveTextContent("Baseline evaluation");
+  expect(submissions).toHaveLength(0);
+});
+
+test("three quarters of an hour is a valid figure, whatever the stepper says", async () => {
+  // `step="0.5"` marked 3.75 invalid for a value the server stores happily — the browser was
+  // stricter than the thing it was talking to.
+  renderPage([http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({}))]);
+  const user = userEvent.setup();
+
+  await user.type(await screen.findByLabelText(/hours/i), "3.75");
+
+  expect(screen.queryByTestId("hours-error")).not.toBeInTheDocument();
+});
+
+test("a resubmitted week names the version on the record, not the first one", async () => {
+  // It read "Submitted Sep 17, 10:54" in the same breath as "Submitted as version 16", because
+  // the notice took `first_submitted_at` and never moved.
+  renderPage([
+    http.get("/api/v1/periods/p1/report", () =>
+      HttpResponse.json({
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "resubmitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T03:54:00Z",
+        current_version_id: "v5",
+      }),
+    ),
+    http.get("/api/v1/report-versions/v5", () =>
+      HttpResponse.json({
+        id: "v5",
+        report_id: "r1",
+        version_no: 5,
+        submitted_at: "2026-09-18T11:41:00Z",
+        timing_status: "on_time",
+        entries: [],
+      }),
+    ),
+  ]);
+
+  const notice = await screen.findByTestId("already-submitted");
+  expect(notice).toHaveTextContent(/version 5/);
+  expect(notice).toHaveTextContent(/Sep 18/);
+  expect(notice).not.toHaveTextContent(/Sep 17/);
+});

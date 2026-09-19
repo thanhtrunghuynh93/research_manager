@@ -339,6 +339,31 @@ async def entries_of_version(
     return {row.project_id: row for row in rows}
 
 
+async def list_versions(
+    session: AsyncSession, scope: Scope, report_id: UUID
+) -> list[ReportVersion]:
+    """Every submitted version of one report, oldest first.
+
+    Until this existed a version was reachable only by its id, and the only id anyone held was
+    `current_version_id` — so REP-05's "a resubmission adds a version and never replaces history"
+    had no reader on either side of the product.
+    """
+    return list(
+        (
+            await session.execute(
+                select(ReportVersion)
+                .where(
+                    ReportVersion.report_id == report_id,
+                    visible_to(scope, ReportVersion),
+                )
+                .order_by(ReportVersion.version_no)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def list_revision_requests(
     session: AsyncSession, scope: Scope, report_id: UUID
 ) -> list[RevisionRequest]:

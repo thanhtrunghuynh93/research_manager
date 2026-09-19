@@ -186,3 +186,134 @@ async def test_a_student_may_read_the_calendar_they_cannot_set(
 
     assert response.status_code == 200
     assert response.json()["timezone"] == "Asia/Ho_Chi_Minh"
+
+
+async def test_the_professor_reads_the_text_of_a_submitted_report(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof_scope: Scope,
+    prof: identity_models.User,
+    student_a: identity_models.User,
+) -> None:
+    """REP-02..05: the read half of the loop, which had no caller and so no test.
+
+    `docs/use_cases.md` §2.5 put it plainly — a professor could not read a submitted report's text
+    anywhere in the app. The API permitted it the whole time; nothing asked.
+    """
+    period, project = await _week(db, prof_scope, student_a)
+    await _sign_in(client, student_a)
+    submitted = await client.post(
+        f"/api/v1/periods/{period.id}/report/submit",
+        json={"entries": [_entry(project.id, "Proved the projected bound under convexity.")]},
+    )
+    assert submitted.status_code == 201
+
+    await _sign_in(client, prof)
+    report = await client.get(f"/api/v1/periods/{period.id}/report?student_id={student_a.id}")
+    assert report.status_code == 200
+    version = await client.get(f"/api/v1/report-versions/{report.json()['current_version_id']}")
+
+    assert version.status_code == 200
+    assert "projected bound under convexity" in version.text
+
+
+async def test_every_version_of_a_report_is_listed_without_its_entries(
+    client: AsyncClient, db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    period, project = await _week(db, prof_scope, student_a)
+    await _sign_in(client, student_a)
+    for work in ("first go", "second go"):
+        response = await client.post(
+            f"/api/v1/periods/{period.id}/report/submit",
+            json={"entries": [_entry(project.id, work)]},
+            headers={"Idempotency-Key": work},
+        )
+        assert response.status_code == 201
+    report = await client.get(f"/api/v1/periods/{period.id}/report")
+
+    versions = await client.get(f"/api/v1/reports/{report.json()['id']}/versions")
+
+    assert versions.status_code == 200
+    assert [row["version_no"] for row in versions.json()] == [1, 2]
+    # Summaries: a list of full versions is an N+1, and choosing one needs no entries.
+    assert all("entries" not in row for row in versions.json())
+
+
+async def test_a_student_cannot_list_another_students_versions(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+) -> None:
+    period, project = await _week(db, prof_scope, student_a)
+    await _sign_in(client, student_a)
+    await client.post(
+        f"/api/v1/periods/{period.id}/report/submit", json={"entries": [_entry(project.id)]}
+    )
+    report_id = (await client.get(f"/api/v1/periods/{period.id}/report")).json()["id"]
+
+    await _sign_in(client, student_b)
+    response = await client.get(f"/api/v1/reports/{report_id}/versions")
+
+    assert response.status_code == 404
+
+
+async def test_the_student_reads_the_reason_for_a_revision_request(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof_scope: Scope,
+    prof: identity_models.User,
+    student_a: identity_models.User,
+) -> None:
+    """The reason existed only in an email until something rendered it (REP-05)."""
+    period, project = await _week(db, prof_scope, student_a)
+    await _sign_in(client, student_a)
+    await client.post(
+        f"/api/v1/periods/{period.id}/report/submit", json={"entries": [_entry(project.id)]}
+    )
+    report_id = (await client.get(f"/api/v1/periods/{period.id}/report")).json()["id"]
+
+    await _sign_in(client, prof)
+    asked = await client.post(
+        f"/api/v1/reports/{report_id}/revisions",
+        json={"project_id": str(project.id), "reason": "the ablation table is missing"},
+    )
+    assert asked.status_code == 201
+
+    await _sign_in(client, student_a)
+    seen = await client.get(f"/api/v1/reports/{report_id}/revisions")
+
+    assert seen.status_code == 200
+    assert "ablation table is missing" in seen.text
+
+
+async def test_marking_a_report_reviewed_is_the_professors_alone(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof_scope: Scope,
+    prof: identity_models.User,
+    student_a: identity_models.User,
+) -> None:
+    # Read before the write: the request below commits, which expires these ORM rows, and reading
+    # an attribute afterwards would lazy-load outside the async context.
+    prof_email = prof.email
+    period, project = await _week(db, prof_scope, student_a)
+    await _sign_in(client, student_a)
+    await client.post(
+        f"/api/v1/periods/{period.id}/report/submit", json={"entries": [_entry(project.id)]}
+    )
+    report_id = (await client.get(f"/api/v1/periods/{period.id}/report")).json()["id"]
+
+    refused = await client.post(f"/api/v1/reports/{report_id}/reviewed")
+    assert refused.status_code == 403
+
+    assert (
+        await client.post(
+            "/api/v1/auth/login", json={"email": prof_email, "password": DEFAULT_PASSWORD}
+        )
+    ).status_code == 200
+    reviewed = await client.post(f"/api/v1/reports/{report_id}/reviewed")
+
+    assert reviewed.status_code == 200
+    assert reviewed.json()["workflow_state"] == "reviewed"

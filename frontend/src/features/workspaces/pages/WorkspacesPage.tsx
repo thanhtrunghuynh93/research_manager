@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { CalendarPanel } from "@/features/calendar/components/CalendarPanel";
+import { AiBudgetPanel } from "@/features/workspaces/components/AiBudgetPanel";
 import { useSession } from "@/features/auth/queries";
 import {
   useArchiveWorkspace,
@@ -50,6 +51,7 @@ export function WorkspacesPage() {
 
       <CreateForm />
       <CalendarPanel />
+      <AiBudgetPanel />
     </section>
   );
 }

@@ -23,7 +23,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 
-import { ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
+import { ConfidenceBadge, ConfidenceReasons, ProgressIndex } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { RatingList } from "@/features/assessments/components/RatingList";
 import { useAssessment, useFeedback, useRequestCorrection } from "@/features/assessments/queries";
@@ -91,18 +91,10 @@ export function MyAssessmentPage() {
             as the badge's tooltip those rules did not exist on a touch device and were not
             announced as content — the student read "LOW CONFIDENCE · 2" and could not find out
             what the two were. This is the one screen where they cannot ask anything else. */}
-        {(data.confidence_reasons ?? []).length > 0 ? (
-          <ul className="mt-4 border-t border-border pt-3.5" data-testid="confidence-reasons">
-            {(data.confidence_reasons ?? []).map((reason) => (
-              <li
-                key={String(reason)}
-                className="text-[13px] leading-relaxed text-muted-foreground"
-              >
-                {String(reason)}
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <ConfidenceReasons
+          reasons={(data.confidence_reasons ?? []).map(String)}
+          className="mt-4 border-t border-border pt-3.5"
+        />
       </div>
       <p className="stamp mt-2">{t("myAssessment.indexNote")}</p>
 
@@ -160,7 +152,14 @@ function FeedbackThread({ assessmentId }: { assessmentId: string }) {
           />
         </label>
         <div className="mt-3 flex items-center gap-4">
-          <button type="submit" disabled={correction.isPending} className="btn-ghost">
+          {/* Enabled with an empty box, the button did nothing at all — `required` blocked the
+              submit and nothing said so, which is a dead control. Three spaces got past
+              `required` instead and were filed as a correction request nobody could read. */}
+          <button
+            type="submit"
+            disabled={correction.isPending || body.trim() === ""}
+            className="btn-ghost"
+          >
             {t("myAssessment.correctionSend")}
           </button>
           {correction.isSuccess ? (

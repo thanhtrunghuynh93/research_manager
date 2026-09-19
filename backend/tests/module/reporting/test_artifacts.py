@@ -364,7 +364,40 @@ async def test_a_link_that_is_simply_unreachable_is_recorded_too(
     )
 
     assert version.extraction_state is ExtractionState.FAILED
-    assert "TimeoutError" in version.extraction_note
+    # In words, not in httpx's. This read "the link could not be fetched (TimeoutError)" on the
+    # student's own screen, where a class name distinguishes nothing they could act on: a typo, a
+    # login wall and a site that is down all want different responses.
+    assert "did not answer in time" in version.extraction_note
+    assert "TimeoutError" not in version.extraction_note
+
+
+async def test_a_link_behind_a_sign_in_says_so_rather_than_naming_the_exception(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    class _Response:
+        status_code = 403
+
+    class _RefusedError(Exception):
+        response = _Response()
+
+    async def _explode(url: str) -> object:
+        raise _RefusedError("Client error '403 Forbidden'")
+
+    version = await artifacts.attach_link(
+        db,
+        scope,
+        project_id=project.id,
+        url="https://paywalled.example/x",
+        store=store,
+        fetch=_explode,
+    )
+
+    assert version.extraction_state is ExtractionState.FAILED
+    assert "needs a sign-in" in version.extraction_note
+    assert "403" in version.extraction_note
 
 
 async def test_an_attachment_can_be_bound_to_the_entry_it_supports(

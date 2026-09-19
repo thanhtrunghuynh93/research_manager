@@ -9,13 +9,23 @@ import type {
   Period,
   Project,
   Report,
+  RevisionRequest,
   Version,
+  VersionSummary,
 } from "@/features/report/types";
 import { todayLocal } from "@/lib/dates";
 
 export const periodsKey = ["periods"] as const;
-export const obligationsKey = (periodId: string) => ["obligations", periodId] as const;
-export const reportKey = (periodId: string) => ["report", periodId] as const;
+// Keyed by student as well as period: a professor reads someone else's week through the same
+// hooks, and without the student in the key their report would be served from the cache entry
+// belonging to whoever was looked at first. "me" is the student reading their own.
+export const obligationsKey = (periodId: string, studentId?: string) =>
+  ["obligations", periodId, studentId ?? "me"] as const;
+export const reportKey = (periodId: string, studentId?: string) =>
+  ["report", periodId, studentId ?? "me"] as const;
+export const versionsKey = (reportId: string) =>
+  ["report-versions", "of-report", reportId] as const;
+export const revisionsKey = (reportId: string) => ["revision-requests", reportId] as const;
 export const projectsKey = ["projects"] as const;
 export const artifactsKey = (scope: Record<string, string | undefined>) =>
   ["artifacts", scope] as const;
@@ -24,10 +34,13 @@ export function usePeriods() {
   return useQuery({ queryKey: periodsKey, queryFn: () => api.get<Period[]>("/api/v1/periods") });
 }
 
-export function useObligations(periodId: string | undefined) {
+export function useObligations(periodId: string | undefined, studentId?: string) {
   return useQuery({
-    queryKey: obligationsKey(periodId ?? ""),
-    queryFn: () => api.get<Obligation[]>(`/api/v1/periods/${periodId}/obligations`),
+    queryKey: obligationsKey(periodId ?? "", studentId),
+    queryFn: () =>
+      api.get<Obligation[]>(
+        `/api/v1/periods/${periodId}/obligations${studentId ? `?student_id=${studentId}` : ""}`,
+      ),
     enabled: Boolean(periodId),
   });
 }
@@ -40,12 +53,14 @@ export function useProjects() {
 }
 
 /** A student with no report yet gets a 404; that is "not started", not a failure. */
-export function useReport(periodId: string | undefined) {
+export function useReport(periodId: string | undefined, studentId?: string) {
   return useQuery({
-    queryKey: reportKey(periodId ?? ""),
+    queryKey: reportKey(periodId ?? "", studentId),
     queryFn: async (): Promise<Report | null> => {
       try {
-        return await api.get<Report>(`/api/v1/periods/${periodId}/report`);
+        return await api.get<Report>(
+          `/api/v1/periods/${periodId}/report${studentId ? `?student_id=${studentId}` : ""}`,
+        );
       } catch (error) {
         if (error instanceof ApiError && error.problem.status === 404) return null;
         throw error;
@@ -175,4 +190,63 @@ export function useArtifacts(
 export async function openArtifact(artifactId: string): Promise<void> {
   const grant = await api.get<{ url: string }>(`/api/v1/artifacts/${artifactId}/download`);
   window.location.assign(grant.url);
+}
+
+/**
+ * Every submitted version of one report (REP-05).
+ *
+ * Until `GET /reports/{id}/versions` existed, a version was reachable only by its id and the only
+ * id anyone held was `current_version_id` — so "a resubmission adds a version and never replaces
+ * history" was true of the database and invisible to both roles.
+ */
+export function useReportVersions(reportId: string | null | undefined) {
+  return useQuery({
+    queryKey: versionsKey(reportId ?? ""),
+    queryFn: () => api.get<VersionSummary[]>(`/api/v1/reports/${reportId}/versions`),
+    enabled: Boolean(reportId),
+  });
+}
+
+/** What the professor asked to be changed, and why. Readable by the student it is about. */
+export function useRevisionRequests(reportId: string | null | undefined) {
+  return useQuery({
+    queryKey: revisionsKey(reportId ?? ""),
+    queryFn: () => api.get<RevisionRequest[]>(`/api/v1/reports/${reportId}/revisions`),
+    enabled: Boolean(reportId),
+  });
+}
+
+/**
+ * Ask for one project's entry to be revised (REP-05).
+ *
+ * No idempotency key: a second request is a second, legitimately distinct ask — the notification
+ * handler keys on the request rather than the report — and the professor is the one deciding to
+ * send it. That is unlike submission, where a double click is an accident.
+ */
+export function useRequestRevision(
+  reportId: string,
+  scope: { periodId: string; studentId?: string },
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { project_id: string; reason: string }) =>
+      api.post<unknown>(`/api/v1/reports/${reportId}/revisions`, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: revisionsKey(reportId) });
+      // The report's workflow_state becomes `revision_requested`.
+      void queryClient.invalidateQueries({
+        queryKey: reportKey(scope.periodId, scope.studentId),
+      });
+    },
+  });
+}
+
+/** Mark the week read. `mark_reviewed` moves the state from wherever it was, so this is a change. */
+export function useMarkReviewed(reportId: string, scope: { periodId: string; studentId?: string }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<Report>(`/api/v1/reports/${reportId}/reviewed`),
+    onSuccess: (report) =>
+      queryClient.setQueryData(reportKey(scope.periodId, scope.studentId), report),
+  });
 }

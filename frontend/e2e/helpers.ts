@@ -24,6 +24,19 @@ export const STUDENT_SOLO = {
   password: "demo-password-change-me",
 };
 
+/**
+ * A student whose submitted week is read and answered, and whom nothing else touches.
+ *
+ * `students[2]` in the seed: submitted on Vietnamese corpus preparation, and used by no other
+ * spec. The rule above applies — requesting a revision moves her report's workflow_state, and
+ * doing that to An Nguyen would change what `submit-weekly-package` and `student-sees-assessment`
+ * see when the suite runs in order.
+ */
+export const STUDENT_REVIEWED = {
+  email: "chi.le@example.edu",
+  password: "demo-password-change-me",
+};
+
 /** Mailpit's HTTP API, so a delivered email can be read without a mailbox. */
 export const MAILPIT = process.env.E2E_MAILPIT_URL ?? "http://localhost:8025";
 

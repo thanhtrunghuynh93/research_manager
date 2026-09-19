@@ -37,7 +37,10 @@ test("a professor creates a project, activates it, and assigns a student", async
   await page.getByTestId("activate-project").click();
   await expect(page.getByTestId("activate-project")).toHaveCount(0);
 
-  await page.getByTestId("add-member").getByLabel(/^student$/i).selectOption({ index: 1 });
+  await page
+    .getByTestId("add-member")
+    .getByLabel(/^student$/i)
+    .selectOption({ index: 1 });
   await page.getByRole("button", { name: /^assign$/i }).click();
 
   await expect(page.getByText(/no members/i)).toHaveCount(0);

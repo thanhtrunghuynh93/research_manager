@@ -1140,6 +1140,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/{report_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every submitted version of one report
+         * @description REP-05: a resubmission adds a version and never replaces history — so history needs a reader.
+         *
+         *     `ScopeDep`, not `ProfScopeDep`: a student is entitled to their own, and the visibility
+         *     predicate already confines them to it.
+         */
+        get: operations["list_versions_api_v1_reports__report_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repositories": {
         parameters: {
             query?: never;
@@ -3630,6 +3653,39 @@ export interface components {
             version_no: number;
         };
         /**
+         * VersionSummaryOut
+         * @description One submitted version, without its entries.
+         *
+         *     A list of *full* versions is an N+1 and a large payload, and the screen that lists them only
+         *     needs enough to choose one — so the entries stay behind `GET /report-versions/{id}`, which is
+         *     what selecting a version calls.
+         */
+        VersionSummaryOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Report Id
+             * Format: uuid
+             */
+            report_id: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            timing_status: components["schemas"]["TimingStatus"];
+            /** Version No */
+            version_no: number;
+        };
+        /**
          * Visibility
          * @enum {string}
          */
@@ -5960,6 +6016,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_api_v1_reports__report_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionSummaryOut"][];
                 };
             };
             /** @description Validation Error */

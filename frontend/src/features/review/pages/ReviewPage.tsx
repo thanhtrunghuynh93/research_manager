@@ -13,11 +13,18 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 
-import { Badge, ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
+import {
+  Badge,
+  ConfidenceBadge,
+  ConfidenceReasons,
+  ProgressIndex,
+} from "@/components/evidence/Badges";
+import { useUser } from "@/features/people/queries";
+import { usePeriods, useProjects } from "@/features/report/queries";
 import { useApprove, useAssessment, useAssessmentEvidence } from "@/features/review/queries";
 import { DIMENSIONS, ratingOf } from "@/features/review/types";
 import { useTimezone } from "@/features/calendar/queries";
-import { formatInstant } from "@/lib/dates";
+import { formatInstant, formatLocalDate } from "@/lib/dates";
 
 /** Claim status earns a coloured edge on the card — the reader scans the edges first. */
 const CLAIM_EDGE: Record<string, string> = {
@@ -34,6 +41,9 @@ export function ReviewPage() {
   const evidence = useAssessmentEvidence(assessmentId);
   const approve = useApprove(assessmentId ?? "");
   const timezone = useTimezone();
+  const student = useUser(assessment.data?.student_id);
+  const projects = useProjects();
+  const periods = usePeriods();
 
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [rationale, setRationale] = useState("");
@@ -43,6 +53,11 @@ export function ReviewPage() {
     return <p className="text-sm text-muted-foreground">{t("review.unavailable")}</p>;
 
   const data = assessment.data;
+  const period = periods.data?.find((one) => one.id === data.period_id);
+  const week = period
+    ? `${formatLocalDate(period.local_start)} – ${formatLocalDate(period.local_end)}`
+    : "";
+  const project = projects.data?.items.find((one) => one.id === data.project_id)?.title ?? "";
   const changed = Object.keys(overrides).length > 0;
   const blocked = changed && rationale.trim().length === 0;
   const narrative = (data.narrative ?? {}) as Record<string, unknown>;
@@ -68,7 +83,16 @@ export function ReviewPage() {
     <section className="animate-rise-in">
       <header className="border-b border-border pb-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h1 className="page-title">{t("review.title")}</h1>
+          <div>
+            {/* Whose work this is, and for which week. The page said only "Review", while the
+                payload carried all three ids — so a professor could approve and publish an
+                assessment from a screen that never named the student it was about. */}
+            <p className="eyebrow mb-1.5">{t("review.title")}</p>
+            <h1 className="page-title">{student.data?.display_name ?? t("review.subject")}</h1>
+            <p className="mt-2 font-mono text-[13px] text-muted-foreground">
+              {week} {project ? `on ${project}` : ""}
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{t("review.version", { n: data.version_no })}</Badge>
             <ConfidenceBadge
@@ -80,6 +104,12 @@ export function ReviewPage() {
                 {t(`review.state.${data.review_state}`, { defaultValue: data.review_state })}
               </Badge>
             ) : null}
+            {/* What made the confidence low, on the page. The professor deciding whether to
+                approve this draft is exactly the reader who needs it, and it was a tooltip. */}
+            <ConfidenceReasons
+              reasons={(data.confidence_reasons ?? []).map(String)}
+              className="w-full text-right"
+            />
           </div>
         </div>
         {/* The index never stands on its own line: it sits on its scale, with the caveat attached. */}

@@ -1220,7 +1220,6 @@
       "CorrectionIn": {
         "properties": {
           "body": {
-            "minLength": 1,
             "title": "Body",
             "type": "string"
           },
@@ -1653,7 +1652,6 @@
       "ExcuseIn": {
         "properties": {
           "reason": {
-            "minLength": 1,
             "title": "Reason",
             "type": "string"
           }
@@ -1667,7 +1665,6 @@
       "ExtensionIn": {
         "properties": {
           "reason": {
-            "minLength": 1,
             "title": "Reason",
             "type": "string"
           },
@@ -4212,7 +4209,6 @@
       "SupervisionNoteIn": {
         "properties": {
           "body": {
-            "minLength": 1,
             "title": "Body",
             "type": "string"
           },
@@ -5057,6 +5053,48 @@
           "timing_status"
         ],
         "title": "VersionOut",
+        "type": "object"
+      },
+      "VersionSummaryOut": {
+        "description": "One submitted version, without its entries.\n\nA list of *full* versions is an N+1 and a large payload, and the screen that lists them only\nneeds enough to choose one \u2014 so the entries stay behind `GET /report-versions/{id}`, which is\nwhat selecting a version calls.",
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "timing_status": {
+            "$ref": "#/components/schemas/TimingStatus"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "report_id",
+          "version_no",
+          "author_id",
+          "submitted_at",
+          "timing_status"
+        ],
+        "title": "VersionSummaryOut",
         "type": "object"
       },
       "Visibility": {
@@ -8724,6 +8762,54 @@
           }
         },
         "summary": "Request a revision of one project entry",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/versions": {
+      "get": {
+        "description": "REP-05: a resubmission adds a version and never replaces history \u2014 so history needs a reader.\n\n`ScopeDep`, not `ProfScopeDep`: a student is entitled to their own, and the visibility\npredicate already confines them to it.",
+        "operationId": "list_versions_api_v1_reports__report_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VersionSummaryOut"
+                  },
+                  "title": "Response List Versions Api V1 Reports  Report Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Every submitted version of one report",
         "tags": [
           "reporting"
         ]

@@ -144,7 +144,9 @@ test("the panel says when no calendar is configured, and saving sends one", asyn
     }),
   );
 
-  expect(await screen.findByTestId("calendar-state")).toHaveTextContent(/no calendar is configured/i);
+  expect(await screen.findByTestId("calendar-state")).toHaveTextContent(
+    /no calendar is configured/i,
+  );
 
   await userEvent.click(screen.getByRole("button", { name: /save calendar/i }));
 

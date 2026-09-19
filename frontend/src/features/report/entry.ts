@@ -83,3 +83,36 @@ export function draftOfEntry(entry: components["schemas"]["EntryOut"]): EntryDra
     hours: entry.hours === null || entry.hours === undefined ? "" : String(entry.hours),
   };
 }
+
+/** The server's own bounds on `hours`: `Decimal | None = Field(ge=0, le=168)`. */
+export const HOURS_MIN = 0;
+export const HOURS_MAX = 168;
+
+/**
+ * Why this entry cannot be sent, as a translation key — or null when it can.
+ *
+ * The box advertised `min`, `max` and a half-hour `step` and enforced none of them, so a negative
+ * number went to the server, came back 422 in a shape nothing could render, and took the whole
+ * application down with it. That crash is fixed at both ends now; this is the half that stops a
+ * student reaching it at all, and it is the reason the field is checked before `submit.mutate`
+ * rather than after.
+ */
+export function hoursProblem(hours: string): string | null {
+  const trimmed = hours.trim();
+  if (trimmed === "") return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value)) return "report.hoursNotANumber";
+  if (value < HOURS_MIN || value > HOURS_MAX) return "report.hoursOutOfRange";
+  return null;
+}
+
+/** The first entry that cannot be sent, so the editor can name the tab as well as the field. */
+export function firstHoursProblem(
+  drafts: Record<string, EntryDraft>,
+): { projectId: string; key: string } | null {
+  for (const draft of Object.values(drafts)) {
+    const key = hoursProblem(draft.hours);
+    if (key) return { projectId: draft.project_id, key };
+  }
+  return null;
+}

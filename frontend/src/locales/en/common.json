@@ -68,6 +68,10 @@
     "submit": "Submit report",
     "submitted": "Submitted as version {{version}}.",
     "alreadySubmitted": "Submitted {{when}} — sending again replaces it",
+    "resubmitted": "Resubmitted {{when}} as version {{version}} — sending again replaces it",
+    "hoursOutOfRange": "Hours has to be between 0 and 168 — a week is 168 hours.",
+    "hoursNotANumber": "Hours has to be a number, or empty.",
+    "hoursBlocks": "Check the hours on {{project}} before sending.",
     "stillOwed_one": "{{count}} project still has no entry in it",
     "stillOwed_other": "{{count}} projects still have no entry in it",
     "missingEntries": "No entry for {{projects}}. The package has to cover every project you are on this week.",
@@ -121,7 +125,37 @@
       },
       "sending": "Sending {{name}}…",
       "remove": "Remove",
-      "removeConfirm": "Remove {{name}}? The file and its extracted text are deleted, and it stops being searchable."
+      "removeConfirm": "Remove {{name}}? The file and its extracted text are deleted, and it stops being searchable.",
+      "removeLinkConfirm": "Remove {{name}}? The link and the text read from it stop being evidence for this week and stop being searchable. The page itself is untouched."
+    },
+    "reader": {
+      "title": "Weekly report",
+      "yourWeek": "What you submitted",
+      "notStarted": "Nothing was started for this week.",
+      "notSubmitted": "This week has a draft but nothing has been submitted, so there is nothing on the record to read.",
+      "versions": "Versions",
+      "version": "Version {{n}}",
+      "submittedAt": "submitted {{when}}",
+      "timing": {
+        "on_time": "On time",
+        "late": "Late",
+        "excused": "Excused"
+      },
+      "departedProject": "Left this project",
+      "nothingWritten": "Nothing was written here.",
+      "hours": "{{hours}} hour(s), self-reported",
+      "noHours": "No hours were recorded.",
+      "requestRevision": "Ask for a revision",
+      "revisionPlaceholder": "What needs to change, and why",
+      "sendRevision": "Request a revision",
+      "revisionSent": "Requested",
+      "revisionAsked": "Revision requested {{when}}:",
+      "markReviewed": "Mark reviewed",
+      "reviewed": "Reviewed",
+      "seeSubmitted": "Read what you submitted →",
+      "toEditor": "← Back to this week’s editor",
+      "weekly": "Weekly reports",
+      "openWeek": "Read this week"
     }
   },
   "overview": {
@@ -178,6 +212,7 @@
   },
   "review": {
     "title": "Review",
+    "subject": "This student",
     "unavailable": "This assessment could not be loaded.",
     "version": "Version {{n}}",
     "claims": "Report claims",
@@ -286,7 +321,7 @@
     "saveFields": "Save"
   },
   "student": {
-    "title": "Research profile",
+    "title": "Student",
     "trajectory": "Trajectory on {{project}}",
     "rubricBreak": "These points span {{count}} rubric versions and are not one comparable series.",
     "rubric": "rubric {{label}}",
@@ -297,7 +332,7 @@
     "materials": "Submitted materials",
     "noMaterials": "This student has not attached anything yet.",
     "materialsNote": "Every file and link this student attached to a weekly package.",
-    "label": "Student {{id}}"
+    "label": "Research profile"
   },
   "people": {
     "title": "People",
@@ -419,5 +454,17 @@
   },
   "myProfile": {
     "title": "My progress"
+  },
+  "budget": {
+    "title": "Model spend",
+    "intro": "A monthly ceiling on what analysis may cost in this workspace. Assessments are delayed once it is reached, and resume when it is raised or the month rolls over.",
+    "configured": "${{spent}} spent this month, against a ceiling of ${{limit}}.",
+    "none": "${{spent}} spent this month. No ceiling is set, so analysis is never refused for want of one.",
+    "usage": "{{calls}} model call(s) this month, {{failed}} of them failed. ${{cost}} at published rates.",
+    "monthly": "Monthly ceiling (USD)",
+    "placeholder": "no ceiling",
+    "save": "Save ceiling",
+    "saved": "Saved",
+    "note": "Leave it empty for no ceiling. Zero is not the same thing: it stops every analysis until it is changed."
   }
 }

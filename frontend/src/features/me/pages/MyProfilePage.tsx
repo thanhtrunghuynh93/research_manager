@@ -12,7 +12,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
+import { ConfidenceBadge, ConfidenceReasons, ProgressIndex } from "@/components/evidence/Badges";
 import { Trajectory } from "@/features/assessments/components/Trajectory";
 import { useAssessments } from "@/features/assessments/queries";
 import { useSession } from "@/features/auth/queries";
@@ -71,6 +71,13 @@ export function MyProfilePage() {
                 {one.published_at ? formatInstant(one.published_at, timezone) : ""}
               </span>
             </span>
+            {/* The row wraps, so this takes its own line rather than crowding the badge. It used
+                to be the badge's tooltip: unreachable by touch or keyboard, and "· 2" said
+                nothing about what the two were. */}
+            <ConfidenceReasons
+              reasons={(one.confidence_reasons ?? []).map(String)}
+              className="w-full"
+            />
           </li>
         ))}
         {released.length === 0 && (

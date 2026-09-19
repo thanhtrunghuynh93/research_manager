@@ -12,9 +12,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.assistant.facts.base import Citation, Fact, FactQuery, fact
-from app.core.errors import NotFoundError
-from app.identity import service as identity_service
+from app.assistant.facts.base import Citation, Fact, FactQuery, display_name, fact
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
 from app.reporting.models import ObligationState
@@ -49,7 +47,7 @@ async def missing_reports(session: AsyncSession, query: FactQuery) -> Fact | Non
                 # The name, for the same reason the week's board carries one: a row identified by
                 # eight characters of a uuid names nobody, and this list sits directly under a
                 # board that does name them.
-                "student_name": await _display_name(session, query, entry.student_id),
+                "student_name": await display_name(session, query, entry.student_id),
                 "project_id": str(entry.project_id),
                 "project_title": entry.project_title,
             }
@@ -114,7 +112,7 @@ async def week_reports(session: AsyncSession, query: FactQuery) -> Fact | None:
                     session, obligation.project_id
                 )
             if obligation.student_id not in names:
-                names[obligation.student_id] = await _display_name(
+                names[obligation.student_id] = await display_name(
                     session, query, obligation.student_id
                 )
             rows.append(
@@ -170,20 +168,6 @@ def _obligation_state(obligation: ObligationOut) -> str:
     if obligation.state is ObligationState.EXCUSED:
         return "excused"
     return "submitted" if obligation.submitted else "owed"
-
-
-async def _display_name(session: AsyncSession, query: FactQuery, student_id: UUID) -> str:
-    """The student's name, or their id shortened when the caller may not read their user row.
-
-    A professor may read every account in the workspaces they belong to; a student may read only
-    their own. Falling back rather than raising is what `members` learned the hard way — a
-    NotFoundError here was swallowed upstream and turned the whole answer into "nothing in the
-    records answers that question".
-    """
-    try:
-        return (await identity_service.get_user(session, query.scope, student_id)).display_name
-    except NotFoundError:
-        return str(student_id)[:8]
 
 
 @fact("next_deadline")

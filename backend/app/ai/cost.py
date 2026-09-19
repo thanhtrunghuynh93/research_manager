@@ -230,6 +230,10 @@ async def check_budget(
             return workspace_state
         return workspace_state if workspace_state.warning else project_state
 
+    # With no limit configured there is nothing to compare spend against, so this does not read it:
+    # `check_budget` runs before every model call and must not add an aggregate query to that path
+    # for a number it would not use. `spent_usd` is therefore 0 here meaning "not measured", and
+    # the screens that report spend read it themselves — see `assessment.ops.ai_budgets`.
     return project_state or BudgetState(allowed=True)
 
 

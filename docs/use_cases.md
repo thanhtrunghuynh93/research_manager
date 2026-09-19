@@ -356,22 +356,34 @@ task skips the workspace deliberately rather than inventing a schedule.
 
 | Use case | Endpoint | |
 | --- | --- | --- |
-| Read a weekly report | `GET /periods/{id}/report` | 🚧 |
-| Read one submitted version by id | `GET /report-versions/{id}` | ⚙️ |
+| Read a weekly report | `GET /periods/{id}/report` | 🖥️ |
+| Read one submitted version by id | `GET /report-versions/{id}` | 🖥️ |
+| Read every submitted version of one report | `GET /reports/{id}/versions` | 🖥️ |
 | Open an attachment | `GET /artifacts`, `GET /artifacts/{id}/download` | 🖥️ |
 | See a student's profile and history | — (composed from the above) | 🖥️ |
 | Read every stored version of one attachment | `GET /artifacts/{id}/versions` | ⚙️ |
-| Request a revision of one project entry | `POST /reports/{id}/revisions` | ⚙️ |
-| See outstanding revision requests | `GET /reports/{id}/revisions` | ⚙️ |
-| Mark a report reviewed | `POST /reports/{id}/reviewed` | ⚙️ |
+| Request a revision of one project entry | `POST /reports/{id}/revisions` | 🖥️ |
+| See outstanding revision requests | `GET /reports/{id}/revisions` | 🖥️ |
+| Mark a report reviewed | `POST /reports/{id}/reviewed` | 🖥️ |
 
-The first row is the sharpest instance of 🚧 in this document. `useReport` is consumed by
-`StudentHomePage` and by `ReportEditorPage`, and by nothing else; both sit behind
-`RequireAuth role="student"`. **A professor cannot read the text of a submitted report anywhere in
-the app** — only its attachments, from a student's profile. The three rows that would let them
-respond to one — request a revision, see the outstanding requests, mark it reviewed — are ⚙️. So
-the read-and-respond loop REP-02..05 describes has no surface at either end: the professor cannot
-read the report, and cannot answer it.
+This section used to record the sharpest 🚧 in the document: `useReport` was consumed only by
+`StudentHomePage` and `ReportEditorPage`, both behind `RequireAuth role="student"`, so **a
+professor could not read the text of a submitted report anywhere in the app** — only its
+attachments — and the three rows that would let them respond were ⚙️. The read-and-respond loop
+REP-02..05 describes had no surface at either end.
+
+`ReportReaderPage` is that surface, at `/students/:studentId/reports/:periodId` for a professor
+and `/report/:periodId/submitted` for the student whose week it is. It reads
+`version.entries` rather than the obligations, which is what makes an entry for a project the
+student has **left** visible: `submit_report` carries such an entry into every new version, and
+the editor's tabs — derived from the obligations — could never show one. `GET /reports/{id}/versions`
+was added for it, because until then a version was reachable only by id and the only id anyone held
+was `current_version_id`, so REP-05's "a resubmission adds a version and never replaces history"
+had no reader.
+
+It never renders `draft_content`, though `ReportOut` carries it and the policy permits a professor
+to read it. An unsubmitted draft is not a submission, and showing it would make autosave
+surveillance.
 
 ### 2.6 Assessment (ASSESS-01..10, UI-05)
 
@@ -636,7 +648,7 @@ there. Four of them cannot be opened by the person the row is written for:
 | Screen | Exists | Closed to | How |
 | --- | --- | --- | --- |
 | ~~`/projects/:id`~~ | yes, complete | ~~everyone~~ | *Closed in v0.11: `/projects` links to it, and so does a project title on `/me`* |
-| `/report/:periodId` | yes, complete | the professor | The student guard redirects them home (§2.5) |
+| `/report/:periodId` | yes, complete | the professor | The student guard redirects them home; the professor reads the week at `/students/:studentId/reports/:periodId` (§2.5) |
 | `/me` period and obligations | yes, complete | the professor | Same guard; `GET /overview` answers part of it (§2.4) |
 | ~~`/review/:assessmentId`, `/students/:id`~~ | yes, complete | ~~the student~~ | *Closed in v0.11: `/me/assessments/:id` renders the released assessment for the student it is about* |
 
@@ -671,7 +683,7 @@ and the answer that cited it was right. What is missing is a route.
 
 The worst of the six is the one that matters most. A claim about what a student did this week is
 cited to a report entry — `/report/{period_id}#{project_id}` — and that entry is precisely what a
-professor cannot read anywhere in the app (§2.5). The assistant can quote the report in its answer;
+professor reads at `/students/:studentId/reports/:periodId` (§2.5). The assistant can quote the report in its answer;
 it cannot show it.
 
 ### 8.3 What the scope change cost

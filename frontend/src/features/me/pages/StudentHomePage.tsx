@@ -80,6 +80,18 @@ export function StudentHomePage() {
             {/* A non-breaking space, so the panel keeps its height while the state is unknown. */}
             {state ?? <>&nbsp;</>}
           </p>
+          {/* Where the professor's reason actually is. Until the reader existed, a week marked
+              "revision requested" said so and nowhere in the app said what to change — the reason
+              travelled only in an email. */}
+          {report.data?.current_version_id ? (
+            <Link
+              to={`/report/${period.id}/submitted`}
+              className="link mt-2 inline-block font-mono text-xs"
+              data-testid="read-submitted"
+            >
+              {t("report.reader.seeSubmitted")}
+            </Link>
+          ) : null}
         </div>
         {/* "Open" while the answer is outstanding: it is true either way, where "Start this
             week" on a week already submitted is not. */}

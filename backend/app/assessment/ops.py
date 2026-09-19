@@ -69,18 +69,29 @@ async def ai_usage(
 
 
 async def ai_budgets(session: AsyncSession, scope: Scope) -> AiBudgets:
+    """What has been spent this month, and against what ceiling if there is one.
+
+    The spend is read here rather than taken from `check_budget`, which only totals it when a
+    limit exists — it runs before every model call and has no business doing an aggregate for a
+    number it would not use. Taking its `spent_usd` regardless meant this reported **$0** whenever
+    no budget was configured, which is the one case where the figure matters: nothing is capping
+    the bill and the screen said nothing was being spent.
+    """
     from app.identity import service as identity_service
 
     scope.require_prof()
     budgets = await identity_service.ai_budgets(session, scope.workspace_id)
     state = await cost.check_budget(session, workspace_id=scope.workspace_id, project_id=None)
+    spent = (
+        await cost.usage(session, workspace_id=scope.workspace_id, since=cost.month_start())
+    ).cost_usd
     return AiBudgets(
         monthly_usd=_as_text(budgets.get("monthly_usd")),
         project_monthly_usd={
             str(key): str(value)
             for key, value in (budgets.get("project_monthly_usd") or {}).items()
         },
-        spent_usd=state.spent_usd,
+        spent_usd=spent,
         analysis_delayed=not state.allowed,
         warning=state.warning,
         reason=state.reason,

@@ -100,3 +100,24 @@ async def run(session: AsyncSession, name: str, query: FactQuery) -> Fact | None
     if function is None:
         return None
     return await function(session, query)
+
+
+async def display_name(session: AsyncSession, query: FactQuery, student_id: UUID) -> str:
+    """The student's name, or their id shortened when the caller may not read their user row.
+
+    A professor may read every account in the workspaces they belong to; a student may read only
+    their own. Falling back rather than raising is what `members` learned the hard way — a
+    NotFoundError here was swallowed upstream and turned the whole answer into "nothing in the
+    records answers that question".
+
+    Shared rather than per-fact: every row a professor reads names a person, and a fact that
+    skipped this put eight characters of a uuid on the screen instead — identical characters, as
+    it turned out, since these ids share a timestamp prefix.
+    """
+    from app.core.errors import NotFoundError
+    from app.identity import service as identity_service
+
+    try:
+        return (await identity_service.get_user(session, query.scope, student_id)).display_name
+    except NotFoundError:
+        return str(student_id)[:8]

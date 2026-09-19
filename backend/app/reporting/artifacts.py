@@ -337,8 +337,9 @@ async def attach_link(
         await session.flush()
         return _out(artifact, version)
     except Exception as error:  # noqa: BLE001 - an unreachable link is a state, not a crash
+        log.warning("link fetch failed for %s: %r", url, error)
         version.extraction_state = ExtractionState.FAILED
-        version.extraction_note = f"the link could not be fetched ({type(error).__name__})"
+        version.extraction_note = _why_unreachable(error)
         artifact.current_version_no = 1
         await session.flush()
         return _out(artifact, version)
@@ -797,6 +798,31 @@ async def _index(
         ),
         session,
     )
+
+
+def _why_unreachable(error: Exception) -> str:
+    """Why a link could not be read, in words a student can act on.
+
+    This used to be the exception's class name — "the link could not be fetched (HTTPStatusError)"
+    — which is httpx's word for it, not anybody's. The student could not tell a typo from a login
+    wall from a site that was down, and all three want different responses. The class name stays
+    in the log, where it belongs.
+    """
+    status = getattr(getattr(error, "response", None), "status_code", None)
+    if status is not None:
+        if status in (401, 403):
+            return f"that page needs a sign-in to read ({status}), so nothing could be extracted"
+        if status == 404:
+            return "there is no page at that address (404)"
+        if status >= 500:
+            return f"the site is not serving that page at the moment ({status})"
+        return f"the site refused the request ({status})"
+    name = type(error).__name__
+    if "Timeout" in name:
+        return "the site did not answer in time"
+    if "Connect" in name or "DNS" in name or "Resolution" in name:
+        return "that address could not be reached"
+    return "the link could not be fetched"
 
 
 def _out(artifact: Artifact, version: ArtifactVersion) -> ArtifactVersionOut:

@@ -53,6 +53,7 @@ from app.reporting.schemas import (
     ReportOut,
     RevisionRequestOut,
     VersionOut,
+    VersionSummaryOut,
 )
 
 log = logging.getLogger(__name__)
@@ -441,7 +442,19 @@ async def submit_report(
     )
     submitted = {UUID(str(entry["project_id"])) for entry in entries}
     _check_package_is_complete(obligations, submitted)
-    _check_package_says_something(entries)
+    # Titles resolved only when the check is about to fail, so the ordinary submission pays
+    # nothing for a message it will never see.
+    _check_package_says_something(
+        entries,
+        titles=(
+            {}
+            if all(_entry_says_something(entry) for entry in entries)
+            else {
+                project_id: await projects_service.project_title(session, project_id)
+                for project_id in submitted
+            }
+        ),
+    )
 
     at = now()
     previous_version_id = report.current_version_id
@@ -623,6 +636,22 @@ async def get_version(session: AsyncSession, scope: Scope, version_id: UUID) -> 
     if version is None:
         raise NotFoundError("report version not found")
     return await _version_out(session, scope, version)
+
+
+async def list_versions(
+    session: AsyncSession, scope: Scope, *, report_id: UUID
+) -> list[VersionSummaryOut]:
+    """Every version of one report, for the screen that reads a week back (REP-05).
+
+    The report is fetched first so that a report belonging to another workspace is a 404 rather
+    than an empty list: an empty list is a real state — a report drafted and never submitted — and
+    the two must not look the same.
+    """
+    report = await repository.get_report_by_id(session, scope, report_id)
+    if report is None:
+        raise NotFoundError("report not found")
+    rows = await repository.list_versions(session, scope, report_id)
+    return [VersionSummaryOut.model_validate(row) for row in rows]
 
 
 # ------------------------------------------------------------------ job-level reads (REP-08)
@@ -1064,8 +1093,20 @@ def _check_package_is_complete(
         )
 
 
-def _check_package_says_something(entries: list[dict[str, Any]]) -> None:
-    """A package in which nothing was written is a mistake, not a week's work.
+def _entry_says_something(payload: dict[str, Any]) -> bool:
+    """Whether this one entry has anything in it at all."""
+    if any(
+        str(payload.get(field) or "").strip()
+        for field in ("work_performed", "results", "deviations", "questions")
+    ):
+        return True
+    return bool(payload.get("next_plan")) or payload.get("hours") is not None
+
+
+def _check_package_says_something(
+    entries: list[dict[str, Any]], titles: dict[UUID, str] | None = None
+) -> None:
+    """An entry in which nothing was written is a mistake, not a week's work on that project.
 
     The editor recovers the autosaved draft, and a report submitted without one — the seed does
     this, and so does any client that posts entries directly — used to reopen as empty boxes over
@@ -1073,18 +1114,28 @@ def _check_package_says_something(entries: list[dict[str, Any]]) -> None:
     is how this deployment acquired a version whose every field was blank. Refusing here is the
     half of the fix that does not depend on which screen the submission came from.
 
-    One non-empty field anywhere in the package is enough: entries per project differ in how much
-    there is to say, and judging a single entry's substance is the professor's, not this function's.
+    This was once a test of the *package*: one non-empty field anywhere was enough, on the reading
+    that judging a single entry's substance is the professor's job and not this function's. That
+    reading still holds and is why the test is emptiness rather than adequacy — but at package
+    level it let a wholly blank entry through whenever a sibling tab had text, and the obligation
+    for that project was then marked satisfied. One press of one button could mark every project a
+    student is on as reported, with nothing in any of them, and no screen anywhere said otherwise.
+    So the same test now applies per entry, which is the granularity at which an obligation is
+    discharged.
     """
-    if any(
-        str(payload.get(field) or "").strip()
-        for payload in entries
-        for field in ("work_performed", "results", "deviations", "questions")
-    ):
+    empty = [payload.get("project_id") for payload in entries if not _entry_says_something(payload)]
+    if not empty:
         return
-    if any(payload.get("next_plan") or payload.get("hours") is not None for payload in entries):
-        return
-    raise ValidationError("the package is empty — write something in at least one entry")
+    if not entries:
+        raise ValidationError("the package is empty — write something in at least one entry")
+    named = ", ".join(
+        (titles or {}).get(project_id, str(project_id)) for project_id in empty if project_id
+    )
+    raise ValidationError(
+        f"nothing was written for {named or 'one of the projects'}"
+        " — an entry with every box empty is not a report on that project",
+        empty_project_ids=[str(project_id) for project_id in empty if project_id],
+    )
 
 
 def _timing_status(

@@ -139,10 +139,41 @@ async def test_a_package_with_nothing_written_in_it_is_refused(
         await service.submit_report(db, week.scope, period_id=week.period.id, entries=blank)
 
 
-async def test_one_entry_with_something_in_it_is_enough(
+async def test_an_entry_with_every_box_empty_is_refused_by_name(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    """How much there is to say differs per project, and judging that is the professor's."""
+    """An obligation is discharged per project, so emptiness is judged per project.
+
+    This test used to assert the opposite — one non-empty field anywhere in the package was
+    enough — on the reading that how much there is to say differs per project and judging that is
+    the professor's. The reading holds, and is why the test here is emptiness and not adequacy.
+    But at package level it let a wholly blank entry through whenever a sibling tab had text, and
+    that project's obligation was then marked SUBMITTED: one press of one button could report
+    every project a student is on, with nothing written for any of them.
+    """
+    week = await _week(db, prof_scope, student_a)
+
+    with pytest.raises(ValidationError) as refused:
+        await service.submit_report(
+            db,
+            week.scope,
+            period_id=week.period.id,
+            entries=[
+                _entry(week.projects[0].id),
+                {"project_id": week.projects[1].id, "stage": "theory", "work_performed": ""},
+            ],
+        )
+
+    # Named, not merely refused: the student has to know which tab to go back to.
+    assert str(week.projects[1].id) in refused.value.extra["empty_project_ids"]
+    assert str(week.projects[0].id) not in refused.value.extra["empty_project_ids"]
+
+
+async def test_an_entry_carrying_only_hours_still_counts_as_written(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    # The test is emptiness, not substance. A week that produced nothing but time spent is a
+    # report a professor may want to read, and it is not this function's place to say otherwise.
     week = await _week(db, prof_scope, student_a)
 
     version = await service.submit_report(
@@ -151,7 +182,7 @@ async def test_one_entry_with_something_in_it_is_enough(
         period_id=week.period.id,
         entries=[
             _entry(week.projects[0].id),
-            {"project_id": week.projects[1].id, "stage": "theory", "work_performed": ""},
+            {"project_id": week.projects[1].id, "stage": "theory", "hours": 3},
         ],
     )
 

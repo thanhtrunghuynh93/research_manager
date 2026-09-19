@@ -1,14 +1,20 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import { Failure } from "@/components/Failure";
 import { Attachments } from "@/features/report/components/Attachments";
 import { AutosaveIndicator } from "@/features/report/components/AutosaveIndicator";
 import { EntryForm } from "@/features/report/components/EntryForm";
-import { draftOfEntry, emptyEntry, planOfText, type EntryDraft } from "@/features/report/entry";
+import {
+  draftOfEntry,
+  emptyEntry,
+  firstHoursProblem,
+  planOfText,
+  type EntryDraft,
+} from "@/features/report/entry";
 import {
   useArtifacts,
   useObligations,
@@ -116,11 +122,24 @@ export function ReportEditorPage() {
     .map((projectId) => titleOf(String(projectId)))
     .join(", ");
   const owed = required.filter((obligation) => !obligation.submitted).length;
+  // An hours figure the server will refuse. Checked here rather than left to the round trip: the
+  // box advertised bounds it did not enforce, and the 422 that came back took the whole page with
+  // it. That crash is fixed, but a student should not meet a server error for a rule the form
+  // already knows, and the tab it is on has to be named — the offending field may be behind a tab
+  // that is not open.
+  const badHours = drafts ? firstHoursProblem(drafts) : null;
+  // More than one version means the record has moved on from the first submission, and the notice
+  // should say so — `/me` has read "Resubmitted" for this state all along.
+  const resubmitted = (submittedVersion.data?.version_no ?? 1) > 1;
 
   async function onSubmit() {
     // The flush is a full round-trip, and `submit.isPending` is false throughout it — so without
     // this the button stayed enabled and a second click started a second submission (REP-05).
     if (submitting) return;
+    if (badHours) {
+      setActive(badHours.projectId);
+      return;
+    }
     setSubmitting(true);
     try {
       await autosave.flush();
@@ -155,13 +174,31 @@ export function ReportEditorPage() {
             {t("me.dueBy")} {formatInstant(period.deadline_utc, timezone)}
           </p>
           {/* Without this a submitted week and an untouched one were pixel-identical, which is
-              what made resubmitting over your own package an easy mistake to make. */}
+              what made resubmitting over your own package an easy mistake to make.
+
+              The time is the *current version's*, not `first_submitted_at`. Reading the first
+              submission meant this line never moved: it said "Submitted Sep 17, 10:54" in the
+              same breath as "Submitted as version 16", four versions and a day later. A student
+              checking near a deadline whether this week's work went in was told about a different
+              week's submission. */}
           {report.data?.first_submitted_at ? (
             <p className="stamp mt-1" data-testid="already-submitted">
-              {t("report.alreadySubmitted", {
-                when: formatInstant(report.data.first_submitted_at, timezone),
+              {t(resubmitted ? "report.resubmitted" : "report.alreadySubmitted", {
+                when: formatInstant(
+                  submittedVersion.data?.submitted_at ?? report.data.first_submitted_at,
+                  timezone,
+                ),
+                version: submittedVersion.data?.version_no,
               })}
             </p>
+          ) : null}
+          {report.data?.first_submitted_at ? (
+            <Link
+              to={`/report/${periodId}/submitted`}
+              className="link mt-1 block font-mono text-[11.5px]"
+            >
+              {t("report.reader.seeSubmitted")}
+            </Link>
           ) : null}
           {/* A week can be submitted and still incomplete — a project joined or started after the
               package went in owes an entry the submission never covered. */}
@@ -206,6 +243,11 @@ export function ReportEditorPage() {
         </div>
       )}
 
+      {badHours && (
+        <p role="alert" className="mt-5 text-sm text-bad" data-testid="submit-blocked">
+          {t("report.hoursBlocks", { project: titleOf(badHours.projectId) })}
+        </p>
+      )}
       {problem && (
         <p role="alert" className="mt-5 text-sm text-bad">
           {missing ? t("report.missingEntries", { projects: missing }) : problem.detail}
