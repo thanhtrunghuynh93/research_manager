@@ -2,7 +2,7 @@
 
 Version 0.1 — 18 September 2026 — an overview of what this framework is for and what is new in it.
 It summarises [research_management_requirements.md](research_management_requirements.md) v0.6,
-[architecture.md](architecture.md) v0.3, the seventeen [ADRs](adr/), and
+[architecture.md](architecture.md) v0.4, the seventeen [ADRs](adr/), and
 [implementation_status.md](implementation_status.md); those documents remain authoritative where
 this one abbreviates them.
 

@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.6 — 17 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.12
+Version 0.7 — 19 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.13
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -28,7 +28,7 @@ Counted from the tree rather than remembered, and checked by `scripts/check_docs
 | Counted | Value |
 | --- | --- |
 | Alembic migrations | 25 |
-| `/api/v1` endpoints | 98 (96 in the schema, 2 `include_in_schema=False`) |
+| `/api/v1` endpoints | 97 (95 in the schema, 2 `include_in_schema=False`) |
 | ADRs | 17 |
 | Acceptance scenarios with a test | 19 of 19 |
 | Import-linter contracts holding | 5 of 5 |
@@ -310,7 +310,7 @@ needed migration 0022 and is now keyed to the whole read-set.
 | Retention and authorized deletion | §11 "Data control" | `retention_sweep` expires the answer cache, which has a defined lifetime. Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
 | Moving a student who has written history | AUTH-06 | Four composite foreign keys refuse it, by design rather than by omission. The two ways out — cascade the history into the new workspace, or make the move a new account — both change what "the workspace a record was written in" means, and neither is worth doing before someone needs it (use_cases.md §2.1) |
 | Pre-deadline reminders reaching anyone | REP-07 | The rows are written every fifteen minutes and nothing reads them: use cases v0.4 withdrew the in-app surface and only `missed_deadline` is emailed. The offsets endpoint has no screen either. Kept rather than deleted because the unique key is what makes a retried dispatch a no-op |
-| Professor-authored feedback | REP-07 | `FeedbackKind.PROFESSOR_COMMENT` exists in the enum and no code path writes one. What a student can read today is the approved assessment and their own correction thread |
+| Professor-authored feedback | REP-07 | `FeedbackKind.PROFESSOR_COMMENT` exists in the enum and no code path writes one. What a student can read today is the approved assessment, their own correction thread, and — since v0.13 — the reason attached to a revision request, which is the one thing a professor can now write that reaches them |
 | Performance benchmarks | §11, §15 | `scripts/bench/` is empty. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured against the 100k-chunk corpus the seed script can build |
 
 ### Acceptance scenarios
@@ -352,6 +352,10 @@ produced something wrong. Each is reflected in the code and in the document it c
 | A webhook for an unknown repository is accepted, recorded, and reported as unmatched | Asking GitHub to retry something that will never match is noise rather than resilience; but a webhook landing nowhere looks identical to one working, so the response says which it was |
 | Metric labels may never identify a person | A metric is scraped into a system with different access rules from this one, so a student id in a label would be a disclosure through the monitoring stack |
 | `retention_sweep` expires only the answer cache | It is the one record with a defined lifetime. Inventing a deletion schedule for reports and assessments would be irreversible and is the professor's decision (requirements §14) |
+| An entry with every field empty is refused, not just an empty package | The check was per package on the reading that judging one entry's substance is the professor's. That reading holds — the test is emptiness, not adequacy — but at package level a blank entry passed whenever a sibling tab had text, and *that project's* obligation was then marked submitted. One press of one button could report every project a student is on with nothing written for any of them. The granularity now matches the thing being discharged |
+| The submitted report is a separate screen from the editor, not a mode of it | The editor is seeded mutable state — draft, autosave, idempotent submit — and a professor rendering it would mount autosave against an endpoint that answers 422. The deciding reason is narrower: the editor's tabs come from the obligations, so an entry for a project the student has left can never appear in it, and those entries are in every version. A read-only editor could not have shown them |
+| The reader never renders `draft_content`, though the policy would allow it | A professor may read the draft; showing it would make autosave surveillance. An unsubmitted draft is not a submission, and the screen is about the record |
+| `spent_usd` is read where it is reported, not taken from the budget check | `check_budget` runs before every model call and totals spend only when there is a limit to compare against, which is right for that path. Reading its figure on the overview meant reporting `$0` in exactly the case where nothing capped the bill |
 | The evaluation harness reports agreement rather than asserting a threshold | Requirements §13 says the threshold is agreed with the professor during the pilot. Asserting one now would turn calibration into a test that gets tuned until it passes |
 
 ## 5 Open decisions still owed by the professor
@@ -366,8 +370,11 @@ Carried from requirements §14 and architecture §17, narrowed to what is still 
 3. **Rubric calibration** — the default weights and anchors are the specification's proposals. The
    pilot gates in §13 are the point at which they become real, and
    [`docs/evaluation/protocol.md`](evaluation/protocol.md) is the procedure.
-4. **Monthly AI budget** — `admin/ai/budgets` accepts one; none is configured, which means no limit
-   rather than a limit of zero.
+4. **Monthly AI budget** — the panel on `/workspaces` sets one and the figure beside it is the
+   month's real spend; none is configured, which means no limit rather than a limit of zero. Until
+   v0.13 there was no screen at all, so this decision could only be acted on with curl — and the
+   overview reported `$0` spent regardless, because spend was totalled only when a limit existed.
+   The decision is still the professor's; what changed is that it can now be taken in the product.
 5. **VPS region and offsite backup destination**.
 6. **Whether to add Row-Level Security** as defence in depth after the MVP.
 7. **Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.
@@ -385,7 +392,7 @@ uv run pytest --cov=app --cov-fail-under=85
 
 cd ../frontend && npm ci && npm run lint && npm run typecheck && npm test -- --run && npm run build
 
-cd .. && python3 scripts/check_traceability.py
+cd .. && python3 scripts/check_traceability.py && python3 scripts/check_docs.py
 bash scripts/gen_api_client.sh && git diff --exit-code -- docs/api frontend/src/api/generated
 ```
 

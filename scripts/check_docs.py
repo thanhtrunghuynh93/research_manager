@@ -156,6 +156,18 @@ def check_counts() -> list[str]:
         "Acceptance scenarios with a test": len(
             list((ROOT / "backend/tests/acceptance").glob("test_ac_*.py"))
         ),
+        # The row reads "97 (95 in the schema, 2 include_in_schema=False)"; the leading number is
+        # the one checked, and the hidden two are counted from the routers rather than the spec,
+        # which by definition cannot see them.
+        "`/api/v1` endpoints": _api_inventory()[0]
+        + len(
+            [
+                line
+                for source in (ROOT / "backend/app/api").rglob("*.py")
+                for line in source.read_text(encoding="utf-8").splitlines()
+                if "include_in_schema=False" in line
+            ]
+        ),
     }
     problems: list[str] = []
     for label, count in actual.items():
@@ -187,11 +199,88 @@ def check_version_cross_references() -> list[str]:
     return problems
 
 
+USE_CASES = DOCS / "use_cases.md"
+# `POST /users/{id}/{action}` is written as one call site standing for three routes.
+DYNAMIC_CALLS = {
+    ("/api/v1/users/{x}/{x}", "post"): (
+        ("/api/v1/users/{user_id}/deactivate", "post"),
+        ("/api/v1/users/{user_id}/reactivate", "post"),
+        ("/api/v1/users/{user_id}/remove", "post"),
+    )
+}
+
+
+def _api_inventory() -> tuple[int, int, list[str]]:
+    """How many `/api/v1` endpoints there are, and how many a screen calls.
+
+    Both counts are path-and-method pairs, which use_cases.md v0.12 did not do: it counted routes
+    with one command and callers with another, so "98 endpoints, 50 of them called by a screen"
+    compared two units and could not be checked against anything.
+
+    The two exclusions carry the argument. The generated OpenAPI types name every route whether or
+    not a screen calls it, and the test files mock endpoints the app has no screen for — counting
+    either reports coverage the product does not have.
+    """
+    spec = json.loads(OPENAPI.read_text(encoding="utf-8"))
+    methods = ("get", "post", "put", "patch", "delete")
+    served = {
+        (re.sub(r"\{[^}]*\}", "{x}", path), method): (path, method)
+        for path, item in spec["paths"].items()
+        for method in item
+        if method in methods and path.startswith("/api/v1")
+    }
+
+    hits: set[tuple[str, str]] = set()
+    unresolved: list[str] = []
+    call = re.compile(r"api\.(get|post|put|patch|delete)\s*(?:<[^>]*>)?\s*\(\s*[`\"']([^`\"']*)")
+    for source in sorted((ROOT / "frontend/src").rglob("*.ts*")):
+        text = str(source)
+        if "generated" in text or ".test." in text:
+            continue
+        for method, raw in call.findall(source.read_text(encoding="utf-8")):
+            # Substitute simple `${id}` params first; anything left is an expression (a ternary
+            # building a query string), and the path ends where it begins.
+            path = re.sub(r"\$\{[^{}]*\}", "{x}", raw)
+            path = path.split("${")[0].split("?")[0].rstrip("/")
+            if not path.startswith("/api/v1"):
+                continue
+            key = (path, method)
+            if key in DYNAMIC_CALLS:
+                hits.update(DYNAMIC_CALLS[key])
+            elif key in served:
+                hits.add(served[key])
+            else:
+                unresolved.append(
+                    f"{source.relative_to(ROOT)} calls {method.upper()} {path}, "
+                    "which the API does not serve"
+                )
+    return len(served), len(hits), unresolved
+
+
+def check_api_inventory() -> list[str]:
+    """use_cases.md's headline count, against the spec and the screens that call it."""
+    served, called, problems = _api_inventory()
+    text = USE_CASES.read_text(encoding="utf-8")
+    claim = re.search(
+        r"\*\*As of this version: (\d+) endpoints, (\d+) of them called by a screen", text
+    )
+    if claim is None:
+        return [*problems, "use_cases.md has no 'As of this version: N endpoints' line"]
+    if int(claim.group(1)) != served:
+        problems.append(f"use_cases.md says {claim.group(1)} endpoints; the spec serves {served}")
+    if int(claim.group(2)) != called:
+        problems.append(
+            f"use_cases.md says {claim.group(2)} called by a screen; the tree calls {called}"
+        )
+    return problems
+
+
 CHECKS = (
     ("tree paths exist", check_tree_paths_exist),
     ("high-churn paths are documented", check_high_churn_paths_are_named),
     ("cited API paths are served", check_cited_api_paths_exist),
     ("counted values match the tree", check_counts),
+    ("the API inventory matches the tree", check_api_inventory),
     ("version cross-references agree", check_version_cross_references),
 )
 

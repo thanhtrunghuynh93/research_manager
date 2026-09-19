@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.12 — 17 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.13 — 19 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -58,7 +58,10 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 98 endpoints, 50 of them called by a screen, and nothing left marked ◻️.**
+**As of this version: 95 endpoints, 63 of them called by a screen, and nothing left marked ◻️.**
+Both numbers are path-and-method pairs over `/api/v1`, counted by the script in §9 — v0.12 gave
+"98 endpoints, 50 of them called by a screen", which counted routes one way and callers another
+and so compared two different things. The units agree now; the pair is not comparable to v0.12's.
 v0.4 removed ten — seven notification routes and three export routes, with `PUT
 /notifications/reminder-offsets` surviving because it configures email delivery (§7) — and v0.5 to
 v0.9 added eight for workspaces and one for moving a student, every one of them behind a screen.
@@ -238,7 +241,7 @@ would always fail.
 | --- | --- | --- |
 | Invite a student, or a colleague as a professor | `POST /users/invitations` | 🖥️ |
 | See everyone in the workspace | `GET /users` | 🖥️ |
-| Read one user's record directly | `GET /users/{id}` | ⚙️ |
+| Read one user's record directly | `GET /users/{id}` | 🖥️ |
 | Suspend an account's access | `POST /users/{id}/deactivate` | 🖥️ |
 | Reactivate an account | `POST /users/{id}/reactivate` | 🖥️ |
 | Remove a student from the workspace | `POST /users/{id}/remove` | 🖥️ |
@@ -395,7 +398,7 @@ surveillance.
 | Withdraw a published assessment | `POST /assessments/{id}/withdraw` | ⚙️ |
 | Read feedback on an assessment | `GET /assessments/{id}/feedback` | ⚙️ |
 | Record a private supervision note | `POST /supervision-notes` | ⚙️ |
-| Re-run one assessment pipeline | `POST /admin/assessments/retry` | ⚙️ |
+| Re-run one assessment pipeline | `POST /admin/assessments/retry` | 🖥️ |
 
 Drafts are the professor's to approve; nothing reaches a student unapproved. An override requires a
 recorded reason and keeps the model's own output beside it. Supervision notes live in a table
@@ -442,8 +445,8 @@ actually retrieved, and an invented one is dropped and the drop is stated.
 | Use case | Endpoint | |
 | --- | --- | --- |
 | The current week at a glance — **this week's reports by workspace, project and student**, outstanding reports, review queue, stale repositories, stalled analyses, AI budget, failed mail | `GET /overview` | 🖥️ |
-| See model spend this month | `GET /admin/ai/usage` | ⚙️ |
-| See and set the monthly AI budgets | `GET`/`PUT /admin/ai/budgets` | ⚙️ |
+| See model spend this month | `GET /admin/ai/usage` | 🖥️ |
+| See and set the monthly AI budgets | `GET`/`PUT /admin/ai/budgets` | 🖥️ |
 | See repository sync health | `GET /admin/sync` | ⚙️ |
 
 The week's board is the section a professor opens this screen for, and §2.4 has why it replaced the
@@ -451,9 +454,15 @@ outstanding list as the answer to *what is happening this week*. Both are still 
 the week in all three of its states, and outstanding is the count of one of them with the instant it
 was true attached, which is what REP-08 asks for.
 
-No budget configured means no limit, not a limit of zero. Since the budget can only be set through
-the API, a deployment with a live model key spends without a ceiling until someone sets one by
-hand.
+No budget configured means no limit, not a limit of zero — an empty field and a zero are different
+settings, and the panel on `/workspaces` says so, because a zero stops every analysis. Until that
+panel existed the budget could only be set through the API, so a deployment with a live model key
+spent without a ceiling until someone reached for curl.
+
+The spend beside it is the month's real total whether or not a ceiling is set. `check_budget` runs
+before every model call and only totals spend when there is a limit to compare it against, which
+is right for that path and wrong for this one: reading its figure regardless meant the overview
+reported **$0 spent** in exactly the case where nothing was capping the bill.
 
 ## 3 Student
 
@@ -466,6 +475,7 @@ hand.
 | **Remove a file they attached** | `DELETE /artifacts/{id}` | 🖥️ |
 | Attach a link | `POST /artifacts/links` | 🖥️ |
 | Submit the weekly package | `POST /periods/{id}/report/submit` | 🖥️ |
+| **Read the week they submitted, every version of it, and any revision asked for** | `GET /periods/{id}/report`, `/reports/{id}/versions`, `/report-versions/{id}`, `/reports/{id}/revisions` | 🖥️ |
 | Read their own projects, milestones, decisions and progress | `GET /projects/...` | 🖥️ |
 | **Start their own project, active from the moment it exists** | `POST /projects` | 🖥️ |
 | **Edit the record of a project they started** | `PATCH /projects/{id}` | 🖥️ |
@@ -482,13 +492,22 @@ hand.
 | See contributions attributed to them | `GET /contributions` | ⚙️ |
 | Search the evidence they can see | `GET /evidence/search` | ⚙️ |
 
-The student's surface was two screens and is now four: `/me` is the week — what is owed, when it is
-due, the weeks before it, and one link onward — `/me/profile` is the trajectory and the whole
-released record, and `/me/assessments/:id` is one assessment in full. The route `/me/profile` is the
-one architecture.md §4.2 had named — "permitted subset at `/me/profile`" — since the table was
-written. It carries the released assessments alone: `/me` listed them too until the week's screen
-was cut back to the week, and with My progress off the navigation bar the link on `/me` is the only
-way in.
+The student's surface was two screens and is now five: `/me` is the week — what is owed, when it is
+due, the weeks before it, and one link onward — `/report/:periodId` is the editor, and
+`/report/:periodId/submitted` is what they actually sent, which is not the same thing and never
+was. `/me/profile` is the trajectory and the whole released record, and `/me/assessments/:id` is
+one assessment in full. The route `/me/profile` is the one architecture.md §4.2 had named —
+"permitted subset at `/me/profile`" — since the table was written. It carries the released
+assessments alone: `/me` listed them too until the week's screen was cut back to the week, and with
+My progress off the navigation bar the link on `/me` is the only way in.
+
+The editor and the reader are separate screens on purpose. The editor renders the autosaved draft,
+which is the thing being edited; the reader renders the submitted version, which is the thing on
+the record. Where the two disagree — and they can, because a draft outlives the submission it was
+typed over — showing one in place of the other would misstate which is which. The reader is also
+the only screen in the product that can show an entry for a project the student has since left:
+those entries are carried into every new version, and the editor's tabs come from the obligations,
+which no longer include that project.
 
 Nothing about the API changed for the assessment half of that. Every endpoint there was already
 `ScopeDep`, and `assessment/policies.py` already restricted a student to their own assessments and
@@ -611,10 +630,12 @@ that it is now the only way out as well.
 
 ## 8 What this inventory shows
 
-One capability area has no screens at all — **repository evidence** (§2.7) — along with every
-operations view (§2.9). Project setup (§2.3) and calendar administration (§2.4) were two more until
-v0.11, and workspace management was a fourth until v0.5. §8.3 is what the v0.3 scope decision did
-to the same balance.
+One capability area still has no screens at all — **repository evidence** (§2.7), which means the
+professor cannot switch on the feature that was built for them. Operations (§2.9) was a second
+until v0.13, when model spend, the budget that caps it and the retry on a stalled analysis each got
+one; what is left ⚙️ there is repository sync health, which belongs to §2.7 anyway. Project setup
+(§2.3) and calendar administration (§2.4) were two more until v0.11, and workspace management was a
+fourth until v0.5. §8.3 is what the v0.3 scope decision did to the same balance.
 
 ### 8.1 Nothing can become due — *closed in v0.11*
 
@@ -672,7 +693,7 @@ Six locator shapes exist; three of them go nowhere:
 | `/review/{assessment_id}` | `assistant/facts/scores.py` | The review screen |
 | `/students/{id}#notes` | `assistant/retrieval.py` | The student's profile |
 | `/projects/{id}` | `assistant/facts/members.py` | The project screen — the one inbound link it has |
-| `/report/{period_id}` | `assistant/facts/obligations.py`, `facts/reports.py` | The student guard: `/overview` |
+| `/report/{period_id}` | `assistant/facts/obligations.py`, `facts/reports.py` | The student guard: `/overview` — though the record is now readable, one route along |
 | `/projects?repository={id}` | `assistant/facts/sources.py` | Not a route: `/overview` |
 | `/artifacts/{id}` | `evidence/service.py` | Not a route: `/overview` |
 
@@ -681,10 +702,13 @@ professor lands on their own overview with nothing to say that the citation did 
 asks that a citation open an authorized record. The record is authorized, the API would serve it,
 and the answer that cited it was right. What is missing is a route.
 
-The worst of the six is the one that matters most. A claim about what a student did this week is
-cited to a report entry — `/report/{period_id}#{project_id}` — and that entry is precisely what a
-professor reads at `/students/:studentId/reports/:periodId` (§2.5). The assistant can quote the report in its answer;
-it cannot show it.
+The worst of the six used to be the one that matters most: a claim about what a student did this
+week is cited to a report entry — `/report/{period_id}#{project_id}` — and that entry was what a
+professor could read nowhere in the app. Half of that is now fixed and half is not. The entry is
+readable, at `/students/:studentId/reports/:periodId` (§2.5), but the fact layer still builds the
+student's locator, so a professor following the citation still lands on `/overview`. The
+destination exists; the sign still points at the wrong door. Both fact functions have the
+`student_id` they would need, so this is a locator change rather than a feature.
 
 ### 8.3 What the scope change cost
 
@@ -692,19 +716,30 @@ v0.3 predicted two consequences and v0.4 shipped them, so they are now descripti
 forecast. Neither was a reason not to do it; both are things a reader of the code alone would have
 to reconstruct.
 
-**Email is the only channel.** Notification records are still written and the missed-deadline mail
-still goes out (§7), and nothing in the app displays either. A student who does not read their
-email has no way to learn that a deadline moved, a revision was requested, or an assessment was
-released — and §8.2 says they cannot read the assessment in the app even if they hear about it. The
-overview's mail warning, which exists because an invitation that never sent is an enrolment that
-did not happen, is now the professor's only sight of a channel that carries everything.
+**Email is the only channel that *announces* anything.** Notification records are still written and
+the missed-deadline mail still goes out (§7), and nothing in the app displays either, so a student
+who does not read their email still has no way to learn that something has happened.
 
-**The student's surface halved.** Behind the sign-in pages a student had four screens and now has
-two, both part of the weekly submission flow. The product a student sees is exactly one loop —
-write the report, submit it — with no screen that shows them anything coming back. Read against
-§8.2 that is the sharper form of the same finding: of the four, `/notifications` and `/exports`
-were the two that carried anything *out* of the system to the student, and they are the two that
-went.
+What has changed since v0.3 is what they find when they do look. An assessment released to them is
+readable at `/me/assessments/{id}`, and since v0.13 a revision request is readable too — the reason
+the professor typed is on the report they submitted, where it is about something, rather than only
+in a message about it. The gap is now between *being told* and *being able to find out*, which is
+a narrower and more ordinary gap than the one this paragraph used to describe. The overview's mail
+warning, which exists because an invitation that never sent is an enrolment that did not happen,
+remains the professor's only sight of the channel.
+
+**The student's surface halved, and has since grown back past where it started.** Behind the
+sign-in pages a student had four screens; v0.4 left two, both part of the weekly submission flow,
+so the product a student saw was exactly one loop — write the report, submit it — with no screen
+that showed them anything coming back. Of the four, `/notifications` and `/exports` were the two
+that carried anything *out* of the system to the student, and they were the two that went.
+
+There are now five student screens plus the two project screens they share with the professor, and
+three of the five carry something back: their own progress, an assessment released to them, and
+the week they submitted with whatever the professor asked them to change. The v0.3 decision cost
+what it was predicted to cost; what closed it was not reversing the decision but building the
+return path deliberately, one screen at a time, which is the argument §8.1 makes about ⚙️ routes
+from the other direction.
 
 One thing v0.3 did not predict turned up while removing the code. The mute preferences table had
 to be dropped, not merely orphaned: with the unmute route gone, an existing row would have silenced
@@ -771,18 +806,28 @@ The route inventory is mechanical, and drift here is the kind nobody notices:
 # every route, with the role gate it sits behind
 grep -rnE '^@router\.(get|post|put|patch|delete)' backend/app/api/v1/
 
-# every endpoint the app actually calls. Both exclusions matter: the generated OpenAPI types
-# name every route whether or not anything calls it, and the test files mock endpoints the app
-# has no screen for — counting either one reports coverage the product does not have.
-for f in $(grep -rl 'api/v1' frontend/src --include=*.ts --include=*.tsx \
-             | grep -v generated | grep -v '\.test\.'); do
-  grep -ohE '[`"]/api/v1/[^`"]*' "$f"
-done | sed 's/[`"]//' | sed 's/\?.*//' | sed 's/\${[^}]*}/X/g' | sort -u
+# the headline count, checked rather than eyeballed
+python3 scripts/check_docs.py        # "the API inventory matches the tree"
 ```
 
-The character class covers both quote styles on purpose: a parameterised path is written as a
-template literal, so a grep for double-quoted strings alone finds the handful of fixed paths and
-misses most of the app — it reports 14 where the answer is 33.
+The two numbers in §1 are now derived by `check_api_inventory` in `scripts/check_docs.py` and fail
+CI when the prose drifts from the tree, which is what that script exists for. Read it rather than
+re-deriving them by hand; what follows is why it is written the way it is.
+
+Both counts are **path-and-method pairs**. Until v0.13 they were not: routes were counted with a
+grep over `@router` decorators and callers with a grep over path literals, so "98 endpoints, 50 of
+them called by a screen" set a count of routes against a count of distinct paths. The second number
+was not a subset of the first and the pair could not be checked against anything.
+
+Two exclusions carry the argument, and both matter: the generated OpenAPI types name every route
+whether or not a screen calls it, and the test files mock endpoints the app has no screen for —
+counting either reports coverage the product does not have.
+
+Two shapes in the call sites need care, and a grep that ignores them is wrong in both directions.
+A path is written as a template literal, so `${id}` has to become a parameter before anything else
+— and where the expression is not a bare identifier but a ternary building a query string, the
+path ends where the expression begins. `POST /users/{id}/{action}` is one call site standing for
+three routes, so it is counted as three.
 
 Those two commands settle 🖥️ against ⚙️. They cannot see 🚧, because an endpoint a screen calls
 looks identical whether or not anyone can reach that screen. Two more are needed, and they are the

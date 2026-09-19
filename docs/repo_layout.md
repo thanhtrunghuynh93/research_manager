@@ -1,6 +1,6 @@
 # Research Management System — Repository Layout
 
-Version 0.3 — 16 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.6, and [use_cases.md](use_cases.md) v0.12
+Version 0.3 — 16 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.6, and [use_cases.md](use_cases.md) v0.13
 
 This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 
@@ -137,13 +137,14 @@ backend/
 │   │   │   ├── registry.py    load(prompt_id, version) → Prompt(model, temperature, schema, text)
 │   │   │   ├── extract_claims/v1.md + manifest.toml
 │   │   │   ├── match_claims/v1.md + manifest.toml
-│   │   │   ├── rate_rubric/v1.md + manifest.toml
+│   │   │   ├── rate_rubric/v1.md, v2.md, v3.md + manifest.toml
 │   │   │   ├── route_question/v1.md + manifest.toml
 │   │   │   └── answer/v1.md + manifest.toml
 │   │   ├── schemas/           Pydantic models for every structured output (RubricOutput, ClaimList, RoutePlan, Answer)
+│   │   │                      and strict.py, which asserts each is one the provider's strict mode accepts
 │   │   ├── cost.py            ledger writes, published prices, budget checks
 │   │   ├── redaction.py
-│   │   └── fake.py            deterministic fake gateway for tests (fixtures keyed by prompt_id)
+│   │   └── fake.py            deterministic fake gateway for tests; refuses a schema the provider would refuse
 │   └── api/
 │       ├── deps.py            get_scope, get_session, idempotency_key header dependency
 │       ├── middleware.py      request id, structured access log, security headers

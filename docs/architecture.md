@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.3 — 16 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.6
+Version 0.4 — 19 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.6
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -456,13 +456,13 @@ The model must return JSON matching this schema (the gateway enforces it with st
 
 ```json
 {
-  "dimensions": {
-    "progress": {"rating": "0|1|2|3|4|unknown", "rationale": "string", "evidence_ref_ids": ["uuid"]},
-    "learning": {"rating": "...", "rationale": "...", "evidence_ref_ids": []},
-    "rigor":    {"rating": "...", "rationale": "...", "evidence_ref_ids": []},
-    "artifacts":{"rating": "...", "rationale": "...", "evidence_ref_ids": []}
-  },
-  "plan_items": [{"task_id": "uuid", "proposed_completion": 0.0, "reason": "string", "evidence_ref_ids": []}],
+  "dimensions": [
+    {"dimension_id": "progress", "rating": "0|1|2|3|4|unknown", "rationale": "string", "evidence_ref_ids": ["uuid"]},
+    {"dimension_id": "learning", "rating": "...", "rationale": "...", "evidence_ref_ids": []},
+    {"dimension_id": "rigor", "rating": "...", "rationale": "...", "evidence_ref_ids": []},
+    {"dimension_id": "artifacts", "rating": "...", "rationale": "...", "evidence_ref_ids": []}
+  ],
+  "plan_items": [{"item_id": "uuid", "proposed_completion": 0.0, "reason": "string", "evidence_ref_ids": []}],
   "accomplishments": ["string"],
   "blockers": ["string"],
   "discrepancies": [{"claim": "string", "status": "supported|partially_supported|unsupported|unverifiable", "evidence_ref_ids": []}],
@@ -472,7 +472,23 @@ The model must return JSON matching this schema (the gateway enforces it with st
 }
 ```
 
-`not_applicable` is never a model output; it comes only from `rubric_versions.stage_applicability` (ASSESS-04). `validate_output` drops any `evidence_ref_id` not present in the snapshot and downgrades the affected rating to `unknown` with a recorded reason, so a fabricated citation cannot survive (AC-07, AC-12).
+**`dimensions` is a list, not a map keyed by dimension.** The map read better and was the shape the
+rubric itself has, but it made this the one schema the provider refused: strict structured outputs
+cannot express an object whose keys are not known in advance, and the rubric is a per-workspace
+`rubric_versions.dimensions` configured at runtime. Every `rate_rubric` call returned 400 for as
+long as a real key was configured, and no assessment was ever produced from model output.
+`validate_output` turns the list back into the map keyed by dimension that everything downstream
+expects, so `assessment_versions.ratings` is unchanged and no migration was needed.
+
+Nothing in these schemas may carry a JSON Schema keyword strict mode rejects — numeric bounds
+among them, which is why `proposed_completion` is validated in Python rather than constrained on
+the wire. `ai/schemas/strict.py` reimplements the provider's rules and a unit test asserts every
+response model against them; the SDK's own converter cannot be used for this, because it repairs
+`additionalProperties` only where the key is absent and therefore accepts the very map that broke
+this step. `FakeGateway` applies the same check, so a schema the provider would refuse now fails
+the ordinary suite rather than only production.
+
+`not_applicable` is never a model output; it comes only from `rubric_versions.stage_applicability` (ASSESS-04). `validate_output` drops any `evidence_ref_id` not present in the snapshot and downgrades the affected rating to `unknown` with a recorded reason, so a fabricated citation cannot survive (AC-07, AC-12). It also drops a `dimension_id` the rubric does not have and takes first-wins on a repeat — both recorded — because a list admits what a map could not.
 
 ### 9.4 Deterministic metrics (`assessment/metrics.py`)
 
