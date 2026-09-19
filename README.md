@@ -6,6 +6,7 @@ Professors are co-equal inside a workspace ([ADR 0011](docs/adr/0011-co-equal-pr
 
 ## Documents
 
+- [Overview](docs/overview.md) — what the problem is, what is new here, and how the impact is measured
 - [Requirements](docs/research_management_requirements.md) — what the system must do
 - [Architecture](docs/architecture.md) — how it is built
 - [Repository layout](docs/repo_layout.md) — where things live and the conventions

@@ -1,8 +1,8 @@
 # The Research Management Framework — Problem, Innovation, Impact
 
-Version 0.1 — 18 September 2026 — an overview of what this framework is for and what is new in it.
+Version 0.2 — 19 September 2026 — an overview of what this framework is for and what is new in it.
 It summarises [research_management_requirements.md](research_management_requirements.md) v0.6,
-[architecture.md](architecture.md) v0.4, the seventeen [ADRs](adr/), and
+[architecture.md](architecture.md) v0.4, the [ADRs](adr/), and
 [implementation_status.md](implementation_status.md); those documents remain authoritative where
 this one abbreviates them.
 
@@ -232,24 +232,32 @@ first-token and assessment-latency targets in requirements §11 have not yet bee
 the 100,000-chunk corpus, and the rubric's construct validity — whether these four dimensions
 capture research progress across stages — is a question the pilot opens rather than settles.
 
-## 6 Status
+## 6 What building it taught
 
-All twelve implementation steps are built: identity and authorisation, projects and reporting,
-notifications and the missed-deadline email, repository evidence and retrieval, the assessment
-pipeline, the AI gateway and cost ledger, the assistant and overview, the seams between them, the
-review that followed, deployment preparation, and workspaces. Counted from the tree: 25 migrations,
-98 `/api/v1` endpoints, 17 ADRs, and a test for each of the 19 acceptance scenarios, asserted by
-`scripts/check_traceability.py` on every CI run. What remains before a pilot is calibration and
-operation rather than construction, together with the decisions still owed by the professor — the
-mail provider, what content may reach the model provider, the rubric calibration itself, the AI
-budget, hosting and backup destinations, and the retention policy, which is irreversible and
-therefore theirs to set. Current gaps and their reasons are listed in
-[implementation_status.md](implementation_status.md) §3, and the open decisions in §5.
+This document deliberately carries no account of how much is built. That belongs in
+[implementation_status.md](implementation_status.md) — §1 for the state, §3 for the gaps and their
+reasons, §5 for the decisions still owed by the professor — where the counts are derived from the
+tree and checked by `scripts/check_docs.py` on every CI run. A second copy here would be a number
+nothing checks, and the first version of this document had one that was wrong within the week.
+What remains before a pilot is calibration and operation rather than construction.
 
-Two lessons from building it are recorded there and are worth repeating here, because they generalise
-beyond this framework. First, a step marked done means its module is done, and the separate question
-worth asking is what calls it: three seams between finished modules were missing while every
-module-level test was green. Second, wrong numbers look like numbers — commitment completion computed
-with every fraction hardcoded to zero, coverage taking its denominator from the model's own output, a
-snapshot carrying a fortnight of already-assessed evidence. None of these failed; each produced a
-plausible figure, which for an assessment system is the outcome that matters most to prevent.
+Three lessons from building it are recorded there and are worth repeating here, because they
+generalise beyond this framework.
+
+First, **a step marked done means its module is done**, and the separate question worth asking is
+what calls it: three seams between finished modules were missing while every module-level test was
+green. The same shape recurs one layer up, between the product and the people using it — an
+endpoint that works, is tested, and that no screen calls is a capability nobody has.
+
+Second, **wrong numbers look like numbers** — commitment completion computed with every fraction
+hardcoded to zero, coverage taking its denominator from the model's own output, a snapshot carrying
+a fortnight of already-assessed evidence. None of these failed; each produced a plausible figure,
+which for an assessment system is the outcome that matters most to prevent.
+
+Third, **a test double that is more permissive than the thing it stands in for is not a test**. The
+rating step was rejected by the model provider on every call for as long as a real key was
+configured, because its response schema used a map where the provider's strict mode requires fixed
+keys; no assessment was ever produced from model output. The whole suite passed throughout, because
+the deterministic gateway used in tests never built a JSON schema at all. The provider's own SDK
+would not have caught it either — it repairs the adjacent defect and walks past this one. The fake
+now refuses any schema the provider would refuse.
