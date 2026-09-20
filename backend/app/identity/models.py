@@ -47,11 +47,22 @@ def _workspace_scoped_user_fk() -> ForeignKeyConstraint:
 
     The same-workspace invariant from architecture §5.1, enforced by the database rather than by a
     check every caller must remember.
+
+    `ON UPDATE CASCADE` because these three tables hold identity records — an invitation, a
+    session, a reset link — which belong to the person rather than to the work, and follow them
+    when they join another workspace (ADR 0014). Without it the move is refused outright, since
+    every account has an invitation row from the moment it is created.
+
+    The four tables holding research history — `project_memberships`, `weekly_reports`,
+    `developer_identities`, `contributions` — deliberately do not cascade. That is what still
+    pins a student who has written anything, and what makes "history stays behind" a property of
+    the schema rather than a rule someone has to remember.
     """
     return ForeignKeyConstraint(
         ["workspace_id", "user_id"],
         ["users.workspace_id", "users.id"],
         ondelete="CASCADE",
+        onupdate="CASCADE",
     )
 
 
@@ -79,6 +90,10 @@ class Workspace(UUIDPrimaryKeyMixin, Base):
     # {"monthly_usd": "50", "project_monthly_usd": {"<project id>": "10"}}.
     # Absent keys mean "no limit configured", which is not a limit of zero (architecture §10).
     ai_budgets: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    # Set when the workspace is closed for good. Archiving requires it to be empty of active
+    # accounts first, so an archived workspace has nobody left to enforce anything against: the
+    # flag records that the container is finished, it does not police the rows inside it.
+    archived_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
@@ -93,6 +108,9 @@ class User(UUIDPrimaryKeyMixin, Base):
         Index("ix_users_workspace_id_role", "workspace_id", "role"),
     )
 
+    # The workspace this account is *working in*, and the anchor every composite foreign key in
+    # the schema points at. A professor may belong to several (see `WorkspaceMember`); this names
+    # the one their Scope is compiled from, and is always one they are a member of (ADR 0015).
     workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     role: Mapped[Role] = mapped_column(ROLE_ENUM)
     email: Mapped[str] = mapped_column(Text)
@@ -100,6 +118,33 @@ class User(UUIDPrimaryKeyMixin, Base):
     password_hash: Mapped[str | None] = mapped_column(Text)
     state: Mapped[UserState] = mapped_column(USER_STATE_ENUM, default=UserState.INVITED)
     deactivated_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class WorkspaceMember(UUIDPrimaryKeyMixin, Base):
+    """Which workspaces an account belongs to (ADR 0015).
+
+    A student has exactly one row, written when their invitation is accepted and deleted when they
+    are removed. A professor may have several, which is the whole reason this table exists: before
+    it, `users.workspace_id` was the only record of belonging and a professor could be in one
+    workspace at a time.
+
+    It is not a composite-scoped table: the pair *is* the fact. Both sides cascade on delete, so
+    archiving a workspace or removing an account leaves no dangling membership.
+    """
+
+    __tablename__ = "workspace_members"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_id"),
+        # The unique constraint indexes (workspace_id, user_id), which does not serve a lookup by
+        # user alone — and that is the one `scope_for` makes on every request, to find the
+        # workspaces an account belongs to. Declared here as well as in migration 0021, or
+        # `alembic check` reports the index as drift.
+        Index("ix_workspace_members_user_id", "user_id"),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

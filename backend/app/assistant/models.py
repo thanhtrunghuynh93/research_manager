@@ -84,5 +84,10 @@ class AnswerCache(UUIDPrimaryKeyMixin, Base):
     question_hash: Mapped[str] = mapped_column(Text)
     scope_hash: Mapped[str] = mapped_column(Text)
     access_epoch: Mapped[int] = mapped_column(Integer)
+    # The anchor's epoch above is what `purge_stale` sweeps on. This is the digest of every
+    # (workspace, epoch) pair the answer's read spanned, and it is what decides whether the row may
+    # still be served: a read that crosses workspaces has to be validated against all of them
+    # (ADR 0016, AUTH-03).
+    epoch_fingerprint: Mapped[str] = mapped_column(Text, default="")
     answer: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

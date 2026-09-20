@@ -14,7 +14,14 @@
 		# connect-src carries the object store because the browser PUTs an attachment straight to
 		# it and never through the API (REP-04). Without the origin listed, every upload is
 		# refused by the browser before a byte leaves it.
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://objects.{$RM_DOMAIN:localhost}; frame-ancestors 'none'"
+		#
+		# style-src and font-src carry Google Fonts because index.html links a stylesheet there and
+		# that stylesheet points at gstatic for the files. Both origins are needed and they are not
+		# the same one: without the first the stylesheet never loads, without the second it loads
+		# and every @font-face in it is blocked. Omitting them did not fail loudly — the page fell
+		# back to Georgia and a console warning nobody reads, so the whole type system was missing
+		# in production while every screenshot in development looked right.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://objects.{$RM_DOMAIN:localhost}; frame-ancestors 'none'"
 		-Server
 	}
 
@@ -34,8 +41,22 @@
 	}
 
 	# Single-page app: static assets, then index.html fallback for client routes.
+	#
+	# The two caching rules are not symmetrical, and the asymmetry is the point. Vite fingerprints
+	# everything under /assets, so those URLs are immutable by construction and can be kept for a
+	# year. index.html names them, is not fingerprinted, and is the only thing that tells a browser
+	# a deploy happened — so it must be revalidated every time.
+	#
+	# Without this block Caddy sends neither header, and a browser falls back to heuristic caching:
+	# roughly a tenth of the document's age, which for a day-old index.html is hours of serving the
+	# previous release from cache without ever asking. The deploy looks like it did nothing.
 	handle {
 		root * /srv
+		@assets path /assets/*
+		@revalidate not path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		# no-cache stores the response and requires revalidation; the ETag makes that a 304.
+		header @revalidate Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}

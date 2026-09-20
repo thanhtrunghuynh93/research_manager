@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.assistant.facts.base import Citation, Fact, FactQuery, fact
+from app.assistant.facts.base import Citation, Fact, FactQuery, fact, report_locator
 from app.reporting import service as reporting_service
 
 
@@ -49,7 +49,12 @@ async def blockers(session: AsyncSession, query: FactQuery) -> Fact:
                 source_kind="report_entry",
                 source_id=entry.entry_id,
                 source_version=str(entry.version_id),
-                locator=f"/report/{entry.period_id}#{entry.project_id}",
+                locator=report_locator(
+                    query.scope,
+                    student_id=entry.student_id,
+                    period_id=entry.period_id,
+                    project_id=entry.project_id,
+                ),
                 label=f"entry submitted {entry.submitted_at.date()}",
             )
             for entry in entries
@@ -94,7 +99,9 @@ async def submissions(session: AsyncSession, query: FactQuery) -> Fact:
                 source_kind="report_version",
                 source_id=record.version_id,
                 source_version=str(record.version_no),
-                locator=f"/report/{record.period_id}",
+                locator=report_locator(
+                    query.scope, student_id=record.student_id, period_id=record.period_id
+                ),
                 label=f"week of {record.local_start}, version {record.version_no}",
             )
             for record in records
@@ -137,7 +144,12 @@ async def work_this_week(session: AsyncSession, query: FactQuery) -> Fact:
                 source_kind="report_entry",
                 source_id=entry.entry_id,
                 source_version=str(entry.version_id),
-                locator=f"/report/{entry.period_id}#{entry.project_id}",
+                locator=report_locator(
+                    query.scope,
+                    student_id=entry.student_id,
+                    period_id=entry.period_id,
+                    project_id=entry.project_id,
+                ),
                 label=f"entry submitted {entry.submitted_at.date()}",
             )
             for entry in entries

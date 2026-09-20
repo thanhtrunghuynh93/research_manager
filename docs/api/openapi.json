@@ -724,6 +724,17 @@
             ],
             "title": "Model Name"
           },
+          "model_progress_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Progress Index"
+          },
           "narrative": {
             "additionalProperties": true,
             "title": "Narrative",
@@ -908,28 +919,6 @@
           "spent_usd"
         ],
         "title": "BudgetState",
-        "type": "object"
-      },
-      "BundleOut": {
-        "properties": {
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "records": {
-            "additionalProperties": {
-              "items": {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "title": "Records",
-            "type": "object"
-          }
-        },
-        "title": "BundleOut",
         "type": "object"
       },
       "CalendarConfigIn": {
@@ -1242,7 +1231,6 @@
       "CorrectionIn": {
         "properties": {
           "body": {
-            "minLength": 1,
             "title": "Body",
             "type": "string"
           },
@@ -1675,7 +1663,6 @@
       "ExcuseIn": {
         "properties": {
           "reason": {
-            "minLength": 1,
             "title": "Reason",
             "type": "string"
           }
@@ -1689,7 +1676,6 @@
       "ExtensionIn": {
         "properties": {
           "reason": {
-            "minLength": 1,
             "title": "Reason",
             "type": "string"
           },
@@ -1977,6 +1963,18 @@
           "role": {
             "$ref": "#/components/schemas/Role",
             "default": "student"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
           }
         },
         "required": [
@@ -2031,6 +2029,50 @@
           "created_at"
         ],
         "title": "InvitationOut",
+        "type": "object"
+      },
+      "JoinIn": {
+        "properties": {
+          "responsibility": {
+            "default": "",
+            "title": "Responsibility",
+            "type": "string"
+          }
+        },
+        "title": "JoinIn",
+        "type": "object"
+      },
+      "JoinableProjectOut": {
+        "description": "What a student may see about a project *before* joining it (PROJ-07).\n\nDeliberately not `ProjectOut`. Research questions, intended contributions, the venue target and\nthe shared resources are the substance of an unpublished research programme, and someone who\nhas not joined has no claim on them. This is the directory entry, not the record.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/ResearchStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectStatus"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "stage",
+          "status"
+        ],
+        "title": "JoinableProjectOut",
         "type": "object"
       },
       "LinkProjectIn": {
@@ -2122,6 +2164,35 @@
         "title": "LoginIn",
         "type": "object"
       },
+      "MailState": {
+        "description": "UI-01: mail that did not arrive, named rather than left silent.\n\nAn invitation that failed is the sharpest case \u2014 enrolment is invitation-only, so the person it\nwas for has no way in at all, and nothing else on this screen would ever mention them.",
+        "properties": {
+          "failed_notifications": {
+            "title": "Failed Notifications",
+            "type": "integer"
+          },
+          "failed_token_emails": {
+            "title": "Failed Token Emails",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "warning",
+          "reason",
+          "failed_notifications",
+          "failed_token_emails"
+        ],
+        "title": "MailState",
+        "type": "object"
+      },
       "MembershipEndIn": {
         "properties": {
           "left_on": {
@@ -2188,6 +2259,16 @@
         "title": "MembershipIn",
         "type": "object"
       },
+      "MembershipOrigin": {
+        "description": "How a membership came to exist (PROJ-07).\n\nIt is not bookkeeping. The derivation reads this column to decide which weeks a membership owes\n(`repository.memberships_active_in_range`), and it is how the audit trail tells the three apart,\nsince the actor alone cannot.\n\n`assigned` and `created` owe the week they land in: a professor assigning a student mid-week\nknows what they are asking for, and a student who starts a project is asking for it themselves.\n`self_joined` owes from the following week \u2014 joining an existing project on a Saturday should\nnot be a report due that Sunday for a week spent off the project.",
+        "enum": [
+          "assigned",
+          "self_joined",
+          "created"
+        ],
+        "title": "MembershipOrigin",
+        "type": "string"
+      },
       "MembershipOut": {
         "properties": {
           "created_at": {
@@ -2216,6 +2297,9 @@
               }
             ],
             "title": "Left On"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MembershipOrigin"
           },
           "planned_allocation": {
             "anyOf": [
@@ -2254,6 +2338,7 @@
           "project_id",
           "student_id",
           "responsibility",
+          "origin",
           "joined_on",
           "created_at"
         ],
@@ -2701,87 +2786,9 @@
         "title": "MilestoneStatus",
         "type": "string"
       },
-      "MuteIn": {
+      "MoveStudentIn": {
+        "description": "Where to move a student to. Only a student who has not started work can be moved.",
         "properties": {
-          "kind": {
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind"
-        ],
-        "title": "MuteIn",
-        "type": "object"
-      },
-      "NotificationOut": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "payload": {
-            "additionalProperties": true,
-            "title": "Payload",
-            "type": "object"
-          },
-          "period_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period Id"
-          },
-          "read_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Read At"
-          },
-          "recipient_id": {
-            "format": "uuid",
-            "title": "Recipient Id",
-            "type": "string"
-          },
-          "subject_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject Id"
-          },
-          "subject_table": {
-            "title": "Subject Table",
-            "type": "string"
-          },
           "workspace_id": {
             "format": "uuid",
             "title": "Workspace Id",
@@ -2789,15 +2796,9 @@
           }
         },
         "required": [
-          "id",
-          "workspace_id",
-          "recipient_id",
-          "kind",
-          "subject_table",
-          "payload",
-          "created_at"
+          "workspace_id"
         ],
-        "title": "NotificationOut",
+        "title": "MoveStudentIn",
         "type": "object"
       },
       "ObligationOut": {
@@ -2852,6 +2853,11 @@
             "format": "uuid",
             "title": "Student Id",
             "type": "string"
+          },
+          "submitted": {
+            "default": false,
+            "title": "Submitted",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2926,6 +2932,9 @@
               }
             ]
           },
+          "mail": {
+            "$ref": "#/components/schemas/MailState"
+          },
           "outstanding": {
             "$ref": "#/components/schemas/Outstanding"
           },
@@ -2952,12 +2961,20 @@
             },
             "title": "Sync Issues",
             "type": "array"
+          },
+          "week": {
+            "items": {
+              "$ref": "#/components/schemas/WeekWorkspace"
+            },
+            "title": "Week",
+            "type": "array"
           }
         },
         "required": [
           "as_of",
           "outstanding",
-          "ai_budget"
+          "ai_budget",
+          "mail"
         ],
         "title": "OverviewOut",
         "type": "object"
@@ -3102,10 +3119,16 @@
             "format": "date-time",
             "title": "Start Utc",
             "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
           }
         },
         "required": [
           "id",
+          "workspace_id",
           "local_start",
           "local_end",
           "start_utc",
@@ -3115,37 +3138,6 @@
           "reminder_due_utc"
         ],
         "title": "PeriodOut",
-        "type": "object"
-      },
-      "PreferenceOut": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "muted_at": {
-            "format": "date-time",
-            "title": "Muted At",
-            "type": "string"
-          },
-          "user_id": {
-            "format": "uuid",
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "user_id",
-          "kind",
-          "muted_at"
-        ],
-        "title": "PreferenceOut",
         "type": "object"
       },
       "ProfilePatch": {
@@ -3180,6 +3172,18 @@
             },
             "title": "Intended Contributions",
             "type": "array"
+          },
+          "repo_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Url"
           },
           "research_questions": {
             "items": {
@@ -3290,6 +3294,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -3305,6 +3321,21 @@
             },
             "title": "Intended Contributions",
             "type": "array"
+          },
+          "open_to_join": {
+            "title": "Open To Join",
+            "type": "boolean"
+          },
+          "repo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Url"
           },
           "research_questions": {
             "items": {
@@ -3363,6 +3394,18 @@
             ],
             "title": "Venue Target"
           },
+          "viewer_left_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Left On"
+          },
           "workspace_id": {
             "format": "uuid",
             "title": "Workspace Id",
@@ -3380,6 +3423,7 @@
           "status",
           "shared_resources",
           "ai_restricted",
+          "open_to_join",
           "created_at"
         ],
         "title": "ProjectOut",
@@ -3422,6 +3466,29 @@
               }
             ],
             "title": "Intended Contributions"
+          },
+          "open_to_join": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open To Join"
+          },
+          "repo_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Url"
           },
           "research_questions": {
             "anyOf": [
@@ -4153,7 +4220,6 @@
       "SupervisionNoteIn": {
         "properties": {
           "body": {
-            "minLength": 1,
             "title": "Body",
             "type": "string"
           },
@@ -5000,6 +5066,48 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "VersionSummaryOut": {
+        "description": "One submitted version, without its entries.\n\nA list of *full* versions is an N+1 and a large payload, and the screen that lists them only\nneeds enough to choose one \u2014 so the entries stay behind `GET /report-versions/{id}`, which is\nwhat selecting a version calls.",
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "timing_status": {
+            "$ref": "#/components/schemas/TimingStatus"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "report_id",
+          "version_no",
+          "author_id",
+          "submitted_at",
+          "timing_status"
+        ],
+        "title": "VersionSummaryOut",
+        "type": "object"
+      },
       "Visibility": {
         "enum": [
           "professor_only",
@@ -5008,6 +5116,240 @@
         ],
         "title": "Visibility",
         "type": "string"
+      },
+      "WeekProject": {
+        "properties": {
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_title": {
+            "title": "Project Title",
+            "type": "string"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/WeekStudent"
+            },
+            "title": "Students",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_title"
+        ],
+        "title": "WeekProject",
+        "type": "object"
+      },
+      "WeekStudent": {
+        "description": "One student's standing on one project this week, in the three states REP-06/REP-08 give.",
+        "properties": {
+          "excuse_reason": {
+            "default": "",
+            "title": "Excuse Reason",
+            "type": "string"
+          },
+          "extension_until_utc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Until Utc"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "string"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "student_id",
+          "student_name",
+          "state"
+        ],
+        "title": "WeekStudent",
+        "type": "object"
+      },
+      "WeekWorkspace": {
+        "description": "This week in one workspace: its period, and every report owed in it.\n\nGrouped per workspace because a professor's reads span all of them (ADR 0016) and each keeps\nits own calendar \u2014 so \"this week\" is one period per workspace rather than one period.",
+        "properties": {
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "local_end": {
+            "title": "Local End",
+            "type": "string"
+          },
+          "local_start": {
+            "title": "Local Start",
+            "type": "string"
+          },
+          "owed": {
+            "title": "Owed",
+            "type": "integer"
+          },
+          "period_id": {
+            "title": "Period Id",
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/WeekProject"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "submitted": {
+            "title": "Submitted",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "period_id",
+          "local_start",
+          "local_end",
+          "submitted",
+          "owed",
+          "excused"
+        ],
+        "title": "WeekWorkspace",
+        "type": "object"
+      },
+      "WorkspaceCreateIn": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "Asia/Ho_Chi_Minh",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "WorkspaceCreateIn",
+        "type": "object"
+      },
+      "WorkspaceOut": {
+        "properties": {
+          "access_epoch": {
+            "title": "Access Epoch",
+            "type": "integer"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "joined": {
+            "default": false,
+            "title": "Joined",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "timezone",
+          "access_epoch"
+        ],
+        "title": "WorkspaceOut",
+        "type": "object"
+      },
+      "WorkspaceUpdateIn": {
+        "description": "Both optional: sending neither is a no-op rather than an error.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "WorkspaceUpdateIn",
+        "type": "object"
       }
     }
   },
@@ -5439,6 +5781,43 @@
           }
         },
         "summary": "Ask permission to upload one file",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}": {
+      "delete": {
+        "description": "REP-04: the student's own correction. Refused once the week has been submitted.",
+        "operationId": "remove_artifact_api_v1_artifacts__artifact_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove a file you attached, while the week is still a draft",
         "tags": [
           "artifacts"
         ]
@@ -6323,6 +6702,34 @@
       }
     },
     "/api/v1/calendar": {
+      "get": {
+        "description": "`null` when no calendar has been configured, which is a state and not an error.\n\nReadable by a student as well as a professor: `CalendarConfig`'s policy is workspace-wide\nbecause everyone needs to know when their report is due (REP-01).",
+        "operationId": "current_calendar_api_v1_calendar_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CalendarConfigOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Current Calendar Api V1 Calendar Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The reporting calendar in force",
+        "tags": [
+          "reporting"
+        ]
+      },
       "put": {
         "operationId": "configure_calendar_api_v1_calendar_put",
         "requestBody": {
@@ -6690,258 +7097,6 @@
         ]
       }
     },
-    "/api/v1/exports": {
-      "get": {
-        "description": "Identifiers, versions, relationships, and approval status (requirements \u00a711).",
-        "operationId": "build_bundle_api_v1_exports_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "kinds",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Kinds"
-            }
-          },
-          {
-            "in": "query",
-            "name": "student_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Student Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "project_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Project Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "since",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Since"
-            }
-          },
-          {
-            "in": "query",
-            "name": "until",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Until"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BundleOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "A machine-readable bundle of authorized records",
-        "tags": [
-          "exports"
-        ]
-      }
-    },
-    "/api/v1/exports/kinds": {
-      "get": {
-        "operationId": "list_kinds_api_v1_exports_kinds_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "title": "Response List Kinds Api V1 Exports Kinds Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "What this account may export",
-        "tags": [
-          "exports"
-        ]
-      }
-    },
-    "/api/v1/exports/{kind}.csv": {
-      "get": {
-        "operationId": "build_csv_api_v1_exports__kind__csv_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "kind",
-            "required": true,
-            "schema": {
-              "title": "Kind",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "student_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Student Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "project_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Project Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "since",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Since"
-            }
-          },
-          {
-            "in": "query",
-            "name": "until",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Until"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "One kind as a spreadsheet",
-        "tags": [
-          "exports"
-        ]
-      }
-    },
     "/api/v1/milestones/{milestone_id}": {
       "patch": {
         "operationId": "update_milestone_api_v1_milestones__milestone_id__patch",
@@ -7042,178 +7197,6 @@
         ]
       }
     },
-    "/api/v1/notifications": {
-      "get": {
-        "operationId": "list_notifications_api_v1_notifications_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "unread_only",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Unread Only",
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/NotificationOut"
-                  },
-                  "title": "Response List Notifications Api V1 Notifications Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "The caller's notifications",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/preferences": {
-      "get": {
-        "operationId": "list_preferences_api_v1_notifications_preferences_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PreferenceOut"
-                  },
-                  "title": "Response List Preferences Api V1 Notifications Preferences Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Which categories the caller has muted",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/preferences/mute": {
-      "post": {
-        "operationId": "mute_api_v1_notifications_preferences_mute_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MuteIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PreferenceOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Mute a non-critical category",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/preferences/unmute": {
-      "post": {
-        "operationId": "unmute_api_v1_notifications_preferences_unmute_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MuteIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Unmute a category",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/read-all": {
-      "post": {
-        "operationId": "mark_all_read_api_v1_notifications_read_all_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "integer"
-                  },
-                  "title": "Response Mark All Read Api V1 Notifications Read All Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Mark every notification read",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
     "/api/v1/notifications/reminder-offsets": {
       "put": {
         "operationId": "set_reminder_offsets_api_v1_notifications_reminder_offsets_put",
@@ -7257,74 +7240,6 @@
           }
         },
         "summary": "How long before the deadline to remind",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/unread-count": {
-      "get": {
-        "operationId": "unread_count_api_v1_notifications_unread_count_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "integer"
-                  },
-                  "title": "Response Unread Count Api V1 Notifications Unread Count Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "How many are unread",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/{notification_id}/read": {
-      "post": {
-        "operationId": "mark_read_api_v1_notifications__notification_id__read_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "notification_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Notification Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Mark one notification read",
         "tags": [
           "notifications"
         ]
@@ -7459,6 +7374,7 @@
     },
     "/api/v1/periods": {
       "get": {
+        "description": "The weeks of the workspace being worked in, or of all of them when asked.\n\nThe default is the one workspace, because a screen that describes a workspace has to describe\nthe one it is on. A professor's reads may span the workspaces they belong to (ADR 0016), and\na screen that labels records from any of them \u2014 a review, a student's history \u2014 asks for the\nwide list by name. Each period carries its `workspace_id` either way.",
         "operationId": "list_periods_api_v1_periods_get",
         "parameters": [
           {
@@ -7476,6 +7392,16 @@
                 }
               ],
               "title": "Through"
+            }
+          },
+          {
+            "in": "query",
+            "name": "across_workspaces",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Across Workspaces",
+              "type": "boolean"
             }
           }
         ],
@@ -7982,6 +7908,31 @@
         ]
       }
     },
+    "/api/v1/projects/joinable": {
+      "get": {
+        "operationId": "list_joinable_api_v1_projects_joinable_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JoinableProjectOut"
+                  },
+                  "title": "Response List Joinable Api V1 Projects Joinable Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Projects a student may join",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}": {
       "get": {
         "operationId": "get_project_api_v1_projects__project_id__get",
@@ -8169,6 +8120,59 @@
           }
         },
         "summary": "Record a research decision and its rationale",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/join": {
+      "post": {
+        "operationId": "join_project_api_v1_projects__project_id__join_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Join a project that is open to joining",
         "tags": [
           "projects"
         ]
@@ -8785,6 +8789,54 @@
         ]
       }
     },
+    "/api/v1/reports/{report_id}/versions": {
+      "get": {
+        "description": "REP-05: a resubmission adds a version and never replaces history \u2014 so history needs a reader.\n\n`ScopeDep`, not `ProfScopeDep`: a student is entitled to their own, and the visibility\npredicate already confines them to it.",
+        "operationId": "list_versions_api_v1_reports__report_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VersionSummaryOut"
+                  },
+                  "title": "Response List Versions Api V1 Reports  Report Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Every submitted version of one report",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
     "/api/v1/repositories": {
       "get": {
         "operationId": "list_repositories_api_v1_repositories_get",
@@ -9233,6 +9285,7 @@
     },
     "/api/v1/users": {
       "get": {
+        "description": "Every account in every workspace the caller belongs to; each row carries its own\n`workspace_id` (ADR 0016). For a student, who belongs to one, that is themselves.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {
@@ -9550,6 +9603,347 @@
         "summary": "Remove a student from the workspace",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/workspace": {
+      "post": {
+        "description": "Only a student who has not started work: their history is pinned to the workspace it was\nwritten in, and the database refuses the move rather than dragging it along (ADR 0014).",
+        "operationId": "move_student_api_v1_users__user_id__workspace_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveStudentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move a student to another workspace",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/workspaces": {
+      "get": {
+        "operationId": "list_workspaces_api_v1_workspaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceOut"
+                  },
+                  "title": "Response List Workspaces Api V1 Workspaces Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The workspaces this professor administers",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "operationId": "create_workspace_api_v1_workspaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a workspace and join it",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}": {
+      "get": {
+        "operationId": "get_workspace_api_v1_workspaces__workspace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one workspace",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "patch": {
+        "operationId": "update_workspace_api_v1_workspaces__workspace_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename a workspace or set its timezone",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/archive": {
+      "post": {
+        "operationId": "archive_workspace_api_v1_workspaces__workspace_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Close a workspace that nobody is left in",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/join": {
+      "post": {
+        "operationId": "join_workspace_api_v1_workspaces__workspace_id__join_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move your account into this workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/leave": {
+      "post": {
+        "operationId": "leave_workspace_api_v1_workspaces__workspace_id__leave_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move your account out of this workspace",
+        "tags": [
+          "workspaces"
         ]
       }
     }

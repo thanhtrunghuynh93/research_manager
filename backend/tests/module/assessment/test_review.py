@@ -113,6 +113,61 @@ async def test_an_override_keeps_the_original_model_output(
     assert stored.effective_ratings["progress"]["rating"] == 4, "the override is what stands"
 
 
+async def test_overriding_every_dimension_to_unknown_publishes_no_index(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """ASSESS-04: an unknown is an absence of evidence and never a zero.
+
+    The draft's index was computed once and stored, so overriding its components left it behind:
+    four dimensions set to Unknown still published the number the model's ratings had produced —
+    0/100 — on the professor's page, on the student's released assessment, and as a point in the
+    trajectory.
+    """
+    _, project, assessment = await _assessed(db, prof_scope, student_a)
+    unknown = {name: {"rating": "unknown"} for name in assessment.ratings}
+
+    await service.approve(
+        db,
+        prof_scope,
+        assessment.id,
+        override={"ratings": unknown},
+        rationale="Nothing here can be rated: the week was spent on tooling.",
+    )
+
+    stored = await service.get_assessment(db, prof_scope, assessment.id)
+    assert stored.progress_index is None, "not rated, and in particular not zero"
+    assert stored.model_progress_index == assessment.progress_index, "the draft's own is kept"
+    assert all(value["rating"] == "unknown" for value in stored.effective_ratings.values())
+
+    student_scope = await identity_service.scope_for(db, student_a)
+    released = await service.get_assessment(db, student_scope, assessment.id)
+    assert released.progress_index is None, "the student is shown the same thing"
+
+    series = await service.progress_series(
+        db, prof_scope, student_id=student_a.id, project_id=project.id
+    )
+    assert [point.progress_index for point in series] == [None], "and so is the trajectory"
+
+
+async def test_an_override_of_one_dimension_recomputes_the_index(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """The index follows the ratings that stand, not only when they become unrateable."""
+    _, _, assessment = await _assessed(db, prof_scope, student_a)
+    ratings = {name: {"rating": 4} for name in assessment.ratings}
+
+    await service.approve(
+        db,
+        prof_scope,
+        assessment.id,
+        override={"ratings": ratings},
+        rationale="Every dimension is at the top of the rubric; the draft under-rated the week.",
+    )
+
+    stored = await service.get_assessment(db, prof_scope, assessment.id)
+    assert stored.progress_index == 100
+
+
 async def test_an_override_without_a_reason_is_refused(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:

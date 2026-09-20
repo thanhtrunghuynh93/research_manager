@@ -12,17 +12,28 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import cost
 from app.ai.gateway import Budget, CallContext, OpenAIGateway
-from app.ai.schemas import ClaimList
+from app.ai.schemas import AnswerDraft, ClaimList, ClaimVerdicts, RoutePlan, RubricOutput, strict
 from app.core.authz import Scope
 from app.core.ids import uuid7
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 
 pytestmark = pytest.mark.module
+
+
+class BadRequestError(Exception):
+    """What the provider raises for a schema strict mode cannot express.
+
+    The name matters: `_is_transient` reads `type(error).__name__`, and `BadRequestError` is
+    deliberately absent from `_TRANSIENT_NAMES` because a malformed request fails identically on
+    the second attempt. Calling this anything else would let the test pass while the gateway
+    retried a request that can never succeed.
+    """
 
 
 # ------------------------------------------------------------------ a stand-in for the SDK
@@ -57,6 +68,13 @@ class _Completions:
 
     async def parse(self, **kwargs: Any) -> _Completion:
         self.parent.requests.append(kwargs)
+        # The real endpoint refuses a schema strict mode cannot express, and this stub used to
+        # accept anything — which is half of why `rate_rubric` could fail on every production call
+        # while the suite stayed green. A stub that is more permissive than the thing it stands in
+        # for is not a test double, it is a blindfold.
+        broken = strict.violations(kwargs["response_format"])
+        if broken:
+            raise BadRequestError("Invalid schema for response_format: " + "; ".join(broken))
         if self.parent.raises:
             error = self.parent.raises.pop(0)
             if error is not None:
@@ -381,3 +399,94 @@ async def _rows(db: AsyncSession, workspace: identity_models.Workspace) -> list[
         .scalars()
         .all()
     )
+
+
+async def test_a_schema_strict_mode_cannot_express_fails_once_and_is_not_retried(
+    db: AsyncSession, workspace: identity_models.Workspace
+) -> None:
+    """The defect that cost every assessment for a fortnight, pinned from the provider's side.
+
+    `RubricOutput.dimensions` was an open-ended map, the SDK's strict converter passed it through,
+    and the endpoint answered 400 on all 13 runs. Nothing retried it — correctly, since a
+    malformed request fails the same way twice — but nothing caught it either.
+    """
+
+    class OpenEnded(BaseModel):
+        ratings: dict[str, int] = {}
+
+    client = _StubClient(parsed=None)
+
+    result = await _gateway(client, max_attempts=3, backoff_seconds=0).complete_structured(
+        prompt_id="extract_claims",
+        inputs={"entry": "x"},
+        schema=OpenEnded,
+        budget=Budget(),
+        context=_context(workspace.id, db),
+    )
+
+    assert not result.ok
+    # Once, not three times: retrying a schema the server will never accept only spends money.
+    assert len(client.requests) == 1
+    assert str((await _rows(db, workspace))[-1].status) == "failed"
+
+
+async def test_every_prompt_is_sent_with_a_schema_the_provider_accepts(
+    db: AsyncSession, workspace: identity_models.Workspace
+) -> None:
+    # The stub refuses a dirty schema, so this asserts the real pairing of prompt to response
+    # model rather than a hand-kept list of them.
+    for prompt_id, schema in (
+        ("extract_claims", ClaimList),
+        ("match_claims", ClaimVerdicts),
+        ("rate_rubric", RubricOutput),
+        ("route_question", RoutePlan),
+        ("answer", AnswerDraft),
+    ):
+        # `model_construct` skips validation: what the provider returns is not under test here,
+        # only whether the schema it was asked for is one the endpoint would have accepted.
+        client = _StubClient(parsed=schema.model_construct())
+        result = await _gateway(client).complete_structured(
+            prompt_id=prompt_id,
+            inputs={"entry": "x", "question": "x"},
+            schema=schema,
+            budget=Budget(),
+            context=_context(workspace.id, db),
+        )
+
+        assert result.ok, f"{prompt_id} sent a schema the provider would refuse"
+
+
+async def test_a_failure_says_what_kind_it_was_without_quoting_the_provider(
+    db: AsyncSession, workspace: identity_models.Workspace
+) -> None:
+    """The professor's screen gets a sentence it can act on; the free text stays in the log.
+
+    A schema rejection is ours to fix and no retry will help, so the reader is told that much.
+    What they are not told is the provider's own message: here it quotes only our schema, but the
+    same field carries moderation text on other paths, and that is one relay from a student's
+    sentence landing on a dashboard.
+    """
+    leaky = BadRequestError("the student wrote something regrettable")
+    leaky.body = {  # type: ignore[attr-defined]
+        "error": {
+            "type": "invalid_request_error",
+            "param": "response_format",
+            "message": "the student wrote something regrettable",
+        }
+    }
+    client = _StubClient(parsed=ClaimList(claims=[]), raises=[leaky])
+
+    result = await _gateway(client, max_attempts=3, backoff_seconds=0).complete_structured(
+        prompt_id="extract_claims",
+        inputs={"entry": "x"},
+        schema=ClaimList,
+        budget=Budget(),
+        context=_context(workspace.id, db),
+    )
+
+    assert not result.ok
+    assert result.error is not None
+    assert "response schema" in result.error
+    assert "regrettable" not in result.error
+    # Not retried: a malformed request fails the same way the second time.
+    assert len(client.requests) == 1

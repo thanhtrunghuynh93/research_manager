@@ -54,7 +54,11 @@ async def run_case(case: Case, gateway: AIGateway) -> Outcome:
     if not rating.ok:
         return _failed(case, f"rate_rubric: {rating.error}")
 
-    validated = validate_output(rating.value, allowed_evidence_ids=case.evidence_ids)
+    validated = validate_output(
+        rating.value,
+        allowed_evidence_ids=case.evidence_ids,
+        allowed_dimensions=set(DEFAULT_DIMENSIONS),
+    )
     ratings = {name: value["rating"] for name, value in validated.items()}
 
     cited: set[str] = set()

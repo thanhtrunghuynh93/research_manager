@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.assessment.models import FeedbackKind as FeedbackKind
@@ -58,7 +58,11 @@ class AssessmentOut(BaseModel):
     rubric_version_id: UUID | None = None
     analysis_run_id: UUID | None = None
     ratings: dict[str, Any]
+    # What stands after any override. `None` is "Not rated", never zero (ASSESS-04).
     progress_index: int | None = None
+    # The draft's own index, before the professor touched it. Kept so the override is legible as
+    # a change rather than silently becoming the only number there ever was.
+    model_progress_index: int | None = None
     plan_completion: Decimal | None = None
     coverage_pct: Decimal
     confidence: str
@@ -93,13 +97,27 @@ class ApproveIn(BaseModel):
     rationale: str | None = None
 
 
+def _require_non_blank(value: str) -> str:
+    """Trimmed, and refused when nothing is left."""
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("must not be blank")
+    return cleaned
+
+
+# A body that is only whitespace is an empty body. `min_length=1` counted the spaces, so three of
+# them were accepted and filed against an assessment — a correction request the professor received
+# and could read nothing in, and which the student cannot withdraw.
+NonBlank = Annotated[str, AfterValidator(_require_non_blank)]
+
+
 class CorrectionIn(BaseModel):
-    body: str = Field(min_length=1)
+    body: NonBlank
     evidence: list[Any] = Field(default_factory=list)
 
 
 class SupervisionNoteIn(BaseModel):
-    body: str = Field(min_length=1)
+    body: NonBlank
     student_id: UUID | None = None
     project_id: UUID | None = None
     period_id: UUID | None = None

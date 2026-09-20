@@ -8,6 +8,7 @@ them run afterwards.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -25,7 +26,13 @@ from app.core.types import Role
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.projects.schemas import PlanBaselineOut
-from app.reporting import calendar, events, policies, repository  # noqa: F401  (policies register)
+from app.reporting import (  # noqa: F401  (policies register)
+    artifacts,
+    calendar,
+    events,
+    policies,
+    repository,
+)
 from app.reporting.models import (
     CalendarConfig,
     ObligationState,
@@ -46,8 +53,10 @@ from app.reporting.schemas import (
     ReportOut,
     RevisionRequestOut,
     VersionOut,
+    VersionSummaryOut,
 )
 
+log = logging.getLogger(__name__)
 # Eight weeks ahead, as the architecture's periodic task does (architecture §7.1).
 # How far back the daily baseline task will still catch up, if the worker was down.
 BASELINE_CATCHUP = timedelta(days=14)
@@ -70,6 +79,17 @@ CONTENT_FIELDS = (
 
 
 # ------------------------------------------------------------------ calendar (REP-01)
+
+
+async def current_calendar(session: AsyncSession, scope: Scope) -> CalendarConfigOut | None:
+    """The calendar version in force, or absent when none has been configured (REP-01).
+
+    Absent is a state a screen has to be able to tell from "configured": without it the only
+    signal is an empty period list, which lies the moment a calendar is replaced after periods
+    already exist.
+    """
+    row = await repository.latest_calendar(session, scope.workspace_id)
+    return CalendarConfigOut.model_validate(row) if row is not None else None
 
 
 async def configure_calendar(
@@ -99,8 +119,7 @@ async def configure_calendar(
     await session.flush()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="calendar.configured",
         target_table="calendar_configs",
         target_id=config.id,
@@ -167,9 +186,20 @@ async def get_period(session: AsyncSession, scope: Scope, period_id: UUID) -> Pe
 
 
 async def list_periods(
-    session: AsyncSession, scope: Scope, *, through: date | None = None
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    through: date | None = None,
+    across_workspaces: bool = False,
 ) -> list[PeriodOut]:
-    rows = await repository.list_periods(session, scope, through=through)
+    """The reporting weeks of the workspace being worked in (REP-01).
+
+    `across_workspaces` widens it to every workspace the caller belongs to, which only a caller
+    that then groups its results by workspace has any business asking for.
+    """
+    rows = await repository.list_periods(
+        session, scope, through=through, across_workspaces=across_workspaces
+    )
     return [PeriodOut.model_validate(row) for row in rows]
 
 
@@ -209,8 +239,52 @@ async def ensure_obligations(
 async def list_obligations(
     session: AsyncSession, scope: Scope, period_id: UUID, *, student_id: UUID | None = None
 ) -> list[ObligationOut]:
-    rows = await repository.list_obligations(session, scope, period_id, student_id=student_id)
-    return [ObligationOut.model_validate(row) for row in rows]
+    """Each obligation the caller still owes, and whether the current version answers it.
+
+    Obligations for a project the student has since left are left out. The row stays — it is how
+    the week was derived and the professor's history reads it — but a project you are no longer on
+    should not sit on your week, and `_obligations_still_owed` is where that is decided for both
+    of the screens that ask.
+
+    `submitted` is read from the same place `unfulfilled_entries` reads it — the entries on the
+    report's current version — so the student's screen and the professor's outstanding list cannot
+    disagree about whether a week is done. One query per student, not per obligation.
+    """
+    period = await _require_period(session, scope, period_id)
+    rows = await _obligations_still_owed(session, period, scope=scope, student_id=student_id)
+    submitted_by_student: dict[UUID, set[UUID]] = {}
+    out = []
+    for row in rows:
+        if row.student_id not in submitted_by_student:
+            submitted_by_student[row.student_id] = await repository.submitted_project_ids(
+                session, period_id=period_id, student_id=row.student_id
+            )
+        out.append(
+            ObligationOut.model_validate(row).model_copy(
+                update={"submitted": row.project_id in submitted_by_student[row.student_id]}
+            )
+        )
+    return out
+
+
+async def _obligations_still_owed(
+    session: AsyncSession,
+    period: ReportingPeriod,
+    *,
+    scope: Scope,
+    student_id: UUID | None = None,
+) -> list[ReportingObligation]:
+    """The period's obligations, minus those whose membership did not last the week (REP-01).
+
+    A report covers a week, so a membership that ended inside it owes nothing for it — the rule
+    `memberships_active_in_range` derives by, applied again on the way out because an obligation
+    derived before someone left is still sitting in the table.
+    """
+    rows = await repository.list_obligations(session, scope, period.id, student_id=student_id)
+    still_owed = await projects_service.memberships_still_owing(
+        session, [row.membership_id for row in rows], through=period.local_end
+    )
+    return [row for row in rows if row.membership_id in still_owed]
 
 
 async def excuse_obligation(
@@ -304,12 +378,30 @@ async def _carried_plan(
     if entry is None:
         return [], None
 
-    items = entry.next_plan.get("items") if isinstance(entry.next_plan, dict) else None
-    if not isinstance(items, list) or not items:
-        return [], entry.id
-    return [
-        item for item in items if isinstance(item, dict) and item.get("planned_outcome")
-    ], entry.id
+    return _plan_items(entry.next_plan), entry.id
+
+
+def _plan_items(next_plan: Any) -> list[dict[str, Any]]:
+    """The commitments in a next-week plan, in the one shape a baseline is frozen from.
+
+    `next_plan` is free-form JSON (REP-03 leaves its structure to the client) and two shapes
+    reached the column. `{"items": [{"planned_outcome": …, "weight": …}]}` is the one a baseline
+    needs, because PROJ-04 weights the commitments; `{"outcomes": ["…"]}` is what the report editor
+    wrote, and nothing read it — so every plan a student typed was dropped on its way to becoming
+    next week's baseline, and the assessment that followed said "no plan baseline was in effect".
+
+    The editor now writes `items`. The other shape is still accepted because rows carrying it are
+    already stored, and a plan written last week has to be readable this week.
+    """
+    if not isinstance(next_plan, dict):
+        return []
+    items = next_plan.get("items")
+    if isinstance(items, list):
+        return [item for item in items if isinstance(item, dict) and item.get("planned_outcome")]
+    outcomes = next_plan.get("outcomes")
+    if isinstance(outcomes, list):
+        return [{"planned_outcome": str(outcome)} for outcome in outcomes if str(outcome).strip()]
+    return []
 
 
 # ------------------------------------------------------------------ drafts and submission
@@ -352,11 +444,28 @@ async def submit_report(
             return await _version_out(session, scope, existing)
 
     period = await _require_period(session, scope, period_id)
-    obligations = await repository.list_obligations(
-        session, scope, period_id, student_id=report.student_id
+    # The same set the editor builds its tabs from, and for the same reason: an obligation whose
+    # membership ended inside the week is not owed (REP-01). Read raw, the completeness check
+    # demanded an entry for a project the student had left — which they cannot write and cannot
+    # rejoin — so one departure made the week permanently unsubmittable.
+    obligations = await _obligations_still_owed(
+        session, period, scope=scope, student_id=report.student_id
     )
     submitted = {UUID(str(entry["project_id"])) for entry in entries}
     _check_package_is_complete(obligations, submitted)
+    # Titles resolved only when the check is about to fail, so the ordinary submission pays
+    # nothing for a message it will never see.
+    _check_package_says_something(
+        entries,
+        titles=(
+            {}
+            if all(_entry_says_something(entry) for entry in entries)
+            else {
+                project_id: await projects_service.project_title(session, project_id)
+                for project_id in submitted
+            }
+        ),
+    )
 
     at = now()
     previous_version_id = report.current_version_id
@@ -408,6 +517,16 @@ async def submit_report(
             )
         )
 
+    # An entry the package no longer covers is carried across rather than dropped. The only way to
+    # be in this branch is a project that stopped being owed after it was written — one the student
+    # left, or one excused since — and the new version becomes `current_version_id`, which is what
+    # the professor and the assessment pipeline read. Leaving it out would let a resubmission
+    # delete submitted work from the record, against what ending a membership promises: "what you
+    # have already submitted stays on the record".
+    for project_id, entry in previous_entries.items():
+        if project_id not in submitted:
+            session.add(_carried_entry(entry, version.id))
+
     report.current_version_id = version.id
     report.workflow_state = (
         ReportState.SUBMITTED if previous_version_id is None else ReportState.RESUBMITTED
@@ -425,6 +544,17 @@ async def submit_report(
         after={"version_no": version.version_no, "timing": version.timing_status.value},
     )
     await session.flush()
+
+    # Read the week's attachments now that the week is finished (REP-04). Queued before the event
+    # so the reading jobs are enqueued ahead of the assessment the event triggers — with one worker
+    # that means the text is indexed before the snapshot is taken. It is an ordering by insertion
+    # rather than a guarantee: under a pool the assessment can still start first, and a snapshot
+    # missing an attachment is what the pipeline's confidence and the professor's re-run are for.
+    queued = await artifacts.read_attachments_for(
+        session, student_id=report.student_id, period_id=period_id
+    )
+    if queued:
+        log.info("queued %d attachment(s) to be read for the submitted week", queued)
 
     await events.emit(
         events.ReportSubmitted(
@@ -519,6 +649,22 @@ async def get_version(session: AsyncSession, scope: Scope, version_id: UUID) -> 
     return await _version_out(session, scope, version)
 
 
+async def list_versions(
+    session: AsyncSession, scope: Scope, *, report_id: UUID
+) -> list[VersionSummaryOut]:
+    """Every version of one report, for the screen that reads a week back (REP-05).
+
+    The report is fetched first so that a report belonging to another workspace is a 404 rather
+    than an empty list: an empty list is a real state — a report drafted and never submitted — and
+    the two must not look the same.
+    """
+    report = await repository.get_report_by_id(session, scope, report_id)
+    if report is None:
+        raise NotFoundError("report not found")
+    rows = await repository.list_versions(session, scope, report_id)
+    return [VersionSummaryOut.model_validate(row) for row in rows]
+
+
 # ------------------------------------------------------------------ job-level reads (REP-08)
 #
 # The worker has no Scope: it acts for the system, not for a person. These functions are the only
@@ -535,6 +681,32 @@ class UnfulfilledEntry:
 async def period_for_job(session: AsyncSession, period_id: UUID) -> PeriodOut | None:
     row = await repository.period_row(session, period_id)
     return None if row is None else PeriodOut.model_validate(row)
+
+
+@dataclass(frozen=True, slots=True)
+class VersionOwner:
+    """Who a submitted version belongs to, and where. A job-level read: no Scope to hand."""
+
+    workspace_id: UUID
+    student_id: UUID
+
+
+async def version_owner_for_job(
+    session: AsyncSession, report_version_id: UUID
+) -> VersionOwner | None:
+    """The workspace and student behind one submitted version, or absent.
+
+    The evidence re-index job carries only the version id — the event it stands in for is long
+    gone by then — so it reads the owner back rather than trusting arguments that could have been
+    serialised under a different account.
+    """
+    version = await session.get(ReportVersion, report_version_id)
+    if version is None:
+        return None
+    report = await session.get(WeeklyReport, version.report_id)
+    if report is None:
+        return None
+    return VersionOwner(workspace_id=report.workspace_id, student_id=report.student_id)
 
 
 async def period_timezone(session: AsyncSession, period_id: UUID) -> str:
@@ -579,7 +751,17 @@ async def unfulfilled_entries(
     unfulfilled: list[UnfulfilledEntry] = []
     submitted_by_student: dict[UUID, set[UUID]] = {}
 
-    for obligation in await repository.required_obligations_at(session, period_id, instant=instant):
+    period = await repository.get_period_unscoped(session, period_id)
+    required = await repository.required_obligations_at(session, period_id, instant=instant)
+    # The same rule the student's own screen applies, from the same place: without it a professor
+    # is told a student owes a report for a project that student can no longer even open.
+    if period is not None:
+        still_owed = await projects_service.memberships_still_owing(
+            session, [o.membership_id for o in required], through=period.local_end
+        )
+        required = [o for o in required if o.membership_id in still_owed]
+
+    for obligation in required:
         if obligation.student_id not in submitted_by_student:
             submitted_by_student[obligation.student_id] = await repository.submitted_project_ids(
                 session, period_id=period_id, student_id=obligation.student_id
@@ -875,6 +1057,33 @@ def _content_hash(payload: dict[str, Any]) -> bytes:
     ).digest()
 
 
+def _carried_entry(previous: ProjectReportEntry, version_id: UUID) -> ProjectReportEntry:
+    """A previous version's entry, copied onto a new version verbatim.
+
+    `content_hash` and `content_changed_in_version_id` come across untouched, which is the point:
+    nothing about the entry changed, so AC-17 keeps it pointing at the version it last changed in
+    and no new assessment falls due for a project nobody wrote about this week.
+    """
+    return ProjectReportEntry(
+        workspace_id=previous.workspace_id,
+        report_version_id=version_id,
+        project_id=previous.project_id,
+        stage=previous.stage,
+        milestone_ids=list(previous.milestone_ids or []),
+        planned_work_ref=dict(previous.planned_work_ref or {}),
+        work_performed=previous.work_performed,
+        results=previous.results,
+        experiments=list(previous.experiments or []),
+        deviations=previous.deviations,
+        next_plan=dict(previous.next_plan or {}),
+        questions=previous.questions,
+        evidence_refs=list(previous.evidence_refs or []),
+        hours=previous.hours,
+        content_hash=previous.content_hash,
+        content_changed_in_version_id=previous.content_changed_in_version_id,
+    )
+
+
 def _check_package_is_complete(
     obligations: list[ReportingObligation], submitted: set[UUID]
 ) -> None:
@@ -893,6 +1102,51 @@ def _check_package_is_complete(
             "an entry names a project with no reporting obligation this period",
             unexpected_project_ids=[str(project_id) for project_id in sorted(unexpected, key=str)],
         )
+
+
+def _entry_says_something(payload: dict[str, Any]) -> bool:
+    """Whether this one entry has anything in it at all."""
+    if any(
+        str(payload.get(field) or "").strip()
+        for field in ("work_performed", "results", "deviations", "questions")
+    ):
+        return True
+    return bool(payload.get("next_plan")) or payload.get("hours") is not None
+
+
+def _check_package_says_something(
+    entries: list[dict[str, Any]], titles: dict[UUID, str] | None = None
+) -> None:
+    """An entry in which nothing was written is a mistake, not a week's work on that project.
+
+    The editor recovers the autosaved draft, and a report submitted without one — the seed does
+    this, and so does any client that posts entries directly — used to reopen as empty boxes over
+    a version that had content. Pressing Submit then wrote that emptiness over the record, which
+    is how this deployment acquired a version whose every field was blank. Refusing here is the
+    half of the fix that does not depend on which screen the submission came from.
+
+    This was once a test of the *package*: one non-empty field anywhere was enough, on the reading
+    that judging a single entry's substance is the professor's job and not this function's. That
+    reading still holds and is why the test is emptiness rather than adequacy — but at package
+    level it let a wholly blank entry through whenever a sibling tab had text, and the obligation
+    for that project was then marked satisfied. One press of one button could mark every project a
+    student is on as reported, with nothing in any of them, and no screen anywhere said otherwise.
+    So the same test now applies per entry, which is the granularity at which an obligation is
+    discharged.
+    """
+    empty = [payload.get("project_id") for payload in entries if not _entry_says_something(payload)]
+    if not empty:
+        return
+    if not entries:
+        raise ValidationError("the package is empty — write something in at least one entry")
+    named = ", ".join(
+        (titles or {}).get(project_id, str(project_id)) for project_id in empty if project_id
+    )
+    raise ValidationError(
+        f"nothing was written for {named or 'one of the projects'}"
+        " — an entry with every box empty is not a report on that project",
+        empty_project_ids=[str(project_id) for project_id in empty if project_id],
+    )
 
 
 def _timing_status(
@@ -928,10 +1182,19 @@ async def grace_minutes_for(session: AsyncSession, period: ReportingPeriod) -> i
 
 
 async def _next_version_no(session: AsyncSession, report: WeeklyReport) -> int:
-    if report.current_version_id is None:
-        return 1
-    current = await session.get(ReportVersion, report.current_version_id)
-    return 1 if current is None else current.version_no + 1
+    """One past the highest version this report has ever had (REP-05).
+
+    From the highest, not from `current_version_id`. The two are normally the same, and when they
+    are not — a current version rolled back to an earlier one, a restore, a correction applied by
+    hand — counting from the current one reissues a number the table already holds, and
+    `uq_report_versions_report_id_version_no` refuses the insert. The student then cannot submit
+    that week again at all, and the only thing on screen is "that record already exists".
+
+    REP-05 also settles which of the two is right: a resubmission *adds* to the history and never
+    replaces it, so the sequence belongs to the history rather than to whichever version is being
+    read today.
+    """
+    return await repository.highest_version_no(session, report.id) + 1
 
 
 async def _resolve_open_revision_requests(
@@ -1011,10 +1274,48 @@ def _audit(
 ) -> None:
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action=action,
         target_table=table,
         target_id=target_id,
         after=after,
     )
+
+
+async def _on_membership_started(event: Any, session: AsyncSession) -> None:
+    """REP-01: derive the week's obligation as soon as somebody is on a project.
+
+    Without this a project created on Tuesday owes nothing until `ensure_periods` runs at 00:15 the
+    next morning — the student sees a project and no report, which reads as the system not having
+    noticed. The nightly job stays: this is the same derivation brought forward, and running both
+    is safe because `ensure_obligations` is idempotent per (membership, period).
+
+    Runs under a system scope rather than the acting student's, because deriving obligations is a
+    professor's act and a student has no standing to write one — the borrowed identity is what lets
+    the same predicates apply here as to the scheduled run (ADR 0011).
+
+    Whether the new membership actually owes *this* week is not decided here. That is
+    `memberships_active_in_range`'s rule: a project started now owes the week it lands in, and a
+    project joined now owes from the next one (PROJ-07). This function only makes the derivation
+    happen at the right moment.
+    """
+    # `system_scope` always resolves: a workspace with no professor yet borrows its own id as a
+    # value that names no user, which is what lets the calendar run before anyone has accepted.
+    scope = await identity_service.system_scope(session, event.workspace_id)
+    periods = await list_periods(session, scope)
+    at = now()
+    started = [period for period in periods if period.start_utc <= at]
+    if not started:
+        return  # No calendar, or none of its weeks has begun. The nightly run will catch up.
+
+    await ensure_obligations(session, scope, max(started, key=lambda one: one.start_utc).id)
+
+
+def register_subscriptions() -> None:
+    """Imported for the side effect, like the other modules' (docs/repo_layout.md §3.2)."""
+    from app.projects import events as projects_events
+
+    projects_events.subscribe(projects_events.MembershipStarted, _on_membership_started)
+
+
+register_subscriptions()

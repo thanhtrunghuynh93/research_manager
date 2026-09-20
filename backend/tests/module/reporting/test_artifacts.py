@@ -15,7 +15,7 @@ from datetime import date
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ForbiddenError, ValidationError
+from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.storage import InMemoryObjectStore, sha256_of
 from app.identity import models as identity_models
 from app.identity import service as identity_service
@@ -76,7 +76,12 @@ async def _upload(
         store=store,
     )
     await store.put_bytes(grant.storage_key, data, content_type=grant.content_type)
-    return await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+    version = await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+    # Confirming no longer reads the file — a job does, seconds later. Running it here is what the
+    # worker does, so every test below sees the state the student eventually sees. Re-read rather
+    # than reused: `confirm_upload` returned a snapshot taken before the file was read.
+    await artifacts.extract_version(db, version.version_id, store=store)
+    return (await artifacts.list_versions(db, scope, grant.artifact_id))[-1]
 
 
 async def test_a_grant_names_a_key_derived_from_the_checksum(
@@ -359,7 +364,40 @@ async def test_a_link_that_is_simply_unreachable_is_recorded_too(
     )
 
     assert version.extraction_state is ExtractionState.FAILED
-    assert "TimeoutError" in version.extraction_note
+    # In words, not in httpx's. This read "the link could not be fetched (TimeoutError)" on the
+    # student's own screen, where a class name distinguishes nothing they could act on: a typo, a
+    # login wall and a site that is down all want different responses.
+    assert "did not answer in time" in version.extraction_note
+    assert "TimeoutError" not in version.extraction_note
+
+
+async def test_a_link_behind_a_sign_in_says_so_rather_than_naming_the_exception(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    class _Response:
+        status_code = 403
+
+    class _RefusedError(Exception):
+        response = _Response()
+
+    async def _explode(url: str) -> object:
+        raise _RefusedError("Client error '403 Forbidden'")
+
+    version = await artifacts.attach_link(
+        db,
+        scope,
+        project_id=project.id,
+        url="https://paywalled.example/x",
+        store=store,
+        fetch=_explode,
+    )
+
+    assert version.extraction_state is ExtractionState.FAILED
+    assert "needs a sign-in" in version.extraction_note
+    assert "403" in version.extraction_note
 
 
 async def test_an_attachment_can_be_bound_to_the_entry_it_supports(
@@ -624,3 +662,326 @@ async def test_an_upload_that_never_arrived_is_not_listed_as_an_attachment(
     rows = await artifacts.list_artifacts(db, prof_scope, student_id=student_a.id)
 
     assert [row.filename for row in rows] == []
+
+
+# ------------------------------------------- the attachment survives a provider outage (AC-13)
+
+
+async def test_a_dead_embedding_provider_does_not_lose_the_attachment(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bytes arrived and the text was extracted before anything indexed it.
+
+    Indexing runs inside the confirming transaction so the chunks commit with the version that
+    cites them, which puts the embedding provider on the student's upload path. A provider that is
+    down used to surface as a 500 and lose an attachment that was already stored.
+    """
+    from app.evidence import service as evidence_service
+
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
+        raise RuntimeError("429 insufficient_quota: you have no credits remaining")
+
+    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+
+    uploaded = await _upload(db, scope, store, project)
+
+    assert uploaded.extraction_state is ExtractionState.OK
+    listed = await artifacts.list_artifacts(db, scope, student_id=student_a.id)
+    assert any(one.artifact_id == uploaded.artifact_id for one in listed), (
+        "the attachment is on the student's record even though nothing could be indexed"
+    )
+
+
+async def test_the_attachment_is_indexed_when_the_provider_comes_back(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recoverable without the student re-uploading: the extracted text is already in the store."""
+    from app.evidence import service as evidence_service
+
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+    uploaded = await _upload(db, scope, store, project)
+    monkeypatch.undo()
+
+    # What the retry job does, reading the text back from the object store.
+    indexed = await evidence_service.index_artifact_version(db, uploaded.version_id, store=store)
+
+    assert indexed is True
+    hits = await evidence_service.search_evidence(db, scope, query="ablation difficulty proxy")
+    assert hits, "the attachment is citable once the provider answers again"
+
+
+async def test_an_attachment_with_no_text_is_a_no_op_for_the_retry(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    """Nothing to read is not a failure: extraction records three outcomes, not two."""
+    from app.evidence import service as evidence_service
+
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    uploaded = await _upload(db, scope, store, project, filename="figure.png", data=b"\x89PNG\r\n")
+
+    assert (
+        await evidence_service.index_artifact_version(db, uploaded.version_id, store=store) is False
+    )
+
+
+# ------------------------------------------------------------------ removal (REP-04, §11)
+
+
+async def _upload_for_week(
+    db: AsyncSession, scope, store: InMemoryObjectStore, project, period
+) -> object:
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        period_id=period.id,
+        filename="notes.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
+    version = await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+    await artifacts.extract_version(db, version.version_id, store=store)
+    return version
+
+
+async def test_removing_a_file_takes_it_out_of_storage_and_out_of_the_index(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """§11: deletion propagates to file storage, searchable indexes and answer caches."""
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, scope, store, project, period)
+
+    indexed = await _evidence_reference_count(db, version.version_id)
+    assert indexed == 1, "the attachment is searchable before it is removed"
+    assert _stored_keys(store, version.artifact_id), "its bytes are in the store"
+
+    await artifacts.remove_artifact(db, scope, version.artifact_id, store=store)
+
+    assert await _evidence_reference_count(db, version.version_id) == 0
+    assert _stored_keys(store, version.artifact_id) == []
+    assert await _artifact_exists(db, version.artifact_id) is False
+
+
+async def test_a_file_stays_the_students_to_remove_after_submitting(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    # The bound at submission was dropped. An attachment is the student's own evidence for their
+    # own work, and someone who uploaded the wrong thing should not have to ask permission to take
+    # it back — an assessment written against a removed file keeps its rationale and loses the
+    # citation, which the professor can see and re-run.
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, scope, store, project, period)
+
+    await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,
+        entries=[
+            {
+                "project_id": project.id,
+                "stage": "implementation",
+                "work_performed": "Ran the ablation",
+                "results": "No improvement over the baseline.",
+                "deviations": "",
+                "next_plan": {"outcomes": ["Try the length control"]},
+                "questions": "",
+            }
+        ],
+    )
+
+    await artifacts.remove_artifact(db, scope, version.artifact_id, store=store)
+
+    assert await _artifact_exists(db, version.artifact_id) is False
+
+
+async def test_a_co_member_cannot_even_see_the_file_to_remove_it(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    period, project = await _project(db, prof_scope, student_a)
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_b.id, joined_on=date(2026, 9, 1)
+    )
+    owner = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, owner, store, project, period)
+
+    # Not forbidden — not found. `artifact_visible_to` restricts attachments to the student who
+    # attached them, so a co-member on the same project never sees the file at all, and the
+    # ownership check inside `remove_artifact` is the second lock rather than the first.
+    co_member = await identity_service.scope_for(db, student_b)
+    with pytest.raises(NotFoundError):
+        await artifacts.remove_artifact(db, co_member, version.artifact_id, store=store)
+
+    assert await _artifact_exists(db, version.artifact_id) is True
+
+
+def _stored_keys(store: InMemoryObjectStore, artifact_id) -> list[str]:
+    """Both keys the attachment owns: the uploaded bytes and the text extracted beside them."""
+    return [key for key in store.stored_keys() if str(artifact_id) in key]
+
+
+async def _evidence_reference_count(db: AsyncSession, version_id) -> int:
+    from sqlalchemy import func, select
+
+    from app.evidence.models import EvidenceReference
+
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(EvidenceReference)
+            .where(EvidenceReference.source_id == version_id)
+        )
+    ).scalar_one()
+
+
+async def _artifact_exists(db: AsyncSession, artifact_id) -> bool:
+    from sqlalchemy import select
+
+    from app.reporting.models import Artifact
+
+    return (
+        await db.execute(select(Artifact.id).where(Artifact.id == artifact_id))
+    ).scalar_one_or_none() is not None
+
+
+async def test_confirming_an_upload_does_not_read_the_file(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """The upload returns as soon as the bytes are safe; nothing is read until the week is in.
+
+    Reading is what made attaching slow — unzipping a deck and embedding what comes out took the
+    better part of five seconds on the live stack — and a file attached and then removed before
+    submitting was never part of the report, so reading it would have been work done for nothing.
+    """
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        period_id=period.id,
+        filename="notes.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
+
+    version = await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+
+    assert version.uploaded is True, "the bytes are on the record"
+    assert version.extraction_state is ExtractionState.PENDING
+    assert await _evidence_reference_count(db, version.version_id) == 0
+
+    # What the worker then does, and the state the student ends up seeing.
+    await artifacts.extract_version(db, version.version_id, store=store)
+
+    after = (await artifacts.list_versions(db, scope, grant.artifact_id))[-1]
+    assert after.extraction_state is ExtractionState.OK
+    assert await _evidence_reference_count(db, version.version_id) == 1
+
+
+async def test_reading_the_same_version_twice_indexes_it_once(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    # A redelivered job is the ordinary case for a retried task, not an exceptional one.
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    version = await _upload_for_week(db, scope, store, project, period)
+
+    await artifacts.extract_version(db, version.version_id, store=store)
+
+    assert await _evidence_reference_count(db, version.version_id) == 1
+
+
+async def test_submitting_the_report_is_what_queues_the_reading(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """REP-04: the week is read when the week is finished, not as each file arrives.
+
+    A file attached and then removed before submitting was never part of the report, so reading it
+    would have been work done for nothing — and the reading is the expensive half.
+    """
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        period_id=period.id,
+        filename="notes.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
+    await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+
+    queued = await artifacts.read_attachments_for(db, student_id=student_a.id, period_id=period.id)
+    assert queued == 1, "the pending attachment is the one the submitted week will read"
+
+    # A version already read is not read again, which is what keeps a resubmission cheap.
+    versions = await artifacts.list_versions(db, scope, grant.artifact_id)
+    await artifacts.extract_version(db, versions[-1].version_id, store=store)
+    assert (
+        await artifacts.read_attachments_for(db, student_id=student_a.id, period_id=period.id) == 0
+    )
+
+
+async def test_another_students_attachments_are_not_read_by_this_submission(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    period, project = await _project(db, prof_scope, student_a)
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_b.id, joined_on=date(2026, 9, 1)
+    )
+    theirs = await identity_service.scope_for(db, student_b)
+    await _upload_for_week(db, theirs, store, project, period)
+
+    assert (
+        await artifacts.read_attachments_for(db, student_id=student_a.id, period_id=period.id) == 0
+    )

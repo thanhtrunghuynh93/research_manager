@@ -32,11 +32,25 @@ from app.core.config import Settings, get_settings
 log = logging.getLogger(__name__)
 
 # Modules list their tasks module here; app.worker imports them at startup so the tasks register.
+# Importing a module is what registers its event subscribers, and the worker now emits events of
+# its own — reading an attachment announces `ArtifactExtracted`, which evidence turns into index
+# entries. Every `tasks.py` imports its service lazily inside the job, so without this list those
+# subscribers do not exist in the worker process and an emit reaches nobody: the job succeeds, the
+# log says so, and nothing is indexed.
+SUBSCRIBER_MODULES: list[str] = [
+    "app.projects.service",
+    "app.reporting.service",
+    "app.evidence.service",
+    "app.assessment.events",
+    "app.notifications.service",
+]
+
 TASK_MODULES: list[str] = [
     "app.tasks",
     "app.notifications.scheduler_tasks",
     "app.assessment.tasks",
     "app.evidence.tasks",
+    "app.reporting.tasks",
 ]
 
 RETRY_TRANSIENT = procrastinate.RetryStrategy(max_attempts=5, wait=10, exponential_wait=2)

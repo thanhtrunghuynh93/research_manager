@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.reporting.models import ArtifactKind as ArtifactKind
@@ -41,6 +41,10 @@ class PeriodOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    # A professor's reads span every workspace they belong to (ADR 0016), and each workspace keeps
+    # its own calendar — so "this week" is one period per workspace, not one period. Without this
+    # the weeks came back in a single list with nothing to group them by.
+    workspace_id: UUID
     local_start: date
     local_end: date
     start_utc: datetime
@@ -61,15 +65,35 @@ class ObligationOut(BaseModel):
     state: ObligationState
     excuse_reason: str | None = None
     extension_until_utc: datetime | None = None
+    # REP-08: `state` says whether this project has to be in the package, never whether it is.
+    # Without this the student's screen had no way to tell a finished week from an untouched one,
+    # and rendered every obligation as outstanding however many times it had been submitted.
+    submitted: bool = False
+
+
+def _require_non_blank(value: str) -> str:
+    """Trimmed, and refused when nothing is left.
+
+    `min_length=1` counts whitespace, so a reason of three spaces satisfied it — and these are
+    reasons a professor gives for excusing or extending someone's obligation, which is exactly the
+    kind of record that has to say something when it is read back.
+    """
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("must not be blank")
+    return cleaned
+
+
+NonBlank = Annotated[str, AfterValidator(_require_non_blank)]
 
 
 class ExcuseIn(BaseModel):
-    reason: str = Field(min_length=1)
+    reason: NonBlank
 
 
 class ExtensionIn(BaseModel):
     until: datetime
-    reason: str = Field(min_length=1)
+    reason: NonBlank
 
 
 class EntryIn(BaseModel):
@@ -109,7 +133,14 @@ class EntryOut(BaseModel):
     content_changed_in_version_id: UUID
 
 
-class VersionOut(BaseModel):
+class VersionSummaryOut(BaseModel):
+    """One submitted version, without its entries.
+
+    A list of *full* versions is an N+1 and a large payload, and the screen that lists them only
+    needs enough to choose one — so the entries stay behind `GET /report-versions/{id}`, which is
+    what selecting a version calls.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -118,6 +149,11 @@ class VersionOut(BaseModel):
     author_id: UUID
     submitted_at: datetime
     timing_status: TimingStatus
+
+
+class VersionOut(VersionSummaryOut):
+    # Subclassed rather than duplicated so the wire shape of `VersionOut` is unchanged: every
+    # existing caller and the generated client see exactly what they saw before.
     entries: list[EntryOut] = Field(default_factory=list)
 
 

@@ -1,7 +1,12 @@
-"""Notification tables: in-app notifications, email delivery state, preferences, reminder rules.
+"""Notification tables: notification records, email delivery state, reminder rules.
 
 Requirements REP-07, REP-08, UI-07. The unique indexes are what make a retried job harmless: a
 second attempt inserts nothing and therefore sends nothing (AC-19).
+
+Preferences are gone: use cases v0.4 withdrew muting with the screen that offered it, and migration
+0017 dropped the table. Records are still written for every kind, but since the same version
+withdrew the in-app surface only `missed_deadline` reaches a person, by email — see
+`notifications/service.py` and architecture §7.3.
 """
 
 from __future__ import annotations
@@ -54,6 +59,10 @@ class Notification(UUIDPrimaryKeyMixin, Base):
             ["workspace_id", "recipient_id"],
             ["users.workspace_id", "users.id"],
             ondelete="CASCADE",
+            # Follows the recipient when they join another workspace (ADR 0014). A notification is
+            # addressed to a person, and the alternative is refusing the move for anyone who has
+            # ever been sent one — which, eventually, is everyone.
+            onupdate="CASCADE",
         ),
         # One per recipient, period, kind and subject — the guard that makes a retried job a
         # no-op. The subject is part of it because a week can hold more than one of some kinds: a
@@ -113,25 +122,6 @@ class EmailDelivery(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class NotificationPreference(UUIDPrimaryKeyMixin, Base):
-    """UI-07: a user may mute non-critical categories. Critical ones are refused by the service."""
-
-    __tablename__ = "notification_preferences"
-    __table_args__ = (
-        UniqueConstraint("user_id", "kind"),
-        ForeignKeyConstraint(
-            ["workspace_id", "user_id"],
-            ["users.workspace_id", "users.id"],
-            ondelete="CASCADE",
-        ),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    user_id: Mapped[UUID]
-    kind: Mapped[str] = mapped_column(Text)
-    muted_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class ReminderRule(UUIDPrimaryKeyMixin, Base):

@@ -156,3 +156,81 @@ async def test_the_system_scope_is_stable_and_marked(
 
 async def test_a_request_scope_is_its_own_author(db: AsyncSession, prof_scope: Scope) -> None:
     assert prof_scope.audit_actor == (prof_scope.user_id, ActorKind.USER)
+
+
+async def test_a_write_under_the_system_scope_is_audited_as_the_system(
+    db: AsyncSession, workspace: models.Workspace, prof: models.User
+) -> None:
+    """The property above is worth nothing unless `write_audit` actually consults it.
+
+    It did not. Nineteen of the twenty call sites reached past `audit_actor` to `scope.user_id`
+    and let `actor_kind` default to `user`, so every write a periodic task made was recorded as a
+    decision by whichever professor sorted first — a claim no reader of the table could check.
+    Found on the first production deploy, where the row named an id that was not a user at all.
+    """
+    scope = await service.system_scope(db, workspace.id)
+
+    await service.set_ai_budgets(db, scope, {"monthly_usd": "100.00", "project_monthly_usd": {}})
+    await db.flush()
+
+    event = (
+        (
+            await db.execute(
+                select(AuditEvent).where(AuditEvent.action == "workspace.ai_budgets_set")
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert event.actor_kind is ActorKind.SYSTEM
+    assert event.actor_id is None
+
+
+async def test_a_write_under_a_request_scope_still_names_its_author(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """The other side of the boundary: a professor acting through the API is the author."""
+    await service.set_ai_budgets(db, prof_scope, {"monthly_usd": "5.00", "project_monthly_usd": {}})
+    await db.flush()
+
+    event = (
+        (
+            await db.execute(
+                select(AuditEvent).where(AuditEvent.action == "workspace.ai_budgets_set")
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert event.actor_kind is ActorKind.USER
+    assert event.actor_id == prof_scope.user_id
+
+
+async def test_an_explicit_actor_alongside_a_scope_is_refused(
+    db: AsyncSession, workspace: models.Workspace, prof: models.User
+) -> None:
+    """The bug was a caller overriding the scope's answer, so the signature refuses to merge them.
+
+    Allowing both and letting the explicit one win is how this regresses: it reads as a harmless
+    convenience at the call site and silently turns a system write back into a person's.
+    """
+    from app.core.audit import write_audit
+
+    scope = await service.system_scope(db, workspace.id)
+
+    with pytest.raises(ValueError, match="either a scope or an explicit actor"):
+        write_audit(
+            db,
+            scope=scope,
+            actor_id=prof.id,
+            action="workspace.ai_budgets_set",
+            target_table="workspaces",
+            target_id=workspace.id,
+        )
+
+
+async def test_an_audit_row_needs_a_workspace_from_somewhere(db: AsyncSession) -> None:
+    from app.core.audit import write_audit
+
+    with pytest.raises(ValueError, match="needs a workspace_id"):
+        write_audit(db, action="x", target_table="workspaces", target_id=None)

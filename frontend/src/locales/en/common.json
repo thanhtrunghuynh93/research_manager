@@ -2,6 +2,7 @@
   "app": {
     "title": "Research Management",
     "greeting": "Hello {{name}}",
+    "turnedAway": "{{path}} is not a page your account can open, so this is your own home instead.",
     "toDark": "Switch to dark",
     "toLight": "Switch to light",
     "tagline": "supervision"
@@ -50,17 +51,31 @@
   "me": {
     "title": "This week",
     "dueBy": "Due by",
-    "obligations": "Reports owed",
+    "obligations": "Projects this week",
     "nothingOwed": "Nothing is owed for this week.",
     "noPeriod": "No reporting period has been configured yet.",
     "startWeek": "Start this week",
-    "openWeek": "Open this week"
+    "openWeek": "Open this week",
+    "partlySubmitted_one": "Submitted — {{count}} project still owed",
+    "partlySubmitted_other": "Submitted — {{count}} projects still owed",
+    "releasedNote": "An assessment appears here once your professor has approved it.",
+    "pastWeeks": "Earlier weeks",
+    "toProfile": "Your assessments and your progress on every project →"
   },
   "report": {
     "title": "Weekly package",
     "tabs": "Project entries",
-    "submit": "Submit package",
+    "submit": "Submit report",
     "submitted": "Submitted as version {{version}}.",
+    "alreadySubmitted": "Submitted {{when}} — sending again adds a version; this one is kept",
+    "resubmitted": "Resubmitted {{when}} as version {{version}} — sending again adds a version; every earlier one is kept",
+    "hoursOutOfRange": "Hours has to be between 0 and 168 — a week is 168 hours.",
+    "hoursNotANumber": "Hours has to be a number, or empty.",
+    "hoursBlocks": "Check the hours on {{project}} before sending.",
+    "stillOwed_one": "{{count}} project still has no entry in it",
+    "stillOwed_other": "{{count}} projects still have no entry in it",
+    "missingEntries": "No entry for {{projects}}. The package has to cover every project you are on this week.",
+    "unknownPeriod": "That reporting week does not exist, or is not one of yours.",
     "state": {
       "not_started": "Not started",
       "draft": "Draft",
@@ -71,6 +86,7 @@
     },
     "obligation": {
       "required": "Required",
+      "submitted": "Submitted",
       "excused": "Excused"
     },
     "autosave": {
@@ -92,20 +108,57 @@
       "title": "Evidence",
       "claim": "What does this show?",
       "claimPlaceholder": "The run log behind the nDCG number",
-      "claimNote": "Your description of what this supports. Recorded as your claim, not as a finding.",
+      "claimNote": "Your description of what this supports, applied to the next file or link you attach. Recorded as your claim, not as a finding.",
       "file": "Attach a file",
       "link": "Or a link",
       "addLink": "Add link",
+      "linkInvalid": "That is not a web address. A link has to start with http:// or https://.",
       "download": "Download",
       "none": "Nothing attached yet.",
       "limit": "Up to 25 MB per file. Slides (PPTX), documents (DOCX), Markdown, HTML, PDF, figures, notebooks and data files.",
       "truncated": "truncated",
       "state": {
-        "pending": "Reading…",
+        "pending": "Uploaded",
         "ok": "Text extracted",
         "failed": "Could not be read",
         "unsupported": "Stored, no text"
-      }
+      },
+      "checking": "Checking {{name}} before it leaves your machine…",
+      "sending": "Sending {{name}}…",
+      "percent": "{{percent}}% sent",
+      "recording": "{{name}} has arrived. Verifying it…",
+      "remove": "Remove",
+      "removeConfirm": "Remove {{name}}? The file and its extracted text are deleted, and it stops being searchable.",
+      "removeLinkConfirm": "Remove {{name}}? The link and the text read from it stop being evidence for this week and stop being searchable. The page itself is untouched."
+    },
+    "reader": {
+      "title": "Weekly report",
+      "yourWeek": "What you submitted",
+      "notStarted": "Nothing was started for this week.",
+      "notSubmitted": "This week has a draft but nothing has been submitted, so there is nothing on the record to read.",
+      "versions": "Versions",
+      "version": "Version {{n}}",
+      "submittedAt": "submitted {{when}}",
+      "timing": {
+        "on_time": "On time",
+        "late": "Late",
+        "excused": "Excused"
+      },
+      "departedProject": "Left this project",
+      "nothingWritten": "Nothing was written here.",
+      "hours": "{{hours}} hour(s), self-reported",
+      "noHours": "No hours were recorded.",
+      "requestRevision": "Ask for a revision",
+      "revisionPlaceholder": "What needs to change, and why",
+      "sendRevision": "Request a revision",
+      "revisionSent": "Requested",
+      "revisionAsked": "Revision requested {{when}}:",
+      "markReviewed": "Mark reviewed",
+      "reviewed": "Reviewed",
+      "seeSubmitted": "Read what you submitted →",
+      "toEditor": "← Back to this week’s editor",
+      "weekly": "Weekly reports",
+      "openWeek": "Read this week"
     }
   },
   "overview": {
@@ -120,10 +173,18 @@
     "syncHealthy": "Every connected repository synced recently.",
     "syncNote": "A stale repository means the evidence is incomplete, not that no work was done.",
     "stalled": "Analyses that did not complete",
+    "retry": "Retry",
     "nothingStalled": "Every analysis completed.",
-    "stalledNote": "Each of these is retryable and none of them changed a report or its timestamp.",
+    "stalledNote": "Each of these is retryable and none of them changed a report or its timestamp. A retry that succeeds takes its row off this list.",
     "asOf": "as of {{when}}",
-    "currentPeriod": "Current period"
+    "currentPeriod": "Current period",
+    "week": "This week's reports",
+    "weekCount": "{{submitted}} of {{total}} in",
+    "weekEmpty": "No reports are owed this week. Derive the obligations below once projects are active and students are on them.",
+    "weekNote": "One row per reporting obligation, so an excused or extended one is listed and marked rather than counted as owed. Submission is read from the report's current version, which is the same place the student's own screen reads it.",
+    "extendedUntil": "extended to {{when}}",
+    "deriveObligations": "Derive this week's obligations",
+    "deriveNote": "The nightly job does this too."
   },
   "assessment": {
     "notRated": "Not rated — insufficient evidence",
@@ -138,6 +199,11 @@
       "learning": "Research learning and reasoning",
       "rigor": "Rigor and evidence quality",
       "artifacts": "Usable research artifacts"
+    },
+    "feedbackKind": {
+      "professor_comment": "From your professor",
+      "student_response": "Your response",
+      "correction_request": "Your correction request"
     }
   },
   "evidence": {
@@ -149,6 +215,7 @@
   },
   "review": {
     "title": "Review",
+    "subject": "This student",
     "unavailable": "This assessment could not be loaded.",
     "version": "Version {{n}}",
     "claims": "Report claims",
@@ -199,39 +266,6 @@
     "computedBadge": "computed",
     "modelBadge": "model"
   },
-  "notifications": {
-    "title": "Notifications",
-    "empty": "Nothing to read.",
-    "read": "Read",
-    "markRead": "Mark read",
-    "preferences": "Categories",
-    "mute": "Mute",
-    "cannotMute": "Cannot be muted",
-    "kind": {
-      "missed_deadline": "Missed deadline",
-      "revision_requested": "Revision requested",
-      "unfulfilled_obligations": "Outstanding reports",
-      "report_submitted": "Report submitted",
-      "assessment_published": "Assessment released"
-    }
-  },
-  "exports": {
-    "title": "Exports",
-    "scopeNote": "A bundle contains only the records this account can already read.",
-    "kinds": "What to include",
-    "since": "From",
-    "until": "To",
-    "downloadJson": "Download JSON bundle",
-    "downloadCsv": "{{kind}}.csv",
-    "portabilityNote": "Bundles carry identifiers, versions, relationships and approval status, so records stay readable elsewhere.",
-    "kind": {
-      "reports": "Weekly reports",
-      "assessments": "Assessments",
-      "projects": "Projects and membership",
-      "obligations": "Reporting obligations",
-      "supervision_notes": "Supervision notes (private)"
-    }
-  },
   "project": {
     "unavailable": "This project could not be loaded.",
     "researchQuestions": "Research questions",
@@ -266,16 +300,34 @@
     "milestoneStatus": {
       "planned": "Planned",
       "in_progress": "In progress",
-      "achieved": "Achieved",
-      "missed": "Missed",
+      "at_risk": "At risk",
+      "completed": "Completed",
       "cancelled": "Cancelled"
-    }
+    },
+    "activate": "Activate this project",
+    "activateNote": "A student owes a weekly report only for an active project. While this one is proposed, assigning someone produces nothing.",
+    "setStatus": "Status",
+    "student": "Student",
+    "chooseStudent": "Choose a student…",
+    "responsibility": "Responsibility",
+    "joinedOn": "Joined on",
+    "assign": "Assign",
+    "noStudents": "No students in this workspace yet — invite one on",
+    "openToJoin": "Open to joining",
+    "openToJoinNote": "A student can put themselves on an open project without being assigned. Being on a project shows them its plan, milestones, tasks and decisions, and who else works on it.",
+    "leave": "Done this project",
+    "leaveNote": "This ends your part in it. The project stops appearing in your week, including this one, what you have already submitted stays on the record, and the project itself carries on for whoever else is on it.",
+    "leaveConfirm": "Leave {{title}}? You cannot rejoin unless your professor opens the project again.",
+    "leftOn": "Left {{when}}",
+    "backToProjects": "Your projects →",
+    "leftNotice": "You left this project on {{when}}. The record stays readable because your reports and assessments refer to it; its milestones, decisions and members are no longer shown.",
+    "saveFields": "Save"
   },
   "student": {
-    "title": "Research profile",
+    "title": "Student",
     "trajectory": "Trajectory on {{project}}",
     "rubricBreak": "These points span {{count}} rubric versions and are not one comparable series.",
-    "rubric": "rubric {{id}}",
+    "rubric": "rubric {{label}}",
     "noApproved": "No approved assessment yet.",
     "assessments": "Assessments",
     "noAssessments": "No assessment has been produced yet.",
@@ -283,7 +335,7 @@
     "materials": "Submitted materials",
     "noMaterials": "This student has not attached anything yet.",
     "materialsNote": "Every file and link this student attached to a weekly package.",
-    "label": "Student {{id}}"
+    "label": "Research profile"
   },
   "people": {
     "title": "People",
@@ -303,7 +355,6 @@
     "noProfessors": "No professor account is active.",
     "noStudents": "Nobody has been enrolled yet.",
     "you": "you",
-    "colleagueNote": "Co-supervisor — changed only by the break-glass procedure",
     "more": "Show more",
     "suspend": "Suspend access",
     "restore": "Restore access",
@@ -315,6 +366,108 @@
       "active": "Active",
       "invited": "Invited",
       "deactivated": "Closed"
+    },
+    "workspace": "Workspace",
+    "acrossWorkspaces": "Across {{count}} workspaces",
+    "elsewhere": "Join its workspace to act on this account",
+    "moveTo": "Move to…"
+  },
+  "workspaces": {
+    "title": "Workspaces",
+    "eyebrow": "Administration",
+    "archive": "Archive",
+    "create": "Create a workspace",
+    "name": "Name",
+    "createAction": "Create",
+    "createNote": "A new workspace starts empty, you join it, and you keep every workspace you were already in.",
+    "here": "Working here",
+    "join": "Join",
+    "leave": "Leave",
+    "note": "You can belong to several workspaces at once. Joining adds one and leaving gives it up; the one marked Working here is what every other screen shows. Archiving ends a workspace nobody belongs to, and it leaves this list.",
+    "workHere": "Work here"
+  },
+  "calendar": {
+    "title": "Reporting calendar",
+    "intro": "When the week runs, when you meet, and therefore when a report is due. Nothing can become due until this is set.",
+    "none": "No calendar is configured, so no reporting week exists yet.",
+    "configured": "Weeks start on {{start}}, you meet on {{meeting}}, in {{timezone}}. Version {{version}}.",
+    "timezone": "Timezone",
+    "meetingWeekday": "Meeting day",
+    "weekStart": "Week starts",
+    "grace": "Grace (minutes)",
+    "effectiveFrom": "Effective from",
+    "save": "Save calendar",
+    "saved": "Saved as version {{version}}.",
+    "versionNote": "Saving writes a new version. Weeks that are already open keep the deadline they were created with; the change applies to weeks opened after it.",
+    "periods": "{{count}} week(s) open, through {{through}}.",
+    "noPeriods": "No weeks are open yet.",
+    "openThrough": "Open weeks through",
+    "open": "Open weeks",
+    "autoNote": "The nightly job opens weeks and derives obligations by itself. This button is for not waiting until tomorrow.",
+    "weekday": {
+      "0": "Monday",
+      "1": "Tuesday",
+      "2": "Wednesday",
+      "3": "Thursday",
+      "4": "Friday",
+      "5": "Saturday",
+      "6": "Sunday"
     }
+  },
+  "projects": {
+    "eyebrow": "Research",
+    "title": "Projects",
+    "intro": "A student owes a weekly report for each active project they are assigned to.",
+    "create": "Start a project",
+    "titleField": "Title",
+    "stage": "Stage",
+    "description": "Description",
+    "researchQuestions": "Research questions",
+    "researchQuestionsHint": "One per line.",
+    "createAction": "Create project",
+    "createNote": "A new project is proposed. Nothing is owed on it until it is active and a student is assigned — both on the project's own page.",
+    "none": "No projects yet.",
+    "filter": "Status",
+    "all": "All",
+    "createNoteStudent": "Your project is active as soon as you create it, and you are on it — so a report for it is owed for this week, from now.",
+    "joinable": "Projects you can join",
+    "joinableNote": "Your professor has opened these. Joining puts a weekly report for the project on your plate from next week.",
+    "join": "Join",
+    "memberCount_one": "{{count}} member",
+    "memberCount_other": "{{count}} members",
+    "repoUrl": "Git repository",
+    "repoUrlHint": "Optional. A link so people on the project can find the code. This does not connect the repository — commits are not read and nothing is attributed from it."
+  },
+  "myAssessment": {
+    "title": "Released assessment",
+    "for": "Week on project {{project}}",
+    "forWeek": "{{from}} – {{to}} on {{project}}",
+    "releasedAt": "Released to you on {{when}}.",
+    "index": "Progress index",
+    "indexNote": "Read the index beside its components below, not on its own.",
+    "ratings": "Ratings",
+    "feedback": "Feedback",
+    "noFeedback": "No written feedback on this assessment.",
+    "correction": "Ask for a correction",
+    "correctionPlaceholder": "What is wrong, and what evidence supports your account?",
+    "correctionSend": "Send correction request",
+    "correctionSent": "Sent.",
+    "correctionNote": "Your request is recorded with your evidence and sent to your professor. It does not by itself change a rating.",
+    "unavailable": "This assessment is not available to you."
+  },
+  "myProfile": {
+    "title": "My progress"
+  },
+  "budget": {
+    "title": "Model spend",
+    "intro": "A monthly ceiling on what analysis may cost in this workspace. Assessments are delayed once it is reached, and resume when it is raised or the month rolls over.",
+    "configured": "${{spent}} spent this month, against a ceiling of ${{limit}}.",
+    "none": "${{spent}} spent this month. No ceiling is set, so analysis is never refused for want of one.",
+    "usage": "{{calls}} model call(s) this month, {{failed}} of them failed. ${{cost}} at published rates.",
+    "monthly": "Monthly ceiling (USD)",
+    "placeholder": "no ceiling",
+    "save": "Save ceiling",
+    "saved": "Saved",
+    "note": "Leave it empty for no ceiling. Zero is not the same thing: it stops every analysis until it is changed."
   }
 }

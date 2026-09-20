@@ -182,6 +182,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a file you attached, while the week is still a draft
+         * @description REP-04: the student's own correction. Refused once the week has been submitted.
+         */
+        delete: operations["remove_artifact_api_v1_artifacts__artifact_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/artifacts/{artifact_id}/confirm": {
         parameters: {
             query?: never;
@@ -554,7 +574,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * The reporting calendar in force
+         * @description `null` when no calendar has been configured, which is a state and not an error.
+         *
+         *     Readable by a student as well as a professor: `CalendarConfig`'s policy is workspace-wide
+         *     because everyone needs to know when their report is due (REP-01).
+         */
+        get: operations["current_calendar_api_v1_calendar_get"];
         /** Configure the reporting calendar */
         put: operations["configure_calendar_api_v1_calendar_put"];
         post?: never;
@@ -661,60 +688,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/exports": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * A machine-readable bundle of authorized records
-         * @description Identifiers, versions, relationships, and approval status (requirements §11).
-         */
-        get: operations["build_bundle_api_v1_exports_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/exports/kinds": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** What this account may export */
-        get: operations["list_kinds_api_v1_exports_kinds_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/exports/{kind}.csv": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** One kind as a spreadsheet */
-        get: operations["build_csv_api_v1_exports__kind__csv_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/milestones/{milestone_id}": {
         parameters: {
             query?: never;
@@ -749,91 +722,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/notifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The caller's notifications */
-        get: operations["list_notifications_api_v1_notifications_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/preferences": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Which categories the caller has muted */
-        get: operations["list_preferences_api_v1_notifications_preferences_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/preferences/mute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mute a non-critical category */
-        post: operations["mute_api_v1_notifications_preferences_mute_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/preferences/unmute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Unmute a category */
-        post: operations["unmute_api_v1_notifications_preferences_unmute_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/read-all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mark every notification read */
-        post: operations["mark_all_read_api_v1_notifications_read_all_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/notifications/reminder-offsets": {
         parameters: {
             query?: never;
@@ -845,40 +733,6 @@ export interface paths {
         /** How long before the deadline to remind */
         put: operations["set_reminder_offsets_api_v1_notifications_reminder_offsets_put"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/unread-count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** How many are unread */
-        get: operations["unread_count_api_v1_notifications_unread_count_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/{notification_id}/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mark one notification read */
-        post: operations["mark_read_api_v1_notifications__notification_id__read_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -943,7 +797,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List reporting periods */
+        /**
+         * List reporting periods
+         * @description The weeks of the workspace being worked in, or of all of them when asked.
+         *
+         *     The default is the one workspace, because a screen that describes a workspace has to describe
+         *     the one it is on. A professor's reads may span the workspaces they belong to (ADR 0016), and
+         *     a screen that labels records from any of them — a review, a student's history — asks for the
+         *     wide list by name. Each period carries its `workspace_id` either way.
+         */
         get: operations["list_periods_api_v1_periods_get"];
         put?: never;
         post?: never;
@@ -1076,6 +938,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/joinable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projects a student may join */
+        get: operations["list_joinable_api_v1_projects_joinable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -1106,6 +985,23 @@ export interface paths {
         put?: never;
         /** Record a research decision and its rationale */
         post: operations["record_decision_api_v1_projects__project_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join a project that is open to joining */
+        post: operations["join_project_api_v1_projects__project_id__join_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1252,6 +1148,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/{report_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every submitted version of one report
+         * @description REP-05: a resubmission adds a version and never replaces history — so history needs a reader.
+         *
+         *     `ScopeDep`, not `ProfScopeDep`: a student is entitled to their own, and the visibility
+         *     predicate already confines them to it.
+         */
+        get: operations["list_versions_api_v1_reports__report_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repositories": {
         parameters: {
             query?: never;
@@ -1385,7 +1304,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the users the caller may see */
+        /**
+         * List the users the caller may see
+         * @description Every account in every workspace the caller belongs to; each row carries its own
+         *     `workspace_id` (ADR 0016). For a student, who belongs to one, that is themselves.
+         */
         get: operations["list_users_api_v1_users_get"];
         put?: never;
         post?: never;
@@ -1495,6 +1418,114 @@ export interface paths {
          *     returns is invited again (ADR 0011). A professor account is refused — that is break-glass.
          */
         post: operations["remove_student_api_v1_users__user_id__remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a student to another workspace
+         * @description Only a student who has not started work: their history is pinned to the workspace it was
+         *     written in, and the database refuses the move rather than dragging it along (ADR 0014).
+         */
+        post: operations["move_student_api_v1_users__user_id__workspace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspaces this professor administers */
+        get: operations["list_workspaces_api_v1_workspaces_get"];
+        put?: never;
+        /** Create a workspace and join it */
+        post: operations["create_workspace_api_v1_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one workspace */
+        get: operations["get_workspace_api_v1_workspaces__workspace_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename a workspace or set its timezone */
+        patch: operations["update_workspace_api_v1_workspaces__workspace_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a workspace that nobody is left in */
+        post: operations["archive_workspace_api_v1_workspaces__workspace_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move your account into this workspace */
+        post: operations["join_workspace_api_v1_workspaces__workspace_id__join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move your account out of this workspace */
+        post: operations["leave_workspace_api_v1_workspaces__workspace_id__leave_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1788,6 +1819,8 @@ export interface components {
             id: string;
             /** Model Name */
             model_name?: string | null;
+            /** Model Progress Index */
+            model_progress_index?: number | null;
             /** Narrative */
             narrative: {
                 [key: string]: unknown;
@@ -1853,19 +1886,6 @@ export interface components {
             spent_usd: string;
             /** Warning */
             warning: boolean;
-        };
-        /** BundleOut */
-        BundleOut: {
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-            /** Records */
-            records?: {
-                [key: string]: {
-                    [key: string]: unknown;
-                }[];
-            };
         };
         /** CalendarConfigIn */
         CalendarConfigIn: {
@@ -2395,6 +2415,8 @@ export interface components {
             email: string;
             /** @default student */
             role: components["schemas"]["Role"];
+            /** Workspace Id */
+            workspace_id?: string | null;
         };
         /**
          * InvitationOut
@@ -2421,6 +2443,38 @@ export interface components {
              */
             id: string;
             role: components["schemas"]["Role"];
+        };
+        /** JoinIn */
+        JoinIn: {
+            /**
+             * Responsibility
+             * @default
+             */
+            responsibility: string;
+        };
+        /**
+         * JoinableProjectOut
+         * @description What a student may see about a project *before* joining it (PROJ-07).
+         *
+         *     Deliberately not `ProjectOut`. Research questions, intended contributions, the venue target and
+         *     the shared resources are the substance of an unpublished research programme, and someone who
+         *     has not joined has no claim on them. This is the directory entry, not the record.
+         */
+        JoinableProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Member Count
+             * @default 0
+             */
+            member_count: number;
+            stage: components["schemas"]["ResearchStage"];
+            status: components["schemas"]["ProjectStatus"];
+            /** Title */
+            title: string;
         };
         /** LinkProjectIn */
         LinkProjectIn: {
@@ -2458,6 +2512,23 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * MailState
+         * @description UI-01: mail that did not arrive, named rather than left silent.
+         *
+         *     An invitation that failed is the sharpest case — enrolment is invitation-only, so the person it
+         *     was for has no way in at all, and nothing else on this screen would ever mention them.
+         */
+        MailState: {
+            /** Failed Notifications */
+            failed_notifications: number;
+            /** Failed Token Emails */
+            failed_token_emails: number;
+            /** Reason */
+            reason: string;
+            /** Warning */
+            warning: boolean;
+        };
         /** MembershipEndIn */
         MembershipEndIn: {
             /** Left On */
@@ -2480,6 +2551,21 @@ export interface components {
              */
             student_id: string;
         };
+        /**
+         * MembershipOrigin
+         * @description How a membership came to exist (PROJ-07).
+         *
+         *     It is not bookkeeping. The derivation reads this column to decide which weeks a membership owes
+         *     (`repository.memberships_active_in_range`), and it is how the audit trail tells the three apart,
+         *     since the actor alone cannot.
+         *
+         *     `assigned` and `created` owe the week they land in: a professor assigning a student mid-week
+         *     knows what they are asking for, and a student who starts a project is asking for it themselves.
+         *     `self_joined` owes from the following week — joining an existing project on a Saturday should
+         *     not be a report due that Sunday for a week spent off the project.
+         * @enum {string}
+         */
+        MembershipOrigin: "assigned" | "self_joined" | "created";
         /** MembershipOut */
         MembershipOut: {
             /**
@@ -2499,6 +2585,7 @@ export interface components {
             joined_on: string;
             /** Left On */
             left_on?: string | null;
+            origin: components["schemas"]["MembershipOrigin"];
             /** Planned Allocation */
             planned_allocation?: string | null;
             /**
@@ -2675,42 +2762,11 @@ export interface components {
          * @enum {string}
          */
         MilestoneStatus: "planned" | "in_progress" | "at_risk" | "completed" | "cancelled";
-        /** MuteIn */
-        MuteIn: {
-            /** Kind */
-            kind: string;
-        };
-        /** NotificationOut */
-        NotificationOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Kind */
-            kind: string;
-            /** Payload */
-            payload: {
-                [key: string]: unknown;
-            };
-            /** Period Id */
-            period_id?: string | null;
-            /** Read At */
-            read_at?: string | null;
-            /**
-             * Recipient Id
-             * Format: uuid
-             */
-            recipient_id: string;
-            /** Subject Id */
-            subject_id?: string | null;
-            /** Subject Table */
-            subject_table: string;
+        /**
+         * MoveStudentIn
+         * @description Where to move a student to. Only a student who has not started work can be moved.
+         */
+        MoveStudentIn: {
             /**
              * Workspace Id
              * Format: uuid
@@ -2749,6 +2805,11 @@ export interface components {
              * Format: uuid
              */
             student_id: string;
+            /**
+             * Submitted
+             * @default false
+             */
+            submitted: boolean;
         };
         /**
          * ObligationState
@@ -2786,6 +2847,7 @@ export interface components {
              */
             as_of: string;
             current_period?: components["schemas"]["CurrentPeriod"] | null;
+            mail: components["schemas"]["MailState"];
             outstanding: components["schemas"]["Outstanding"];
             /** Review Queue */
             review_queue?: {
@@ -2799,6 +2861,8 @@ export interface components {
             sync_issues?: {
                 [key: string]: unknown;
             }[];
+            /** Week */
+            week?: components["schemas"]["WeekWorkspace"][];
         };
         /** Page[ProjectOut] */
         Page_ProjectOut_: {
@@ -2878,26 +2942,11 @@ export interface components {
              * Format: date-time
              */
             start_utc: string;
-        };
-        /** PreferenceOut */
-        PreferenceOut: {
             /**
-             * Id
+             * Workspace Id
              * Format: uuid
              */
-            id: string;
-            /** Kind */
-            kind: string;
-            /**
-             * Muted At
-             * Format: date-time
-             */
-            muted_at: string;
-            /**
-             * User Id
-             * Format: uuid
-             */
-            user_id: string;
+            workspace_id: string;
         };
         /** ProfilePatch */
         ProfilePatch: {
@@ -2913,6 +2962,8 @@ export interface components {
             description: string;
             /** Intended Contributions */
             intended_contributions?: string[];
+            /** Repo Url */
+            repo_url?: string | null;
             /** Research Questions */
             research_questions?: string[];
             /** Shared Resources */
@@ -2958,6 +3009,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Created By */
+            created_by?: string | null;
             /** Description */
             description: string;
             /**
@@ -2967,6 +3020,10 @@ export interface components {
             id: string;
             /** Intended Contributions */
             intended_contributions: string[];
+            /** Open To Join */
+            open_to_join: boolean;
+            /** Repo Url */
+            repo_url?: string | null;
             /** Research Questions */
             research_questions: string[];
             /** Shared Resources */
@@ -2983,6 +3040,8 @@ export interface components {
             title: string;
             /** Venue Target */
             venue_target?: string | null;
+            /** Viewer Left On */
+            viewer_left_on?: string | null;
             /**
              * Workspace Id
              * Format: uuid
@@ -2997,6 +3056,10 @@ export interface components {
             description?: string | null;
             /** Intended Contributions */
             intended_contributions?: string[] | null;
+            /** Open To Join */
+            open_to_join?: boolean | null;
+            /** Repo Url */
+            repo_url?: string | null;
             /** Research Questions */
             research_questions?: string[] | null;
             /** Shared Resources */
@@ -3600,10 +3663,141 @@ export interface components {
             version_no: number;
         };
         /**
+         * VersionSummaryOut
+         * @description One submitted version, without its entries.
+         *
+         *     A list of *full* versions is an N+1 and a large payload, and the screen that lists them only
+         *     needs enough to choose one — so the entries stay behind `GET /report-versions/{id}`, which is
+         *     what selecting a version calls.
+         */
+        VersionSummaryOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Report Id
+             * Format: uuid
+             */
+            report_id: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            timing_status: components["schemas"]["TimingStatus"];
+            /** Version No */
+            version_no: number;
+        };
+        /**
          * Visibility
          * @enum {string}
          */
         Visibility: "professor_only" | "student_private" | "project_shared";
+        /** WeekProject */
+        WeekProject: {
+            /** Project Id */
+            project_id: string;
+            /** Project Title */
+            project_title: string;
+            /** Students */
+            students?: components["schemas"]["WeekStudent"][];
+        };
+        /**
+         * WeekStudent
+         * @description One student's standing on one project this week, in the three states REP-06/REP-08 give.
+         */
+        WeekStudent: {
+            /**
+             * Excuse Reason
+             * @default
+             */
+            excuse_reason: string;
+            /** Extension Until Utc */
+            extension_until_utc?: string | null;
+            /** State */
+            state: string;
+            /** Student Id */
+            student_id: string;
+            /** Student Name */
+            student_name: string;
+        };
+        /**
+         * WeekWorkspace
+         * @description This week in one workspace: its period, and every report owed in it.
+         *
+         *     Grouped per workspace because a professor's reads span all of them (ADR 0016) and each keeps
+         *     its own calendar — so "this week" is one period per workspace rather than one period.
+         */
+        WeekWorkspace: {
+            /** Excused */
+            excused: number;
+            /** Local End */
+            local_end: string;
+            /** Local Start */
+            local_start: string;
+            /** Owed */
+            owed: number;
+            /** Period Id */
+            period_id: string;
+            /** Projects */
+            projects?: components["schemas"]["WeekProject"][];
+            /** Submitted */
+            submitted: number;
+            /** Workspace Id */
+            workspace_id: string;
+            /** Workspace Name */
+            workspace_name: string;
+        };
+        /** WorkspaceCreateIn */
+        WorkspaceCreateIn: {
+            /** Name */
+            name: string;
+            /**
+             * Timezone
+             * @default Asia/Ho_Chi_Minh
+             */
+            timezone: string;
+        };
+        /** WorkspaceOut */
+        WorkspaceOut: {
+            /** Access Epoch */
+            access_epoch: number;
+            /** Archived At */
+            archived_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Joined
+             * @default false
+             */
+            joined: boolean;
+            /** Name */
+            name: string;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Timezone */
+            timezone: string;
+        };
+        /**
+         * WorkspaceUpdateIn
+         * @description Both optional: sending neither is a no-op rather than an error.
+         */
+        WorkspaceUpdateIn: {
+            /** Name */
+            name?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -3879,6 +4073,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UploadGrantOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_artifact_api_v1_artifacts__artifact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4500,6 +4723,26 @@ export interface operations {
             };
         };
     };
+    current_calendar_api_v1_calendar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConfigOut"] | null;
+                };
+            };
+        };
+    };
     configure_calendar_api_v1_calendar_put: {
         parameters: {
             query?: never;
@@ -4724,97 +4967,6 @@ export interface operations {
             };
         };
     };
-    build_bundle_api_v1_exports_get: {
-        parameters: {
-            query?: {
-                kinds?: string[] | null;
-                student_id?: string | null;
-                project_id?: string | null;
-                since?: string | null;
-                until?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BundleOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_kinds_api_v1_exports_kinds_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string[];
-                    };
-                };
-            };
-        };
-    };
-    build_csv_api_v1_exports__kind__csv_get: {
-        parameters: {
-            query?: {
-                student_id?: string | null;
-                project_id?: string | null;
-                since?: string | null;
-                until?: string | null;
-            };
-            header?: never;
-            path: {
-                kind: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     update_milestone_api_v1_milestones__milestone_id__patch: {
         parameters: {
             query?: never;
@@ -4881,143 +5033,6 @@ export interface operations {
             };
         };
     };
-    list_notifications_api_v1_notifications_get: {
-        parameters: {
-            query?: {
-                unread_only?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_preferences_api_v1_notifications_preferences_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PreferenceOut"][];
-                };
-            };
-        };
-    };
-    mute_api_v1_notifications_preferences_mute_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MuteIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PreferenceOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    unmute_api_v1_notifications_preferences_unmute_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MuteIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    mark_all_read_api_v1_notifications_read_all_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
-                };
-            };
-        };
-    };
     set_reminder_offsets_api_v1_notifications_reminder_offsets_put: {
         parameters: {
             query?: never;
@@ -5040,59 +5055,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: number[];
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    unread_count_api_v1_notifications_unread_count_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
-                };
-            };
-        };
-    };
-    mark_read_api_v1_notifications__notification_id__read_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                notification_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationOut"];
                 };
             };
             /** @description Validation Error */
@@ -5200,6 +5162,7 @@ export interface operations {
         parameters: {
             query?: {
                 through?: string | null;
+                across_workspaces?: boolean;
             };
             header?: never;
             path?: never;
@@ -5493,6 +5456,26 @@ export interface operations {
             };
         };
     };
+    list_joinable_api_v1_projects_joinable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinableProjectOut"][];
+                };
+            };
+        };
+    };
     get_project_api_v1_projects__project_id__get: {
         parameters: {
             query?: never;
@@ -5612,6 +5595,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResearchDecisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_project_api_v1_projects__project_id__join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipOut"];
                 };
             };
             /** @description Validation Error */
@@ -6009,6 +6027,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_api_v1_reports__report_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionSummaryOut"][];
                 };
             };
             /** @description Validation Error */
@@ -6527,6 +6576,253 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_student_api_v1_users__user_id__workspace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveStudentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workspaces_api_v1_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"][];
+                };
+            };
+        };
+    };
+    create_workspace_api_v1_workspaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_api_v1_workspaces__workspace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workspace_api_v1_workspaces__workspace_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_workspace_api_v1_workspaces__workspace_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_workspace_api_v1_workspaces__workspace_id__join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leave_workspace_api_v1_workspaces__workspace_id__leave_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
                 };
             };
             /** @description Validation Error */

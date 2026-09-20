@@ -1,13 +1,17 @@
 import { useTranslation } from "react-i18next";
 
 import type { AutosaveState } from "@/hooks/useAutosave";
+import { formatTimeOfDay } from "@/lib/dates";
 
 export function AutosaveIndicator({
   state,
   savedAt,
+  timezone,
 }: {
   state: AutosaveState;
   savedAt: Date | null;
+  /** The workspace's zone — the same one the deadline on this screen is written in. */
+  timezone?: string;
 }) {
   const { t } = useTranslation();
   const text =
@@ -16,7 +20,7 @@ export function AutosaveIndicator({
       : state === "error"
         ? t("report.autosave.failed")
         : savedAt
-          ? `${t("report.autosave.saved")} ${savedAt.toLocaleTimeString()}`
+          ? `${t("report.autosave.saved")} ${formatTimeOfDay(savedAt, timezone)}`
           : t("report.autosave.idle");
 
   return (

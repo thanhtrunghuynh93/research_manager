@@ -143,16 +143,23 @@ async def test_the_index_is_computed_from_the_ratings(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(rating="3", rationale="met", evidence_ref_ids=[]),
-                    "learning": DimensionRating(
-                        rating="4", rationale="beyond", evidence_ref_ids=[]
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress", rating="3", rationale="met", evidence_ref_ids=[]
                     ),
-                    "rigor": DimensionRating(rating="3", rationale="met", evidence_ref_ids=[]),
-                    "artifacts": DimensionRating(
-                        rating="2", rationale="partial", evidence_ref_ids=[]
+                    DimensionRating(
+                        dimension_id="learning", rating="4", rationale="beyond", evidence_ref_ids=[]
                     ),
-                }
+                    DimensionRating(
+                        dimension_id="rigor", rating="3", rationale="met", evidence_ref_ids=[]
+                    ),
+                    DimensionRating(
+                        dimension_id="artifacts",
+                        rating="2",
+                        rationale="partial",
+                        evidence_ref_ids=[],
+                    ),
+                ]
             )
         }
     )
@@ -178,16 +185,26 @@ async def test_an_unknown_dimension_withholds_the_index(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(rating="3", rationale="met", evidence_ref_ids=[]),
-                    "learning": DimensionRating(
-                        rating="unknown", rationale="nothing settles this", evidence_ref_ids=[]
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress", rating="3", rationale="met", evidence_ref_ids=[]
                     ),
-                    "rigor": DimensionRating(rating="3", rationale="met", evidence_ref_ids=[]),
-                    "artifacts": DimensionRating(
-                        rating="2", rationale="partial", evidence_ref_ids=[]
+                    DimensionRating(
+                        dimension_id="learning",
+                        rating="unknown",
+                        rationale="nothing settles this",
+                        evidence_ref_ids=[],
                     ),
-                }
+                    DimensionRating(
+                        dimension_id="rigor", rating="3", rationale="met", evidence_ref_ids=[]
+                    ),
+                    DimensionRating(
+                        dimension_id="artifacts",
+                        rating="2",
+                        rationale="partial",
+                        evidence_ref_ids=[],
+                    ),
+                ]
             )
         }
     )
@@ -214,13 +231,14 @@ async def test_a_fabricated_citation_is_dropped_and_the_rating_downgraded(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress",
                         rating="4",
                         rationale="cites something that does not exist",
                         evidence_ref_ids=["11111111-1111-1111-1111-111111111111"],
                     )
-                }
+                ]
             )
         }
     )

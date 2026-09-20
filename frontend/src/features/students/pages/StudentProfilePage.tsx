@@ -11,20 +11,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "@/api/client";
-import { Badge, ConfidenceBadge, ProgressIndex } from "@/components/evidence/Badges";
+import {
+  Badge,
+  ConfidenceBadge,
+  ConfidenceReasons,
+  ProgressIndex,
+} from "@/components/evidence/Badges";
+import { Trajectory } from "@/features/assessments/components/Trajectory";
+import { useUser } from "@/features/people/queries";
 import type { Assessment } from "@/features/review/types";
-import { openArtifact, useArtifacts } from "@/features/report/queries";
-import { formatInstant } from "@/lib/dates";
-
-type TrendPoint = {
-  period_id: string;
-  assessment_id: string;
-  progress_index: number | null;
-  plan_completion: string | null;
-  confidence: string;
-  rubric_version_id: string | null;
-  created_at: string;
-};
+import { openArtifact, useArtifacts, useAllPeriods, useProjects } from "@/features/report/queries";
+import { formatLocalDate } from "@/lib/dates";
 
 export function StudentProfilePage() {
   const { t } = useTranslation();
@@ -35,19 +32,62 @@ export function StudentProfilePage() {
     queryFn: () => api.get<Assessment[]>(`/api/v1/assessments?student_id=${id}`),
     enabled: Boolean(id),
   });
+  // This page is about a person, and it used to name them — and their projects, and their weeks —
+  // with eight characters of a uuid. These being UUIDv7, the eight characters were identical on
+  // every row, so three assessments all read "Week 01a0ad80". The ids stay as the fallback, for
+  // the record a professor cannot read and the project list that paged past the end.
+  const student = useUser(id);
+  const projects = useProjects();
+  const periods = useAllPeriods();
+
+  const titleOf = (projectId: string) =>
+    projects.data?.items.find((project) => project.id === projectId)?.title ??
+    projectId.slice(0, 8);
+  const weekOf = (periodId: string) => {
+    const period = periods.data?.find((one) => one.id === periodId);
+    return period
+      ? `${formatLocalDate(period.local_start)} – ${formatLocalDate(period.local_end)}`
+      : t("student.week", { period: periodId.slice(0, 8) });
+  };
 
   const projectIds = Array.from(new Set((assessments.data ?? []).map((row) => row.project_id)));
 
   return (
     <section className="animate-rise-in">
       <header>
-        <p className="eyebrow mb-1.5">{t("student.label", { id: id?.slice(0, 8) ?? "" })}</p>
-        <h1 className="page-title">{t("student.title")}</h1>
+        <p className="eyebrow mb-1.5">{t("student.label")}</p>
+        <h1 className="page-title">{student.data?.display_name ?? t("student.title")}</h1>
       </header>
 
       {projectIds.map((projectId) => (
-        <Trajectory key={projectId} studentId={id!} projectId={projectId} />
+        <Trajectory
+          key={projectId}
+          studentId={id!}
+          projectId={projectId}
+          title={titleOf(projectId)}
+        />
       ))}
+
+      {/* Every week this student could have reported, each a click from its text. The reader
+          itself says "nothing was started" for a week with nothing in it, so no probing is
+          needed here — and a professor with no list had no way into a report at all. */}
+      <h2 className="section-title mt-8">{t("report.reader.weekly")}</h2>
+      <ul className="panel mt-2.5" data-testid="weekly-reports">
+        {(periods.data ?? [])
+          .slice()
+          .reverse()
+          .slice(0, 8)
+          .map((period) => (
+            <li key={period.id} className="row">
+              <Link to={`/students/${id}/reports/${period.id}`} className="link text-[13.5px]">
+                {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
+              </Link>
+              <span className="font-mono text-[11.5px] text-muted-foreground">
+                {t("report.reader.openWeek")}
+              </span>
+            </li>
+          ))}
+      </ul>
 
       <Materials studentId={id!} />
 
@@ -56,7 +96,8 @@ export function StudentProfilePage() {
         {assessments.data?.map((assessment) => (
           <li key={assessment.id} className="row">
             <Link to={`/review/${assessment.id}`} className="text-[13.5px]">
-              {t("student.week", { period: assessment.period_id.slice(0, 8) })}
+              {weekOf(assessment.period_id)}
+              <span className="ml-2 text-muted-foreground">{titleOf(assessment.project_id)}</span>
             </Link>
             <span className="flex flex-wrap items-center gap-2.5">
               <ProgressIndex value={assessment.progress_index} />
@@ -70,6 +111,10 @@ export function StudentProfilePage() {
                 })}
               </Badge>
             </span>
+            <ConfidenceReasons
+              reasons={(assessment.confidence_reasons ?? []).map(String)}
+              className="w-full"
+            />
           </li>
         ))}
         {assessments.data?.length === 0 && (
@@ -79,54 +124,6 @@ export function StudentProfilePage() {
         )}
       </ul>
     </section>
-  );
-}
-
-function Trajectory({ studentId, projectId }: { studentId: string; projectId: string }) {
-  const { t } = useTranslation();
-  const trend = useQuery({
-    queryKey: ["trends", studentId, projectId],
-    queryFn: () =>
-      api.get<TrendPoint[]>(`/api/v1/trends?student_id=${studentId}&project_id=${projectId}`),
-  });
-
-  const points = trend.data ?? [];
-  const rubricVersions = new Set(points.map((point) => point.rubric_version_id));
-
-  return (
-    <div className="mt-8">
-      <h2 className="section-title">
-        {t("student.trajectory", { project: projectId.slice(0, 8) })}
-      </h2>
-      {rubricVersions.size > 1 && (
-        <p className="mt-1.5 text-[12.5px] text-warn" data-testid="rubric-break">
-          {t("student.rubricBreak", { count: rubricVersions.size })}
-        </p>
-      )}
-      {/* Cards, not a line: a line through a rubric change would assert a comparison the data
-          does not support. The break is the point, so the cards that follow one carry an edge. */}
-      <ol className="mt-3 flex flex-wrap gap-2.5" data-testid="trajectory">
-        {points.map((point, index) => {
-          const brokenHere =
-            index > 0 && points[index - 1]!.rubric_version_id !== point.rubric_version_id;
-          return (
-            <li
-              key={point.assessment_id}
-              className={`card min-w-[8.5rem] ${brokenHere ? "border-l-[3px] border-l-warn-rule" : ""}`}
-            >
-              <ProgressIndex value={point.progress_index} />
-              <p className="stamp mt-2">{formatInstant(point.created_at)}</p>
-              <p className="stamp">
-                {t("student.rubric", { id: (point.rubric_version_id ?? "").slice(0, 8) })}
-              </p>
-            </li>
-          );
-        })}
-        {points.length === 0 && (
-          <li className="text-sm text-muted-foreground">{t("student.noApproved")}</li>
-        )}
-      </ol>
-    </div>
   );
 }
 

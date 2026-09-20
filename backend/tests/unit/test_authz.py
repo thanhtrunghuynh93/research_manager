@@ -46,6 +46,35 @@ def test_visible_to_fails_closed_without_policy() -> None:
 
 
 @pytest.mark.unit
+def test_a_scope_that_names_no_read_set_is_single_workspace() -> None:
+    """A hand-built Scope — a job's, a test's — must not silently span (ADR 0016)."""
+    scope = _scope(Role.PROF)
+
+    assert scope.workspace_ids == frozenset({scope.workspace_id})
+    assert scope.access_epochs == frozenset({(scope.workspace_id, scope.access_epoch)})
+
+
+@pytest.mark.unit
+def test_a_scope_keeps_the_read_set_it_was_given() -> None:
+    """`scope_for` fills both for a professor in several workspaces; nothing may overwrite them."""
+    anchor, other = uuid4(), uuid4()
+    scope = Scope(
+        workspace_id=anchor,
+        user_id=uuid4(),
+        role=Role.PROF,
+        project_ids=frozenset(),
+        access_epoch=3,
+        workspace_ids=frozenset({anchor, other}),
+        access_epochs=frozenset({(anchor, 3), (other, 7)}),
+    )
+
+    assert scope.workspace_ids == frozenset({anchor, other})
+    assert scope.access_epochs == frozenset({(anchor, 3), (other, 7)})
+    # The anchor's epoch is still its own: a snapshot is built for one workspace.
+    assert scope.access_epoch == 3
+
+
+@pytest.mark.unit
 def test_policy_registry_rejects_duplicates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(authz, "_POLICIES", {})
 

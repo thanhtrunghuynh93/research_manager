@@ -22,6 +22,7 @@ from app.reporting.schemas import (
     RevisionRequestOut,
     SubmitIn,
     VersionOut,
+    VersionSummaryOut,
 )
 
 router = APIRouter(tags=["reporting"])
@@ -42,11 +43,33 @@ async def configure_calendar(
     )
 
 
+@router.get("/calendar", summary="The reporting calendar in force")
+async def current_calendar(scope: ScopeDep, session: SessionDep) -> CalendarConfigOut | None:
+    """`null` when no calendar has been configured, which is a state and not an error.
+
+    Readable by a student as well as a professor: `CalendarConfig`'s policy is workspace-wide
+    because everyone needs to know when their report is due (REP-01).
+    """
+    return await service.current_calendar(session, scope)
+
+
 @router.get("/periods", summary="List reporting periods")
 async def list_periods(
-    scope: ScopeDep, session: SessionDep, through: date | None = None
+    scope: ScopeDep,
+    session: SessionDep,
+    through: date | None = None,
+    across_workspaces: bool = False,
 ) -> list[PeriodOut]:
-    return await service.list_periods(session, scope, through=through)
+    """The weeks of the workspace being worked in, or of all of them when asked.
+
+    The default is the one workspace, because a screen that describes a workspace has to describe
+    the one it is on. A professor's reads may span the workspaces they belong to (ADR 0016), and
+    a screen that labels records from any of them — a review, a student's history — asks for the
+    wide list by name. Each period carries its `workspace_id` either way.
+    """
+    return await service.list_periods(
+        session, scope, through=through, across_workspaces=across_workspaces
+    )
 
 
 @router.post("/periods/ensure", summary="Materialise periods up to a date")
@@ -138,6 +161,18 @@ async def request_revision(
     return await service.request_revision(
         session, scope, report_id=report_id, project_id=payload.project_id, reason=payload.reason
     )
+
+
+@router.get("/reports/{report_id}/versions", summary="Every submitted version of one report")
+async def list_versions(
+    report_id: UUID, scope: ScopeDep, session: SessionDep
+) -> list[VersionSummaryOut]:
+    """REP-05: a resubmission adds a version and never replaces history — so history needs a reader.
+
+    `ScopeDep`, not `ProfScopeDep`: a student is entitled to their own, and the visibility
+    predicate already confines them to it.
+    """
+    return await service.list_versions(session, scope, report_id=report_id)
 
 
 @router.get("/reports/{report_id}/revisions", summary="Outstanding revision requests")

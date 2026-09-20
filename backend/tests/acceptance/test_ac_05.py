@@ -69,22 +69,32 @@ async def test_ac_05_a_negative_result_without_code_can_be_rated_fully(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(
-                        rating="3", rationale="the agreed test was carried out", evidence_ref_ids=[]
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress",
+                        rating="3",
+                        rationale="the agreed test was carried out",
+                        evidence_ref_ids=[],
                     ),
-                    "learning": DimensionRating(
+                    DimensionRating(
+                        dimension_id="learning",
                         rating="4",
                         rationale="a rigorous negative result closes a direction",
                         evidence_ref_ids=[],
                     ),
-                    "rigor": DimensionRating(
-                        rating="4", rationale="the counterexample is checkable", evidence_ref_ids=[]
+                    DimensionRating(
+                        dimension_id="rigor",
+                        rating="4",
+                        rationale="the counterexample is checkable",
+                        evidence_ref_ids=[],
                     ),
-                    "artifacts": DimensionRating(
-                        rating="3", rationale="the proof is written up", evidence_ref_ids=[]
+                    DimensionRating(
+                        dimension_id="artifacts",
+                        rating="3",
+                        rationale="the proof is written up",
+                        evidence_ref_ids=[],
                     ),
-                }
+                ]
             )
         }
     )

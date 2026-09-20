@@ -24,7 +24,12 @@ from argon2.exceptions import Argon2Error
 
 from app.core.errors import ValidationError
 
-PASSWORD_MIN_LENGTH = 12
+# The floor NIST SP 800-63B sets for a user-chosen secret. Length is the only rule: no composition
+# requirements, because they push people towards predictable substitutions rather than longer
+# secrets. What makes eight defensible here is what sits around it — Argon2 hashing, and the
+# limiter on /auth/login that allows ten attempts per five minutes per address, which is what
+# takes online guessing off the table.
+PASSWORD_MIN_LENGTH = 8
 TOKEN_BYTES = 32
 
 INVITATION_TTL = timedelta(days=7)  # architecture §6.2

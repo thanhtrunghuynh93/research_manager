@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/evidence/Badges";
 import { CitationList } from "@/components/evidence/CitationLink";
 import { useAsk } from "@/features/assistant/queries";
+import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant } from "@/lib/dates";
 
 export function AssistantPage() {
@@ -24,6 +25,7 @@ export function AssistantPage() {
   const [question, setQuestion] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const ask = useAsk();
+  const timezone = useTimezone();
 
   // Pydantic defaults surface as optional in the generated schema; normalise once so the render
   // below reads as the answer contract rather than as a chain of guards.
@@ -83,7 +85,7 @@ export function AssistantPage() {
             <Badge>{answer.time_range}</Badge>
             {answer.cached && <Badge tone="neutral">{t("assistant.cached")}</Badge>}
             <span className="stamp">
-              {formatInstant(answer.generated_at)} · {answer.model_name}
+              {formatInstant(answer.generated_at, timezone)} · {answer.model_name}
             </span>
           </div>
 
@@ -113,7 +115,7 @@ export function AssistantPage() {
                         <span className="font-medium">{fact.label}: </span>
                         <span>{renderValue(fact.value)}</span>
                         <p className="stamp mt-1">
-                          {t("overview.asOf", { when: formatInstant(fact.as_of) })}
+                          {t("overview.asOf", { when: formatInstant(fact.as_of, timezone) })}
                           {fact.note ? ` — ${fact.note}` : ""}
                         </p>
                       </li>

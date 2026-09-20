@@ -40,14 +40,94 @@ async def test_the_professor_creates_a_project(
     assert response.json()["status"] == "proposed"
 
 
-async def test_a_student_cannot_create_a_project(
+async def test_a_student_creates_a_project_and_it_is_active(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
     await _sign_in(client, student_a)
 
     response = await client.post("/api/v1/projects", json={"title": "Mine", "stage": "theory"})
 
-    assert response.status_code == 403
+    assert response.status_code == 201
+    assert response.json()["status"] == "active", "no second party has to activate it (PROJ-07)"
+
+    # Readable straight afterwards, which is only true because the creator was enrolled on it.
+    listed = await client.get("/api/v1/projects")
+    assert [item["title"] for item in listed.json()["items"]] == ["Mine"]
+
+
+async def test_the_joinable_list_is_a_narrower_read_than_the_project(
+    client: AsyncClient, db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    # The projection is the point: someone who has not joined has no claim on the research
+    # questions or the intended contributions, and this asserts they are not served either.
+    project = await service.create_project(
+        db,
+        prof_scope,
+        title="Open",
+        stage="theory",
+        research_questions=["Confidential until you are on it"],
+    )
+    await service.update_project(db, prof_scope, project.id, status="active", open_to_join=True)
+    await _sign_in(client, student_a)
+
+    # Also the route-ordering check: `/joinable` must be declared above `/{project_id}`, or the
+    # UUID path parameter claims the literal and this answers 422.
+    response = await client.get("/api/v1/projects/joinable")
+
+    assert response.status_code == 200
+    assert [row["title"] for row in response.json()] == ["Open"]
+    assert set(response.json()[0]) == {"id", "title", "stage", "status", "member_count"}
+
+
+async def test_a_student_joins_an_open_project_over_http(
+    client: AsyncClient, db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    project = await service.create_project(db, prof_scope, title="Open", stage="theory")
+    await service.update_project(db, prof_scope, project.id, status="active", open_to_join=True)
+    await _sign_in(client, student_a)
+
+    assert (await client.get(f"/api/v1/projects/{project.id}")).status_code == 404
+
+    joined = await client.post(f"/api/v1/projects/{project.id}/join", json={})
+    assert joined.status_code == 201
+
+    assert (await client.get(f"/api/v1/projects/{project.id}")).status_code == 200
+    # A project they are already on is not on offer, so joining twice is "not found" rather than a
+    # conflict — the same answer as closed, archived, and elsewhere, which is what keeps this from
+    # being a way to probe what exists. The conflict remains for a professor assigning twice.
+    assert (await client.post(f"/api/v1/projects/{project.id}/join", json={})).status_code == 404
+
+
+async def test_a_closed_project_cannot_be_joined_over_http(
+    client: AsyncClient, db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    project = await service.create_project(db, prof_scope, title="Closed", stage="theory")
+    await service.update_project(db, prof_scope, project.id, status="active")
+    await _sign_in(client, student_a)
+
+    assert (await client.post(f"/api/v1/projects/{project.id}/join", json={})).status_code == 404
+
+
+async def test_only_the_creator_may_patch_their_project(
+    client: AsyncClient, db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    theirs = await service.create_project(db, prof_scope, title="Professor's", stage="theory")
+    await service.add_member(db, prof_scope, theirs.id, student_id=student_a.id)
+    await _sign_in(client, student_a)
+
+    mine = await client.post("/api/v1/projects", json={"title": "Mine", "stage": "theory"})
+    project_id = mine.json()["id"]
+
+    assert (
+        await client.patch(f"/api/v1/projects/{project_id}", json={"title": "Renamed"})
+    ).status_code == 200
+    # Standing, not description: the professor decides whether work is owed and who may read it.
+    assert (
+        await client.patch(f"/api/v1/projects/{project_id}", json={"status": "archived"})
+    ).status_code == 403
+    assert (
+        await client.patch(f"/api/v1/projects/{theirs.id}", json={"title": "Not theirs"})
+    ).status_code == 403
 
 
 async def test_a_signed_in_student_sees_the_project_their_membership_grants(
@@ -164,3 +244,77 @@ async def test_the_project_workspace_lists_decisions(
 
 async def test_the_project_endpoints_require_a_session(client: AsyncClient) -> None:
     assert (await client.get("/api/v1/projects")).status_code == 401
+
+
+async def test_a_repository_link_must_be_one_a_browser_could_follow(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    # The only thing this field does is get clicked, so a bare host is refused at the edge rather
+    # than stored and found broken later.
+    await _sign_in(client, student_a)
+
+    refused = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "github.com/lab/mine"},
+    )
+    assert refused.status_code == 422
+
+    accepted = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "https://github.com/lab/mine"},
+    )
+    assert accepted.status_code == 201
+    assert accepted.json()["repo_url"] == "https://github.com/lab/mine"
+
+
+async def test_the_optional_repository_field_may_be_left_empty(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    """The field is labelled optional on the form, and leaving it blank used to return a 500.
+
+    `max_length` was constrained on `str | None` rather than on the `str` in it, so it was applied
+    to the None that `normalize_repo_url` folds blank and absent into, and pydantic raised
+    TypeError inside request validation. A student starting a project before there is a repository
+    — the ordinary case — could not create one at all from their own screen.
+    """
+    await _sign_in(client, student_a)
+
+    for sent in ({}, {"repo_url": None}, {"repo_url": ""}, {"repo_url": "   "}):
+        created = await client.post(
+            "/api/v1/projects", json={"title": "No repo yet", "stage": "theory", **sent}
+        )
+
+        assert created.status_code == 201, created.text
+        assert created.json()["repo_url"] is None
+
+
+async def test_a_repository_link_can_be_taken_off_a_project(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    await _sign_in(client, student_a)
+    created = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "https://github.com/lab/mine"},
+    )
+    assert created.status_code == 201
+
+    cleared = await client.patch(f"/api/v1/projects/{created.json()['id']}", json={"repo_url": ""})
+
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["repo_url"] is None
+
+
+async def test_a_repository_link_longer_than_the_column_is_refused(
+    client: AsyncClient, student_a: identity_models.User
+) -> None:
+    # Still refused, and as a validation failure rather than as a crash: the length constraint
+    # moved, it did not go away.
+    await _sign_in(client, student_a)
+
+    response = await client.post(
+        "/api/v1/projects",
+        json={"title": "Mine", "stage": "theory", "repo_url": "https://x.dev/" + "y" * 600},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith("repo_url:")

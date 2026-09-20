@@ -38,7 +38,14 @@ export function Badge({
   );
 }
 
-/** ASSESS-06: a level is meaningless without the rules that produced it, so they are the tooltip. */
+/**
+ * ASSESS-06: the level, and how many rules produced it.
+ *
+ * The count is a pointer, not the explanation — `ConfidenceReasons` is the explanation, and every
+ * screen showing this badge should show that too. The reasons used to be this badge's `title`,
+ * which meant they did not exist on a touch device, were not announced as content by a screen
+ * reader, and left "LOW CONFIDENCE · 2" as the whole of what a reader could find out.
+ */
 export function ConfidenceBadge({
   confidence,
   reasons = [],
@@ -49,15 +56,30 @@ export function ConfidenceBadge({
   const { t } = useTranslation();
   const tone: Tone = confidence === "high" ? "good" : confidence === "medium" ? "warn" : "bad";
   return (
-    <Badge
-      tone={tone}
-      title={reasons.join("\n")}
-      data-testid="confidence-badge"
-      className={reasons.length > 0 ? "cursor-help" : undefined}
-    >
+    <Badge tone={tone} data-testid="confidence-badge">
       {t(`assessment.confidence.${confidence}`, { defaultValue: confidence })}
       {reasons.length > 0 ? ` · ${reasons.length}` : ""}
     </Badge>
+  );
+}
+
+/** The rules behind a confidence level, as text on the page rather than on hover. */
+export function ConfidenceReasons({
+  reasons = [],
+  className,
+}: {
+  reasons?: string[];
+  className?: string;
+}) {
+  if (reasons.length === 0) return null;
+  return (
+    <ul className={cn("mt-1", className)} data-testid="confidence-reasons">
+      {reasons.map((reason) => (
+        <li key={reason} className="text-[12.5px] leading-relaxed text-muted-foreground">
+          {reason}
+        </li>
+      ))}
+    </ul>
   );
 }
 

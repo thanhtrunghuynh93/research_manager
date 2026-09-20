@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
@@ -77,13 +77,27 @@ async def period_before(
 
 
 async def list_periods(
-    session: AsyncSession, scope: Scope, *, through: date | None = None
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    through: date | None = None,
+    across_workspaces: bool = False,
 ) -> list[ReportingPeriod]:
+    """The weeks the caller may see, in the workspace they are working in.
+
+    `visible_to` spans every workspace a professor belongs to (ADR 0016), which is right for a
+    question asked about all of them and wrong for a panel that describes one. The calendar screen
+    read the wide list and reported another workspace's nine open weeks under a workspace whose
+    own calendar it had just said was not configured. So the narrow read is the default and the
+    wide one is asked for by name.
+    """
     statement = (
         select(ReportingPeriod)
         .where(visible_to(scope, ReportingPeriod))
         .order_by(ReportingPeriod.local_start)
     )
+    if not across_workspaces:
+        statement = statement.where(ReportingPeriod.workspace_id == scope.workspace_id)
     if through is not None:
         statement = statement.where(ReportingPeriod.local_start <= through)
     return list((await session.execute(statement)).scalars().all())
@@ -98,6 +112,18 @@ async def get_period(
                 ReportingPeriod.id == period_id, visible_to(scope, ReportingPeriod)
             )
         )
+    ).scalar_one_or_none()
+
+
+async def get_period_unscoped(session: AsyncSession, period_id: UUID) -> ReportingPeriod | None:
+    """One period, without a Scope — for REP-08's job-level reads.
+
+    Unscoped for the same reason `required_obligations_at` is: the missed-deadline sweep and the
+    professor's outstanding list are computed for a period across every student in it, and there
+    is no one caller whose visibility would be the right filter.
+    """
+    return (
+        await session.execute(select(ReportingPeriod).where(ReportingPeriod.id == period_id))
     ).scalar_one_or_none()
 
 
@@ -269,6 +295,21 @@ async def version_by_idempotency_key(
     ).scalar_one_or_none()
 
 
+async def highest_version_no(session: AsyncSession, report_id: UUID) -> int:
+    """The largest `version_no` this report carries, or 0 when it has none.
+
+    Unscoped and read straight from the versions, because it answers a question about the table's
+    own unique constraint rather than about what a caller may see.
+    """
+    return (
+        await session.execute(
+            select(func.coalesce(func.max(ReportVersion.version_no), 0)).where(
+                ReportVersion.report_id == report_id
+            )
+        )
+    ).scalar_one()
+
+
 async def get_version(
     session: AsyncSession, scope: Scope, version_id: UUID
 ) -> ReportVersion | None:
@@ -310,6 +351,31 @@ async def entries_of_version(
         )
     ).scalars()
     return {row.project_id: row for row in rows}
+
+
+async def list_versions(
+    session: AsyncSession, scope: Scope, report_id: UUID
+) -> list[ReportVersion]:
+    """Every submitted version of one report, oldest first.
+
+    Until this existed a version was reachable only by its id, and the only id anyone held was
+    `current_version_id` — so REP-05's "a resubmission adds a version and never replaces history"
+    had no reader on either side of the product.
+    """
+    return list(
+        (
+            await session.execute(
+                select(ReportVersion)
+                .where(
+                    ReportVersion.report_id == report_id,
+                    visible_to(scope, ReportVersion),
+                )
+                .order_by(ReportVersion.version_no)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 async def list_revision_requests(

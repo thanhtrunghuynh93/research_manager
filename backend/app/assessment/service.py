@@ -73,8 +73,11 @@ DEFAULT_DIMENSIONS: dict[str, Any] = {
 PROMPT_VERSION = "v1"
 # Per-prompt overrides. `rate_rubric` v2 supplies the plan baseline the v1 template already asked
 # for but was never given, and tells the model to rate every rubric dimension rather than only the
-# ones it has something to say about (ASSESS-05, ASSESS-06).
-PROMPT_VERSIONS: dict[str, str] = {"rate_rubric": "v2"}
+# ones it has something to say about (ASSESS-05, ASSESS-06). v3 carries that unchanged and adds the
+# `dimension_id` the ratings list now needs, the list having replaced a map the provider's strict
+# mode could not express. v2 is kept rather than edited: ASSESS-09 versions prompts so an
+# assessment drafted under one stays explainable by the template that drafted it.
+PROMPT_VERSIONS: dict[str, str] = {"rate_rubric": "v3"}
 
 
 # ------------------------------------------------------------------ rubric
@@ -496,16 +499,40 @@ async def _call(
     )
 
 
-def validate_output(output: RubricOutput, *, allowed_evidence_ids: set[UUID]) -> dict[str, Any]:
+def validate_output(
+    output: RubricOutput,
+    *,
+    allowed_evidence_ids: set[UUID],
+    allowed_dimensions: set[str] | None = None,
+) -> dict[str, Any]:
     """AC-07/AC-12: a citation that is not in the snapshot cannot survive.
 
     Any evidence id the model invented is dropped, and a rating that rested on one is downgraded to
     `unknown` with the reason recorded, because a rating whose support has gone is not a rating.
+
+    This is also where the model's list of ratings becomes the map keyed by dimension that every
+    caller and `assessment_versions.ratings` expects, so the wire shape can change without anything
+    downstream — or already stored — noticing.
+
+    A list admits what a map could not: a dimension the rubric does not have, and the same one
+    twice. `allowed_dimensions` drops the first and takes first-wins on the second, both recorded
+    rather than silent, because either would otherwise land in JSONB and be rendered to the
+    professor as though the rubric had asked for it. Passing None allows any id, which is what the
+    evaluation harness wants.
     """
     allowed = {str(value) for value in allowed_evidence_ids}
     validated: dict[str, Any] = {}
+    unknown_dimensions = 0
+    duplicate_dimensions = 0
 
-    for name, rating in output.dimensions.items():
+    for rating in output.dimensions:
+        name = rating.dimension_id
+        if allowed_dimensions is not None and name not in allowed_dimensions:
+            unknown_dimensions += 1
+            continue
+        if name in validated:
+            duplicate_dimensions += 1
+            continue
         kept = [ref for ref in rating.evidence_ref_ids if ref in allowed]
         dropped = [ref for ref in rating.evidence_ref_ids if ref not in allowed]
         notes: list[str] = []
@@ -526,6 +553,16 @@ def validate_output(output: RubricOutput, *, allowed_evidence_ids: set[UUID]) ->
             "evidence_ref_ids": kept,
             "validation_notes": notes,
         }
+
+    if unknown_dimensions or duplicate_dimensions:
+        # Not a failure: the assessment is still usable, and the professor's screen should not
+        # carry a note about the model's bookkeeping. But it is the signal that a prompt and a
+        # rubric have drifted apart, so it belongs where an operator reads.
+        log.warning(
+            "rate_rubric returned %d rating(s) for dimensions not in the rubric, %d duplicate(s)",
+            unknown_dimensions,
+            duplicate_dimensions,
+        )
     return validated
 
 
@@ -566,7 +603,11 @@ async def _record_assessment(
         }
         narrative: dict[str, Any] = {"limitations": ["Not rated — restricted"]}
     else:
-        ratings = validate_output(output, allowed_evidence_ids=snapshot_item_ids)
+        ratings = validate_output(
+            output,
+            allowed_evidence_ids=snapshot_item_ids,
+            allowed_dimensions=set(weights),
+        )
         for name in excluded:
             if name in ratings:
                 ratings[name]["rating"] = NOT_APPLICABLE
@@ -703,8 +744,7 @@ async def approve(
     review.published_at = now()
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="assessment.approved",
         target_table="assessment_versions",
         target_id=assessment_id,
@@ -726,8 +766,7 @@ async def withdraw(session: AsyncSession, scope: Scope, assessment_id: UUID) -> 
     review.published_at = None
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="assessment.withdrawn",
         target_table="assessment_versions",
         target_id=assessment_id,
@@ -915,32 +954,73 @@ async def progress_series(
 ) -> list[TrendPoint]:
     """ASSESS-10/AC-10: approved points, each labelled with the rubric that produced it."""
     rows = await repo.approved_series(session, scope, student_id, project_id)
-    return [
-        TrendPoint(
-            period_id=row.period_id,
-            assessment_id=row.id,
-            progress_index=row.progress_index,
-            plan_completion=row.plan_completion,
-            confidence=row.confidence,
-            rubric_version_id=row.rubric_version_id,
-            created_at=row.created_at,
+    # The overrides that were approved with these points: a trajectory drawn from the drafts'
+    # own numbers plots a value the professor replaced, and an overridden point reads as the
+    # student's progress rather than as the professor's correction of it.
+    reviews = await repo.reviews_for(session, [row.id for row in rows])
+    points = []
+    for row in rows:
+        effective = _apply_override(row.ratings, reviews.get(row.id))
+        rubric = await repo.rubric_by_id(session, row.rubric_version_id)
+        points.append(
+            TrendPoint(
+                period_id=row.period_id,
+                assessment_id=row.id,
+                progress_index=_index_of(effective, rubric),
+                plan_completion=row.plan_completion,
+                confidence=row.confidence,
+                rubric_version_id=row.rubric_version_id,
+                created_at=row.created_at,
+            )
         )
-        for row in rows
-    ]
+    return points
+
+
+def _apply_override(ratings: dict[str, Any], review: Any) -> dict[str, Any]:
+    """The ratings that stand: the model's, with the professor's patch over them (ASSESS-08)."""
+    effective = dict(ratings)
+    if review is not None and review.override:
+        for name, patch in (review.override.get("ratings") or {}).items():
+            effective[name] = {**effective.get(name, {}), **patch}
+    return effective
+
+
+def _index_of(ratings: dict[str, Any], rubric: RubricVersion | None) -> int | None:
+    """Recompute ASSESS-04 over whatever ratings stand now.
+
+    The draft's index is computed once, from the model's ratings, and stored. Overriding a
+    component afterwards left that number behind: four dimensions overridden to Unknown still
+    published the 0/100 the model's four zeroes had produced — the one reading the requirements
+    forbid, since an unknown is an absence of evidence and never a zero. So the index a reader
+    sees is derived from the ratings that reader is shown, against the weights of the rubric that
+    produced them rather than whichever rubric is current.
+
+    Without a rubric there are no weights and so no index: `None` is "Not rated", which is the
+    right answer when the measure itself cannot be read.
+    """
+    if rubric is None:
+        return None
+    weights = _weights(rubric)
+    return progress_index(
+        {name: ratings.get(name, {}).get("rating", UNKNOWN) for name in weights}, weights
+    )
 
 
 async def _assessment_out(session: AsyncSession, assessment: AssessmentVersion) -> AssessmentOut:
     """The stored version, plus what stands after any professor override (ASSESS-08)."""
     review = await repo.review_for(session, assessment.id)
-    effective = dict(assessment.ratings)
-    if review is not None and review.override:
-        for name, patch in (review.override.get("ratings") or {}).items():
-            effective[name] = {**effective.get(name, {}), **patch}
+    effective = _apply_override(assessment.ratings, review)
+    rubric = await repo.rubric_by_id(session, assessment.rubric_version_id)
 
     out = AssessmentOut.model_validate(assessment)
     return out.model_copy(
         update={
             "effective_ratings": effective,
+            # `progress_index` is what stands, because that is what every screen renders and a
+            # screen that forgets to ask for the overridden number publishes the wrong one. The
+            # draft's own index stays beside it, under a name that says whose it is.
+            "progress_index": _index_of(effective, rubric),
+            "model_progress_index": assessment.progress_index,
             "review_state": review.state if review else None,
             "published_at": review.published_at if review else None,
         }

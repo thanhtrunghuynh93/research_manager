@@ -62,8 +62,10 @@ export function CitationList({ citations }: { citations: Citation[] }) {
   }
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+      {/* The locator is part of the key: one week now yields one source per student, and keying
+          on the source alone collapsed them into a single entry. */}
       {citations.map((citation) => (
-        <li key={`${citation.source_kind}:${citation.source_id}`}>
+        <li key={`${citation.source_kind}:${citation.source_id}:${citation.locator ?? ""}`}>
           <CitationLink citation={citation} />
         </li>
       ))}

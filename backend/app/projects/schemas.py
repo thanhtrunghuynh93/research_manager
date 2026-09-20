@@ -4,17 +4,49 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.projects.models import BaselineState as BaselineState
+from app.projects.models import MembershipOrigin as MembershipOrigin
 from app.projects.models import MilestoneStatus as MilestoneStatus
 from app.projects.models import ProjectStatus as ProjectStatus
 from app.projects.models import ResearchStage as ResearchStage
 from app.projects.models import TaskStatus as TaskStatus
+
+_REPO_SCHEMES = ("https://", "http://", "ssh://", "git://", "git@")
+
+
+def normalize_repo_url(value: str | None) -> str | None:
+    """A link somebody can actually follow, or nothing at all.
+
+    Blank and absent are the same thing here: the field is optional, and storing "" would make
+    every screen decide separately whether an empty string counts as having a repository. A value
+    that is not a URL is refused rather than stored, because the only thing this field does is get
+    clicked, and `github.com/lab/thing` pasted without a scheme resolves to nowhere.
+    """
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if not cleaned.startswith(_REPO_SCHEMES):
+        raise ValueError("must start with https://, http://, ssh://, git:// or git@")
+    return cleaned
+
+
+# The length is constrained on the `str` member rather than on the union. Applied to the union it
+# is applied to whatever the validator returned, and `normalize_repo_url` returns None for the
+# blank and absent cases it exists to fold together — at which point pydantic raises TypeError
+# ("Unable to apply constraint 'max_length' to supplied value None") inside request validation,
+# and a student who left the optional field empty got a 500 instead of a project.
+RepoUrl = Annotated[
+    Annotated[str, StringConstraints(max_length=500)] | None,
+    AfterValidator(normalize_repo_url),
+]
 
 
 class ProjectOut(BaseModel):
@@ -31,9 +63,34 @@ class ProjectOut(BaseModel):
     start_on: date | None = None
     target_on: date | None = None
     venue_target: str | None = None
+    repo_url: str | None = None
     shared_resources: dict[str, Any]
     ai_restricted: bool
+    open_to_join: bool
+    # AUTH-07: the client decides who may edit from this, so it has to travel with the record.
+    created_by: UUID | None = None
     created_at: datetime
+    # Caller-relative, and null for everyone still on the project (and for a professor, who is
+    # never a member). A student keeps the record of a project they have left, so a screen that
+    # shows it has to be able to say which of the two it is looking at.
+    viewer_left_on: date | None = None
+
+
+class JoinableProjectOut(BaseModel):
+    """What a student may see about a project *before* joining it (PROJ-07).
+
+    Deliberately not `ProjectOut`. Research questions, intended contributions, the venue target and
+    the shared resources are the substance of an unpublished research programme, and someone who
+    has not joined has no claim on them. This is the directory entry, not the record.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    stage: ResearchStage
+    status: ProjectStatus
+    member_count: int = 0
 
 
 class ProjectIn(BaseModel):
@@ -45,6 +102,7 @@ class ProjectIn(BaseModel):
     start_on: date | None = None
     target_on: date | None = None
     venue_target: str | None = None
+    repo_url: RepoUrl = None
     shared_resources: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -58,8 +116,14 @@ class ProjectPatch(BaseModel):
     start_on: date | None = None
     target_on: date | None = None
     venue_target: str | None = None
+    repo_url: RepoUrl = None
     shared_resources: dict[str, Any] | None = None
     ai_restricted: bool | None = None
+    open_to_join: bool | None = None
+
+
+class JoinIn(BaseModel):
+    responsibility: str = ""
 
 
 class MembershipOut(BaseModel):
@@ -73,6 +137,7 @@ class MembershipOut(BaseModel):
     # student to their own account, and asking it for a co-member fails closed.
     student_name: str = ""
     responsibility: str
+    origin: MembershipOrigin
     joined_on: date
     left_on: date | None = None
     planned_allocation: Decimal | None = None

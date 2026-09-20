@@ -1,4 +1,4 @@
-.PHONY: help dev down web test lint typecheck migrate migrate-check migration bootstrap seed e2e check-traceability
+.PHONY: help dev down web test lint typecheck migrate migrate-check migration bootstrap seed e2e check-traceability check-docs
 
 COMPOSE := docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml --env-file infra/.env
 
@@ -49,3 +49,6 @@ e2e: ## run Playwright end-to-end tests against the dev stack
 
 check-traceability: ## verify every requirement ID is covered in architecture and tests
 	python3 scripts/check_traceability.py
+
+check-docs: ## verify the docs against the tree: paths, cited API routes, counts, versions
+	python3 scripts/check_docs.py

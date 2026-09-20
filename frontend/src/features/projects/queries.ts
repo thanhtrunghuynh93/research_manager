@@ -1,11 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import type {
   Decision,
+  JoinableProject,
+  MembershipIn,
   Milestone,
   Project,
+  ProjectIn,
   ProjectMember,
+  ProjectPage,
+  ProjectPatch,
   ProjectProgress,
 } from "@/features/projects/types";
 
@@ -19,34 +24,138 @@ export function useProject(id: string | undefined) {
   });
 }
 
-export function useMembers(id: string | undefined) {
+/**
+ * Everyone who has been on the project, past members included (PROJ-02, UI-03).
+ *
+ * `include_past` defaults to false on the route and no caller passed it, so PROJ-02's kept row was
+ * in the database and on no screen: a student who left vanished from the project they had worked
+ * on. The list renders `joined – left` for a closed membership already; it had nothing to render.
+ */
+export function useMembers(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "members"],
-    queryFn: () => api.get<ProjectMember[]>(`/api/v1/projects/${id}/members`),
-    enabled: Boolean(id),
+    queryFn: () => api.get<ProjectMember[]>(`/api/v1/projects/${id}/members?include_past=true`),
+    enabled: Boolean(id) && wanted,
   });
 }
 
-export function useMilestones(id: string | undefined) {
+export function useMilestones(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "milestones"],
     queryFn: () => api.get<Milestone[]>(`/api/v1/projects/${id}/milestones`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && wanted,
   });
 }
 
-export function useDecisions(id: string | undefined) {
+export function useDecisions(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "decisions"],
     queryFn: () => api.get<Decision[]>(`/api/v1/projects/${id}/decisions`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && wanted,
   });
 }
 
-export function useProgress(id: string | undefined) {
+export function useProgress(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "progress"],
     queryFn: () => api.get<ProjectProgress>(`/api/v1/projects/${id}/progress`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && wanted,
   });
+}
+
+export const projectsListKey = (status?: string) => ["projects", "list", status ?? "all"] as const;
+
+/**
+ * The project list, which is what finally gives `/projects/:id` a way in: until it existed the
+ * screen was reachable only by typing a UUID or following an assistant citation.
+ *
+ * `GET /projects` is signed-in rather than professor-only, so a student sees the projects they are
+ * on. The create form on the page is what is gated, not the list.
+ */
+export function useProjectList(status?: string) {
+  return useQuery({
+    queryKey: projectsListKey(status),
+    queryFn: () => api.get<ProjectPage>(`/api/v1/projects${status ? `?status=${status}` : ""}`),
+  });
+}
+
+/**
+ * Every project write invalidates the `["projects"]` prefix rather than a single key, because the
+ * same records are read under three of them: this feature's list and detail, and `report/queries`'
+ * own `projectsKey`, which the weekly editor uses to title its tabs.
+ */
+function useProjectWrite<TArgs, TResult>(
+  mutationFn: (args: TArgs) => Promise<TResult>,
+  projectId?: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      if (projectId) void queryClient.invalidateQueries({ queryKey: projectKey(projectId) });
+    },
+  });
+}
+
+export function useCreateProject() {
+  return useProjectWrite((payload: ProjectIn) => api.post<Project>("/api/v1/projects", payload));
+}
+
+/**
+ * The one that matters most for a professor's project: it is created `proposed`, and an obligation
+ * only derives from a membership whose project is `active`. Until this is called nothing a student
+ * is assigned to can ever come due. A student's own project is already active when it is created.
+ */
+export function useUpdateProject(id: string) {
+  return useProjectWrite(
+    (payload: ProjectPatch) => api.patch<Project>(`/api/v1/projects/${id}`, payload),
+    id,
+  );
+}
+
+export function useAddMember(id: string) {
+  return useProjectWrite(
+    (payload: MembershipIn) => api.post<ProjectMember>(`/api/v1/projects/${id}/members`, payload),
+    id,
+  );
+}
+
+export const joinableKey = ["projects", "joinable"] as const;
+
+/** PROJ-07: the projects a professor has opened, which is a narrower read than the project. */
+export function useJoinableProjects(enabled: boolean) {
+  return useQuery({
+    queryKey: joinableKey,
+    queryFn: () => api.get<JoinableProject[]>("/api/v1/projects/joinable"),
+    enabled,
+  });
+}
+
+export function useJoinProject() {
+  return useProjectWrite((id: string) =>
+    api.post<ProjectMember>(`/api/v1/projects/${id}/join`, {}),
+  );
+}
+
+/**
+ * Leaving stops future weeks being owed; it does not clear an obligation already derived for this
+ * one, which is the professor's to excuse. `obligationsKey` is invalidated because the student's
+ * home is where that shows.
+ */
+export function useLeaveProject(projectId: string) {
+  const queryClient = useQueryClient();
+  const write = useProjectWrite(
+    (membershipId: string) =>
+      api.post<ProjectMember>(`/api/v1/projects/${projectId}/members/${membershipId}/end`, {}),
+    projectId,
+  );
+  return {
+    ...write,
+    mutate: (membershipId: string) =>
+      write.mutate(membershipId, {
+        // The prefix, not one period: leaving changes what is owed for every week still open.
+        onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["obligations"] }),
+      }),
+  };
 }

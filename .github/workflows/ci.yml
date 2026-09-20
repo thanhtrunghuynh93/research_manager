@@ -79,11 +79,12 @@ jobs:
       - run: bash scripts/gen_api_client.sh
       - run: git diff --exit-code -- frontend/src/api/generated docs/api/openapi.json
 
-  traceability:
+  docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/check_traceability.py
+      - run: python3 scripts/check_docs.py
 
   images:
     runs-on: ubuntu-latest

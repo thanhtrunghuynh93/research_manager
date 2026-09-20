@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import Scope
 from app.core.errors import ConflictError, ForbiddenError, ValidationError
 from app.identity import models as identity_models
+from app.identity import service as identity_service
 from app.projects import models, service
 from app.reporting import service as reporting_service
 
@@ -347,3 +348,34 @@ async def test_a_second_change_cannot_be_proposed_while_one_is_waiting(
         await service.supersede_baseline(
             db, scope, frozen.id, items=PLAN[:1], reason="Another outage"
         )
+
+
+async def test_joining_a_project_does_not_expose_a_co_members_plan(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+) -> None:
+    """The bound on PROJ-07: joining discloses the project, never another student's record.
+
+    `plan_baseline_visible_to` filters on the caller's own membership rather than on the project,
+    which is what makes this hold — and it is the assertion worth pinning, because every other
+    project-shaped record a joiner gains is deliberately shared.
+    """
+    period, theirs = await _membership(db, prof_scope, student_a)
+    await service.freeze_baseline(
+        db, prof_scope, membership_id=theirs.id, period_id=period.id, items=PLAN
+    )
+    await service.update_project(db, prof_scope, theirs.project_id, open_to_join=True)
+
+    joiner = await identity_service.scope_for(db, student_b)
+    await service.join_project(db, joiner, theirs.project_id)
+
+    joiner = await identity_service.scope_for(db, student_b)
+    assert (
+        await service.list_baselines(db, joiner, membership_id=theirs.id, period_id=period.id)
+    ) == []
+    # And the professor still sees it, so the empty list above is the policy and not an empty table.
+    assert (
+        await service.list_baselines(db, prof_scope, membership_id=theirs.id, period_id=period.id)
+    ) != []

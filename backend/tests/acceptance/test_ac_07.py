@@ -69,13 +69,14 @@ async def test_ac_07_a_claim_cited_to_nothing_cannot_stand(
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
-                dimensions={
-                    "progress": DimensionRating(
+                dimensions=[
+                    DimensionRating(
+                        dimension_id="progress",
                         rating="4",
                         rationale="state of the art, as reported",
                         evidence_ref_ids=["99999999-9999-9999-9999-999999999999"],
                     )
-                }
+                ]
             )
         }
     )

@@ -41,10 +41,35 @@ def test_verify_password_is_false_for_a_corrupt_hash() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("password", ["", "short", "eleven chars"[:11]])
+@pytest.mark.parametrize("password", ["", "short", "a" * (security.PASSWORD_MIN_LENGTH - 1)])
 def test_password_below_the_minimum_length_is_rejected(password: str) -> None:
     with pytest.raises(ValidationError):
         security.hash_password(password)
+
+
+@pytest.mark.unit
+def test_a_password_of_exactly_the_minimum_length_is_accepted() -> None:
+    """The boundary, pinned from both sides.
+
+    The rejection case above is written against PASSWORD_MIN_LENGTH rather than a literal, so it
+    follows the constant wherever it goes. That makes it a weaker test on its own: lower the
+    minimum to one and it still passes. This is the other half — the shortest password the policy
+    actually permits must work.
+    """
+    shortest = "a" * security.PASSWORD_MIN_LENGTH
+
+    assert security.verify_password(shortest, security.hash_password(shortest))
+
+
+@pytest.mark.unit
+def test_the_minimum_length_is_not_below_the_standard_floor() -> None:
+    """NIST SP 800-63B: a user-chosen secret is at least eight characters.
+
+    Here as an assertion because the number is a policy decision that lives in one line of code,
+    and the frontend duplicates it in two more. Lowering it further should require changing a test
+    that says why the floor exists, rather than being a quiet edit to a constant.
+    """
+    assert security.PASSWORD_MIN_LENGTH >= 8
 
 
 @pytest.mark.unit

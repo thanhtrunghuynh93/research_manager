@@ -295,3 +295,67 @@ async def test_the_review_queue_of_a_student_is_empty_by_construction(
     fact = await facts.run(db, "review_queue", _query(scope))
 
     assert fact is not None and fact.value == 0
+
+
+# ---------------------------------------------------------------- a source its reader can open
+#
+# The two roles read a report through different routes. Every fact emitted the student's, so a
+# professor following a source was redirected off a route their role cannot open, and the missing
+# record and the wrong link looked the same from the outside (QA-03).
+
+
+async def test_a_professors_report_citation_opens_that_students_week(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+) -> None:
+    period, project = await _week(db, prof_scope, [student_a, student_b])
+    await _submit(db, student_a, period, project)
+
+    fact = await facts.run(db, "missing_reports", _query(prof_scope, period_id=period.id))
+
+    assert fact is not None
+    assert [citation.locator for citation in fact.citations] == [
+        f"/students/{student_b.id}/reports/{period.id}"
+    ], "one source per student who owes, on the route a professor may open"
+    assert fact.citations[0].label.startswith(student_b.display_name), "and named for them"
+    assert fact.citations[0].label.endswith(f"week of {period.local_start} to {period.local_end}")
+
+
+async def test_a_students_own_report_citation_stays_on_their_own_route(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    period, project = await _week(db, prof_scope, [student_a])
+    await _submit(
+        db,
+        student_a,
+        period,
+        project,
+        deviations="The cluster queue has been full since Tuesday.",
+    )
+    scope = await identity_service.scope_for(db, student_a)
+
+    fact = await facts.run(db, "blockers", _query(scope, student_id=student_a.id))
+
+    assert fact is not None
+    assert fact.citations[0].locator == f"/report/{period.id}#{project.id}"
+
+
+async def test_one_week_yields_one_source_per_student_rather_than_one_for_all(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+) -> None:
+    """A week-level source pointed everybody at one place, and only one of them could use it."""
+    period, _ = await _week(db, prof_scope, [student_a, student_b])
+
+    fact = await facts.run(db, "week_reports", _query(prof_scope, period_id=period.id))
+
+    assert fact is not None
+    locators = {citation.locator for citation in fact.citations}
+    assert locators == {
+        f"/students/{student_a.id}/reports/{period.id}",
+        f"/students/{student_b.id}/reports/{period.id}",
+    }

@@ -29,6 +29,7 @@ from app.core.authz import Scope, visible_to
 from app.core.config import get_settings
 from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.ids import uuid7
+from app.core.jobs import defer_after_commit
 from app.core.storage import (
     ObjectStore,
     content_type_for,
@@ -39,6 +40,7 @@ from app.core.storage import (
     sha256_of,
     storage_key,
 )
+from app.identity import service as identity_service
 from app.reporting import events, extraction, links
 from app.reporting.models import (
     Artifact,
@@ -251,20 +253,17 @@ async def confirm_upload(
 
     version.byte_size = len(data)
     version.uploaded = True
-    result = extraction.extract(artifact.filename, data)
-    version.extraction_state = ExtractionState(result.state.value)
-    version.extraction_note = result.note
-    version.truncated = result.truncated
-    if result.text:
-        text_key = extracted_text_key(version.storage_key)
-        await active.put_bytes(text_key, result.text.encode("utf-8"), content_type="text/plain")
-        version.extracted_text_key = text_key
+    # Reading the file is the slow part — a PPTX to unzip and walk, then an embedding round trip,
+    # which together took the better part of five seconds on the live stack. It is not work the
+    # student needs to wait through: the bytes are safe, the checksum matched, and the attachment
+    # is on the record. So the version stays `pending` and a job picks it up; the badge beside it
+    # reads "Uploaded" until it does.
+    version.extraction_state = ExtractionState.PENDING
 
     artifact.current_version_no = version.version_no
     write_audit(
         session,
-        workspace_id=scope.workspace_id,
-        actor_id=scope.user_id,
+        scope=scope,
         action="artifact.uploaded",
         target_table="artifact_versions",
         target_id=version.id,
@@ -275,7 +274,6 @@ async def confirm_upload(
         },
     )
     await session.flush()
-    await _index(session, artifact, version, result.text)
     return _out(artifact, version)
 
 
@@ -339,8 +337,9 @@ async def attach_link(
         await session.flush()
         return _out(artifact, version)
     except Exception as error:  # noqa: BLE001 - an unreachable link is a state, not a crash
+        log.warning("link fetch failed for %s: %r", url, error)
         version.extraction_state = ExtractionState.FAILED
-        version.extraction_note = f"the link could not be fetched ({type(error).__name__})"
+        version.extraction_note = _why_unreachable(error)
         artifact.current_version_no = 1
         await session.flush()
         return _out(artifact, version)
@@ -568,6 +567,173 @@ async def _open_artifact(
     return artifact
 
 
+async def read_attachments_for(session: AsyncSession, *, student_id: UUID, period_id: UUID) -> int:
+    """Queue the reading of everything this student attached to this week (REP-04).
+
+    Called when the report is submitted, because that is when the week is finished being assembled:
+    a file attached and then removed before submitting was never part of the report, and reading it
+    would have been work done for nothing.
+
+    Queued rather than done here. Submission is the one action with a deadline attached, and the
+    reading involves unzipping documents and calling an embedding provider — an outage there took
+    submissions down once already, and it must not be able to again.
+    """
+    versions = (
+        (
+            await session.execute(
+                select(ArtifactVersion)
+                .join(Artifact, Artifact.id == ArtifactVersion.artifact_id)
+                .where(
+                    Artifact.owner_student_id == student_id,
+                    Artifact.period_id == period_id,
+                    ArtifactVersion.uploaded.is_(True),
+                    ArtifactVersion.extraction_state == ExtractionState.PENDING,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for version in versions:
+        defer_extraction(session, version.id)
+    return len(versions)
+
+
+def defer_extraction(session: AsyncSession, version_id: UUID) -> None:
+    """Hand the reading to a job, once this transaction commits. Keyed on the version.
+
+    Imported inside the function because `reporting.tasks` imports this module back. Swallowed on
+    failure like the other defers — the attachment is stored and on the record, and a job that was
+    never queued is a file that reads late rather than an upload that was lost.
+    """
+    from app.reporting import tasks
+
+    try:
+        defer_after_commit(
+            session,
+            tasks.extract_artifact,
+            queueing_lock=f"extract-artifact:{version_id}",
+            version_id=str(version_id),
+        )
+    except Exception:  # noqa: BLE001 - the stored attachment is what must survive
+        log.exception("could not queue the text extraction of artifact version %s", version_id)
+
+
+async def extract_version(
+    session: AsyncSession,
+    version_id: UUID,
+    *,
+    store: ObjectStore | None = None,
+) -> ExtractionState:
+    """Read the text out of a stored file and hand it to evidence (REP-04).
+
+    Split out of `confirm_upload` so it can run in a worker: the student's upload returns as soon
+    as the bytes are safe, and this follows within seconds. Unscoped, like the other job entry
+    points, because a worker has no request to borrow a Scope from — the version id came from the
+    job that the upload itself enqueued.
+
+    Idempotent. A redelivered job re-reads the same bytes and re-indexes the same version, and
+    `index_evidence` replaces a reference's chunks rather than adding a second copy.
+    """
+    version = (
+        await session.execute(select(ArtifactVersion).where(ArtifactVersion.id == version_id))
+    ).scalar_one_or_none()
+    if version is None:
+        return ExtractionState.FAILED  # Removed before the job ran; nothing to read.
+    artifact = (
+        await session.execute(select(Artifact).where(Artifact.id == version.artifact_id))
+    ).scalar_one_or_none()
+    if artifact is None:
+        return ExtractionState.FAILED
+
+    active = store or current_store()
+    data = await active.get_bytes(version.storage_key)
+    if data is None:
+        version.extraction_state = ExtractionState.FAILED
+        version.extraction_note = "the stored object could not be read back"
+        await session.flush()
+        return version.extraction_state
+
+    result = extraction.extract(artifact.filename, data)
+    version.extraction_state = ExtractionState(result.state.value)
+    version.extraction_note = result.note
+    version.truncated = result.truncated
+    if result.text:
+        text_key = extracted_text_key(version.storage_key)
+        await active.put_bytes(text_key, result.text.encode("utf-8"), content_type="text/plain")
+        version.extracted_text_key = text_key
+    await session.flush()
+    await _index(session, artifact, version, result.text)
+    return version.extraction_state
+
+
+async def remove_artifact(
+    session: AsyncSession,
+    scope: Scope,
+    artifact_id: UUID,
+    *,
+    store: ObjectStore | None = None,
+) -> None:
+    """REP-04: the student takes back a file they attached.
+
+    Theirs to remove whenever they want it gone, submitted week or not. The earlier rule bounded
+    this at submission, on the reasoning that an assessment might already cite the file — but an
+    attachment is the student's own evidence for their own work, and a student who uploaded the
+    wrong thing should not have to ask permission to take it back. An assessment written against a
+    removed file keeps its rationale and loses the citation, which the professor can see and re-run.
+
+    A real deletion, not a hidden row (requirements §11): the stored object, the extracted text
+    beside it, the evidence references indexed from every version, and the cached answers that
+    could still quote it. All of it inside one transaction, so a failure anywhere leaves the
+    attachment whole rather than half-gone.
+    """
+    artifact = await _require_artifact(session, scope, artifact_id)
+    if artifact.owner_student_id != scope.user_id:
+        raise ForbiddenError("only the student who attached this file may remove it")
+
+    versions = list(
+        (
+            await session.execute(
+                select(ArtifactVersion).where(ArtifactVersion.artifact_id == artifact.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Evidence first, and it is allowed to fail the whole removal: a reference left behind is a
+    # file the assistant can still quote after the student took it back.
+    await events.emit(
+        events.ArtifactRemoved(
+            workspace_id=artifact.workspace_id,
+            artifact_id=artifact.id,
+            version_ids=tuple(version.id for version in versions),
+        ),
+        session,
+    )
+
+    active = store or current_store()
+    for version in versions:
+        for key in (version.storage_key, version.extracted_text_key):
+            if key:
+                await active.delete(key)
+
+    write_audit(
+        session,
+        scope=scope,
+        action="artifact.removed",
+        target_table="artifacts",
+        target_id=artifact.id,
+        before={"filename": artifact.filename, "versions": len(versions)},
+    )
+    # Only the artifact: `artifact_versions` carries an ON DELETE CASCADE onto it, so deleting
+    # the versions here as well asks the database to remove rows it has already removed.
+    await session.delete(artifact)
+    # AUTH-03: an answer cached while the file was readable must not outlive it.
+    await identity_service.advance_access_epoch(session, artifact.workspace_id)
+    await session.flush()
+
+
 async def _require_artifact(session: AsyncSession, scope: Scope, artifact_id: UUID) -> Artifact:
     artifact = (
         await session.execute(
@@ -634,6 +800,31 @@ async def _index(
     )
 
 
+def _why_unreachable(error: Exception) -> str:
+    """Why a link could not be read, in words a student can act on.
+
+    This used to be the exception's class name — "the link could not be fetched (HTTPStatusError)"
+    — which is httpx's word for it, not anybody's. The student could not tell a typo from a login
+    wall from a site that was down, and all three want different responses. The class name stays
+    in the log, where it belongs.
+    """
+    status = getattr(getattr(error, "response", None), "status_code", None)
+    if status is not None:
+        if status in (401, 403):
+            return f"that page needs a sign-in to read ({status}), so nothing could be extracted"
+        if status == 404:
+            return "there is no page at that address (404)"
+        if status >= 500:
+            return f"the site is not serving that page at the moment ({status})"
+        return f"the site refused the request ({status})"
+    name = type(error).__name__
+    if "Timeout" in name:
+        return "the site did not answer in time"
+    if "Connect" in name or "DNS" in name or "Resolution" in name:
+        return "that address could not be reached"
+    return "the link could not be fetched"
+
+
 def _out(artifact: Artifact, version: ArtifactVersion) -> ArtifactVersionOut:
     return ArtifactVersionOut(
         artifact_id=artifact.id,
@@ -649,4 +840,63 @@ def _out(artifact: Artifact, version: ArtifactVersion) -> ArtifactVersionOut:
         truncated=version.truncated,
         uploaded=version.uploaded,
         created_at=version.created_at,
+    )
+
+
+# ------------------------------------------------------------------ job-level reads
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactForIndexing:
+    """Everything the evidence index needs about one attachment version.
+
+    A job-level read: no Scope to hand, and the event that first carried these fields is long gone
+    by the time a retry runs. Reading them back means the retry cannot index under a workspace or
+    an owner that a stale job argument claimed.
+    """
+
+    workspace_id: UUID
+    artifact_id: UUID
+    version_id: UUID
+    version_no: int
+    project_id: UUID | None
+    owner_student_id: UUID
+    supported_claim: str
+    text: str
+    source_time: datetime
+
+
+async def version_for_indexing(
+    session: AsyncSession, version_id: UUID, *, store: ObjectStore | None = None
+) -> ArtifactForIndexing | None:
+    """One attachment version, with its extracted text read back from the object store.
+
+    The text is not held in a column — it is written to `extracted_text_key` during extraction,
+    before anything indexes it — so re-reading it here is what lets the indexing be retried at all
+    without asking the student to upload the file again.
+
+    Absent when the version, the artifact or the extracted text is gone: an attachment whose
+    extraction found nothing has no text key, and there is nothing to index rather than an error.
+    """
+    version = await session.get(ArtifactVersion, version_id)
+    if version is None or not version.extracted_text_key:
+        return None
+    artifact = await session.get(Artifact, version.artifact_id)
+    if artifact is None:
+        return None
+
+    raw = await (store or current_store()).get_bytes(version.extracted_text_key)
+    if raw is None:
+        return None
+
+    return ArtifactForIndexing(
+        workspace_id=artifact.workspace_id,
+        artifact_id=artifact.id,
+        version_id=version.id,
+        version_no=version.version_no,
+        project_id=artifact.project_id,
+        owner_student_id=artifact.owner_student_id,
+        supported_claim=artifact.supported_claim,
+        text=raw.decode("utf-8", errors="replace"),
+        source_time=version.created_at,
     )

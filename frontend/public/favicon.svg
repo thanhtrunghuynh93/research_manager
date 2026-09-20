@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Research Management">
+  <!--
+    The Ledger mark: a record with this week still being written.
+
+    Three rules on a tile — two entries set down, the third short and in the warn colour the app
+    already uses for a week that is owed. That is the product in one shape: a weekly research
+    record, and the week in hand.
+
+    The tile carries the accent rather than ink or paper because a favicon has no control over the
+    chrome behind it: near-black vanishes on a dark tab strip and cream vanishes on a light one,
+    while the accent holds on both. The media query lifts it further for dark chrome. Safari does
+    not support SVG favicons and falls back to the PNG, which is rendered from the light variant.
+  -->
+  <style>
+    .tile { fill: #1f3b60; }
+    .rule { fill: #fffcf5; }
+    .owed { fill: #e0a52a; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #3464a2; }
+    }
+  </style>
+  <rect class="tile" width="32" height="32" rx="7" />
+  <rect class="rule" x="8" y="9" width="16" height="3" rx="1.5" />
+  <rect class="rule" x="8" y="15" width="16" height="3" rx="1.5" />
+  <rect class="owed" x="8" y="21" width="9" height="3" rx="1.5" />
+</svg>

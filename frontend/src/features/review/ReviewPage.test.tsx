@@ -53,6 +53,17 @@ function renderPage(assessment: Record<string, unknown> = ASSESSMENT, approve = 
         },
       ]),
     ),
+    // Who and what this assessment is about. Until these were called, the page said "Review"
+    // and nothing else, while carrying all three ids.
+    http.get("/api/v1/users/s1", () =>
+      HttpResponse.json({ id: "s1", display_name: "An Nguyen", email: "an@example.edu" }),
+    ),
+    http.get("/api/v1/projects", () =>
+      HttpResponse.json({ items: [{ id: "pr1", title: "Retrieval baselines" }] }),
+    ),
+    http.get("/api/v1/periods", () =>
+      HttpResponse.json([{ id: "p1", local_start: "2026-09-14", local_end: "2026-09-20" }]),
+    ),
     http.post("/api/v1/assessments/a1/approve", async ({ request }) => {
       approve(await request.json());
       return HttpResponse.json({
@@ -93,12 +104,13 @@ test("an index that must be withheld reads as not rated, never as zero", async (
 });
 
 test("confidence carries its reasons rather than standing alone", async () => {
+  // As the badge's `title` these were unreachable by touch or keyboard and unannounced by a
+  // screen reader, leaving "LOW CONFIDENCE · 2" as all a professor could find out — while
+  // deciding whether to approve and publish on the strength of it.
   renderPage();
 
-  expect(await screen.findByTestId("confidence-badge")).toHaveAttribute(
-    "title",
-    expect.stringContaining("coverage is 75%"),
-  );
+  expect(await screen.findByTestId("confidence-reasons")).toHaveTextContent(/coverage is 75%/);
+  expect(screen.getByTestId("confidence-badge")).not.toHaveAttribute("title");
 });
 
 test("approving an unchanged draft needs no reason", async () => {
@@ -156,4 +168,15 @@ test("a rating downgraded by validation shows why", async () => {
   });
 
   expect(await screen.findByText(/not in the snapshot/)).toBeInTheDocument();
+});
+
+test("says whose assessment this is, for which project and week", async () => {
+  // A professor could approve and publish from a screen headed only "Review". The ids were all
+  // in the payload; nothing resolved them, and eight characters of a UUIDv7 are the same eight
+  // characters on every row anyway.
+  renderPage();
+
+  expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("An Nguyen");
+  expect(await screen.findByText(/Retrieval baselines/)).toBeInTheDocument();
+  expect(screen.getByText(/Sep 14, 2026 – Sep 20, 2026/)).toBeInTheDocument();
 });

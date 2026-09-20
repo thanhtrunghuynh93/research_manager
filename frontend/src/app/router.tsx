@@ -8,15 +8,18 @@ import { AssistantPage } from "@/features/assistant/pages/AssistantPage";
 import { AcceptInvitationPage } from "@/features/auth/pages/AcceptInvitationPage";
 import { LoginPage } from "@/features/auth/pages/LoginPage";
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
-import { ExportsPage } from "@/features/exports/pages/ExportsPage";
+import { MyAssessmentPage } from "@/features/me/pages/MyAssessmentPage";
+import { MyProfilePage } from "@/features/me/pages/MyProfilePage";
 import { StudentHomePage } from "@/features/me/pages/StudentHomePage";
-import { NotificationsPage } from "@/features/notifications/pages/NotificationsPage";
 import { OverviewPage } from "@/features/overview/pages/OverviewPage";
 import { PeoplePage } from "@/features/people/pages/PeoplePage";
+import { ProjectListPage } from "@/features/projects/pages/ProjectListPage";
 import { ProjectPage } from "@/features/projects/pages/ProjectPage";
 import { ReportEditorPage } from "@/features/report/pages/ReportEditorPage";
+import { ReportReaderPage } from "@/features/report/pages/ReportReaderPage";
 import { ReviewPage } from "@/features/review/pages/ReviewPage";
 import { StudentProfilePage } from "@/features/students/pages/StudentProfilePage";
+import { WorkspacesPage } from "@/features/workspaces/pages/WorkspacesPage";
 
 // Routes follow docs/architecture.md §4.2. The role guard keeps the UI from offering a page the
 // caller cannot load; the API enforces every permission itself (AUTH-02).
@@ -36,9 +39,11 @@ export const router = createBrowserRouter([
           // "/" and anything unrecognised go to the home for this role, not to a fixed page.
           { path: "/", element: <HomeRedirect /> },
           { path: "*", element: <HomeRedirect /> },
+          // The list is what gives UI-03 a way in: until it existed nothing linked to the
+          // project workspace. Both are signed-in rather than professor-only, because a student
+          // is on the projects they report against.
+          { path: "/projects", element: <ProjectListPage /> }, // PROJ-01
           { path: "/projects/:id", element: <ProjectPage /> }, // UI-03
-          { path: "/notifications", element: <NotificationsPage /> }, // UI-07
-          { path: "/exports", element: <ExportsPage /> }, // UI-06
         ],
       },
       {
@@ -49,6 +54,11 @@ export const router = createBrowserRouter([
         children: [
           { path: "/me", element: <StudentHomePage /> }, // UI-02
           { path: "/report/:periodId", element: <ReportEditorPage /> }, // REP-02, REP-03
+          // What was actually submitted, as against the draft the editor shows. REP-02, REP-05.
+          { path: "/report/:periodId/submitted", element: <ReportReaderPage /> },
+          // The destination the professor's "publish to the student" has always named.
+          { path: "/me/profile", element: <MyProfilePage /> }, // UI-02, UI-04
+          { path: "/me/assessments/:assessmentId", element: <MyAssessmentPage /> }, // UI-02
         ],
       },
       {
@@ -56,7 +66,10 @@ export const router = createBrowserRouter([
         children: [
           { path: "/overview", element: <OverviewPage /> }, // UI-01
           { path: "/people", element: <PeoplePage /> }, // AUTH-01
+          { path: "/workspaces", element: <WorkspacesPage /> }, // ADR 0012
           { path: "/students/:id", element: <StudentProfilePage /> }, // UI-04
+          // The read half of REP-02..05, which had no surface at either end until now.
+          { path: "/students/:studentId/reports/:periodId", element: <ReportReaderPage /> },
           { path: "/review/:assessmentId", element: <ReviewPage /> }, // UI-05
           { path: "/assistant", element: <AssistantPage /> }, // QA-01..07
         ],

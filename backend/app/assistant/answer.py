@@ -133,8 +133,11 @@ def validate_citations(
 
     for fact in computed:
         for citation in fact.citations:
+            # Keyed by where it points as well as what it points at. A week's obligations now
+            # cite one report per student, all of them sourced to the same period, and keying on
+            # the source alone kept the first student and dropped everybody else.
             kept.setdefault(
-                str(citation.source_id),
+                f"{citation.source_id}:{citation.locator}",
                 CitationOut(
                     source_kind=citation.source_kind,
                     source_id=citation.source_id,

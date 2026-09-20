@@ -1,6 +1,11 @@
 /**
  * Dates are stored in UTC and displayed in the workspace timezone (requirements REP-01).
- * The workspace timezone arrives with the session; until then Asia/Ho_Chi_Minh is the default.
+ *
+ * That zone comes from `useTimezone`, which reads the reporting calendar in force — the same
+ * configuration the deadlines were computed from. It is passed in rather than read here so these
+ * stay pure functions. The default below applies only until the calendar arrives, and in a
+ * workspace that has none; every call site used to take it, which meant a workspace configured
+ * for anywhere else still displayed every time in Vietnam's.
  *
  * Two kinds of value, and they are not interchangeable:
  *
@@ -31,6 +36,25 @@ export function formatInstant(iso: string, timeZone = DEFAULT_TIMEZONE, locale =
 }
 
 /**
+ * The clock time of an instant, in the workspace's zone — for a stamp sitting beside a deadline.
+ *
+ * `toLocaleTimeString()` answers in the *viewer's* zone, which put the autosave time and the
+ * deadline next to each other on the same line in two different clocks. The zone is named for the
+ * same reason the deadline names it: two unlabelled clocks on one line are only reassuring while
+ * the reader is in the workspace's zone.
+ */
+export function formatTimeOfDay(at: Date, timeZone = DEFAULT_TIMEZONE, locale = "en"): string {
+  return new Intl.DateTimeFormat(locale, {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+  }).format(at);
+}
+
+/**
  * Render a workspace-local calendar date. Formatted from its parts, with no instant in between,
  * so the viewer's own timezone cannot move it.
  */
@@ -45,7 +69,7 @@ export function formatLocalDate(isoDate: string, locale = "en"): string {
 }
 
 /** Today's date in the workspace timezone, as `YYYY-MM-DD` — comparable with a plain date. */
-export function todayLocal(at = new Date(), timeZone = DEFAULT_TIMEZONE): string {
+export function todayLocal(at = new Date(), timeZone: string = DEFAULT_TIMEZONE): string {
   // "en-CA" is ISO-shaped, which is what makes the string comparison below meaningful.
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,

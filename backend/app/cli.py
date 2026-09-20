@@ -1,6 +1,6 @@
 """Operator command line.  Run:  python -m app.cli --help
 
-Modules add their own sub-apps here (identity: breakglass, projects/reporting: seed, exports).
+Modules add their own sub-apps here (identity: breakglass, projects/reporting: seed).
 """
 
 from __future__ import annotations

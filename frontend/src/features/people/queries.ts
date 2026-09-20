@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import type { Invitation, Role, User, UserPage } from "@/features/people/types";
@@ -7,6 +7,10 @@ export const peopleKey = ["people"] as const;
 
 /**
  * AUTH-01: the directory, a page at a time.
+ *
+ * The roll spans every workspace the professor belongs to, with no flag to ask for it: reads follow
+ * membership (ADR 0016), so one predicate answers it. Each row carries its own `workspace_id`,
+ * which is what the screen groups by.
  *
  * The cursor is followed rather than ignored. A roll longer than one page is ordinary — the API
  * caps a page at 200 — and a directory that silently stops at the first page is one where a
@@ -27,11 +31,32 @@ export function usePeople() {
   });
 }
 
+export const userKey = (id: string) => ["people", "user", id] as const;
+
+/**
+ * One account, by id — the name to put at the top of a screen that is about a person.
+ *
+ * `GET /users/{id}` has existed since enrolment did and no screen called it, so every page keyed
+ * by a student id introduced them as eight characters of a uuid. Worse, these are UUIDv7 and share
+ * a timestamp prefix, so the eight characters were the *same* on every row.
+ */
+export function useUser(id: string | undefined) {
+  return useQuery({
+    queryKey: userKey(id ?? ""),
+    queryFn: () => api.get<User>(`/api/v1/users/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
 export function useInvite() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { email: string; display_name?: string; role: Role }) =>
-      api.post<Invitation>("/api/v1/users/invitations", payload),
+    mutationFn: (payload: {
+      email: string;
+      display_name?: string;
+      role: Role;
+      workspace_id?: string;
+    }) => api.post<Invitation>("/api/v1/users/invitations", payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: peopleKey }),
   });
 }
@@ -55,3 +80,18 @@ function useAccountAction(action: "remove" | "deactivate" | "reactivate") {
 export const useRemoveStudent = () => useAccountAction("remove");
 export const useSuspend = () => useAccountAction("deactivate");
 export const useRestore = () => useAccountAction("reactivate");
+
+/**
+ * Move a student to another workspace, which only works before they have done any work: their
+ * project memberships and reports are pinned to the workspace they were written in, and the API
+ * refuses rather than dragging them along. The whole cache is reset because the roll, and whatever
+ * else the moved student appears in, are now different workspaces' data.
+ */
+export function useMoveStudent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, workspaceId }: { userId: string; workspaceId: string }) =>
+      api.post<User>(`/api/v1/users/${userId}/workspace`, { workspace_id: workspaceId }),
+    onSuccess: () => queryClient.resetQueries(),
+  });
+}

@@ -37,6 +37,7 @@ type ObligationFixture = {
   student_id: string;
   state: string;
   excuse_reason?: string;
+  submitted?: boolean;
 };
 
 function handlers({
@@ -45,6 +46,7 @@ function handlers({
   ] as ObligationFixture[],
   report = null as unknown,
   reportStatus = 404,
+  released = [] as object[],
 } = {}) {
   return [
     http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
@@ -60,6 +62,19 @@ function handlers({
           )
         : HttpResponse.json(report),
     ),
+    // Added with the released-assessment block; individual tests override these.
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({
+        id: "s1",
+        workspace_id: "w1",
+        role: "student",
+        email: "an@example.edu",
+        display_name: "An",
+        state: "active",
+        created_at: "2026-09-01T00:00:00Z",
+      }),
+    ),
+    http.get("/api/v1/assessments", () => HttpResponse.json(released)),
   ];
 }
 
@@ -121,6 +136,62 @@ test("says when a revision was requested", async () => {
   expect(await screen.findByTestId("report-state")).toHaveTextContent(/revision/i);
 });
 
+test("a project whose entry is in reads as submitted, not as still required", async () => {
+  // `state` is `required` or `excused` and says whether the project has to be in the package — it
+  // never changes on submission. Rendering it alone left a week that had been handed in twice
+  // showing every project as REQUIRED in the warning colour.
+  server.use(
+    ...handlers({
+      obligations: [
+        {
+          id: "o1",
+          period_id: "p1",
+          project_id: "pr1",
+          student_id: "s1",
+          state: "required",
+          submitted: true,
+        },
+      ],
+      report: {
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "resubmitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T10:00:00Z",
+        current_version_id: "v2",
+      },
+    }),
+  );
+  renderPage();
+
+  await screen.findByText(/Baseline evaluation/);
+  expect(screen.getByText(/^submitted$/i)).toBeInTheDocument();
+  expect(screen.queryByText(/^required$/i)).not.toBeInTheDocument();
+});
+
+test("a project still missing its entry reads as required", async () => {
+  server.use(
+    ...handlers({
+      obligations: [
+        {
+          id: "o1",
+          period_id: "p1",
+          project_id: "pr1",
+          student_id: "s1",
+          state: "required",
+          submitted: false,
+        },
+      ],
+    }),
+  );
+  renderPage();
+
+  await screen.findByText(/Baseline evaluation/);
+  expect(screen.getByText(/^required$/i)).toBeInTheDocument();
+});
+
 test("shows an excused project as excused rather than owed", async () => {
   server.use(
     ...handlers({
@@ -140,4 +211,129 @@ test("shows an excused project as excused rather than owed", async () => {
 
   expect(await screen.findByText(/excused/i)).toBeInTheDocument();
   expect(screen.getByText(/Approved leave/)).toBeInTheDocument();
+});
+
+test("the week links on to the whole record, which nothing else does", async () => {
+  // This screen no longer carries the released assessments and My progress is not on the menu, so
+  // this link is the student's only route to what their professor published. A route nothing
+  // links to is a route nobody opens.
+  server.use(...handlers());
+  renderPage();
+
+  const link = await screen.findByTestId("to-my-progress");
+
+  expect(link).toHaveAttribute("href", "/me/profile");
+});
+
+test("a submitted week with a project still owed does not read as finished", async () => {
+  // `workflow_state` says only that something was handed in. A week submitted on Monday still
+  // read "Submitted" after Wednesday's new project added an entry nobody had written — giving the
+  // student no reason to reopen the week. REP-08 calls that obligation unfulfilled.
+  server.use(
+    ...handlers({
+      obligations: [
+        {
+          id: "o1",
+          period_id: "p1",
+          project_id: "pr1",
+          student_id: "s1",
+          state: "required",
+          submitted: true,
+        },
+        {
+          id: "o2",
+          period_id: "p1",
+          project_id: "pr2",
+          student_id: "s1",
+          state: "required",
+          submitted: false,
+        },
+      ],
+      report: {
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "submitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T10:00:00Z",
+        current_version_id: "v1",
+      },
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByTestId("report-state")).toHaveTextContent(
+    "Submitted — 1 project still owed",
+  );
+});
+
+test("a week whose every entry is in reads as submitted, with no count", async () => {
+  server.use(
+    ...handlers({
+      obligations: [
+        {
+          id: "o1",
+          period_id: "p1",
+          project_id: "pr1",
+          student_id: "s1",
+          state: "required",
+          submitted: true,
+        },
+      ],
+      report: {
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "submitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T10:00:00Z",
+        current_version_id: "v1",
+      },
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByTestId("report-state")).toHaveTextContent(/^Submitted$/);
+});
+
+test("never says the week is untouched while it is still asking", async () => {
+  // The chip defaulted to `not_started` and the link to "Start this week" before the report
+  // answered, so a submitted week painted briefly as an untouched one under a correct deadline.
+  server.use(
+    ...handlers({
+      report: {
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "submitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T10:00:00Z",
+        current_version_id: "v1",
+      },
+    }),
+    http.get("/api/v1/periods/p1/report", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return HttpResponse.json({
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "submitted",
+        draft_content: {},
+        draft_saved_at: null,
+        first_submitted_at: "2026-09-17T10:00:00Z",
+        current_version_id: "v1",
+      });
+    }),
+  );
+  renderPage();
+
+  // The deadline is on screen well before the report answers; the state must not be.
+  await screen.findByTestId("next-deadline");
+  expect(screen.getByTestId("report-state")).not.toHaveTextContent(/not started/i);
+  expect(screen.queryByRole("link", { name: /start this week/i })).not.toBeInTheDocument();
+
+  expect(await screen.findByTestId("report-state")).toHaveTextContent(/submitted/i);
 });
