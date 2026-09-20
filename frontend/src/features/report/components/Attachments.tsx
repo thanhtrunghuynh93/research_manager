@@ -7,8 +7,10 @@
  * part that must not go through this application.
  *
  * The text is read when the week is submitted, not as each file arrives, so a version attached and
- * not yet submitted sits at `pending`. The badge says so in those words: it used to read "Reading…"
- * over a file nothing was reading, which looked like a job that had hung.
+ * not yet submitted sits at `pending`. The badge for that state says "Uploaded": what has
+ * happened, rather than what is about to. It used to read "Reading…" over a file nothing was
+ * reading, which looked like a job that had hung, and then "Read when you submit", which answered
+ * a question about the future for someone who wanted to know the file had arrived.
  *
  * The extraction state is shown rather than hidden. A PDF the server could not read is not the
  * same as a PDF with nothing in it, and the student is the person best placed to fix it.

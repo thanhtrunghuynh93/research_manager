@@ -256,8 +256,8 @@ async def confirm_upload(
     # Reading the file is the slow part — a PPTX to unzip and walk, then an embedding round trip,
     # which together took the better part of five seconds on the live stack. It is not work the
     # student needs to wait through: the bytes are safe, the checksum matched, and the attachment
-    # is on the record. So the version stays `pending` and a job picks it up, which is why the
-    # badge beside it reads "Reading…" until it does.
+    # is on the record. So the version stays `pending` and a job picks it up; the badge beside it
+    # reads "Uploaded" until it does.
     version.extraction_state = ExtractionState.PENDING
 
     artifact.current_version_no = version.version_no

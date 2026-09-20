@@ -118,7 +118,7 @@
       "limit": "Up to 25 MB per file. Slides (PPTX), documents (DOCX), Markdown, HTML, PDF, figures, notebooks and data files.",
       "truncated": "truncated",
       "state": {
-        "pending": "Read when you submit",
+        "pending": "Uploaded",
         "ok": "Text extracted",
         "failed": "Could not be read",
         "unsupported": "Stored, no text"
