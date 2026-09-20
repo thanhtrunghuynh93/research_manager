@@ -37,11 +37,13 @@ export function EntryReadOnly({ entry }: { entry: EntryOut }) {
       {field(t("report.fields.challenges"), entry.deviations)}
       {entry.questions ? field(t("report.fields.questions"), entry.questions) : null}
       {field(t("report.fields.nextSteps"), textOfPlan(entry.next_plan))}
-      <p className="stamp">
-        {entry.hours === null || entry.hours === undefined
-          ? t("report.reader.noHours")
-          : t("report.reader.hours", { hours: entry.hours })}
-      </p>
+      {/* Hours is no longer asked for. A week that recorded one still shows it, for the same
+          reason results and questions do: it is on the record, and the record is read as filed.
+          A week that never had one says nothing, rather than "no hours were recorded" about a
+          question nobody was asked. */}
+      {entry.hours === null || entry.hours === undefined ? null : (
+        <p className="stamp">{t("report.reader.hours", { hours: entry.hours })}</p>
+      )}
     </div>
   );
 }

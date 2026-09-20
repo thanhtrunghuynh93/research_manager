@@ -142,26 +142,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/artifacts/links": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Attach a link
-         * @description A refused link is still recorded, with the reason it was not followed (REP-04).
-         */
-        post: operations["attach_link_api_v1_artifacts_links_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/artifacts/uploads": {
         parameters: {
             query?: never;
@@ -2486,25 +2466,6 @@ export interface components {
              */
             project_id: string;
         };
-        /** LinkRequest */
-        LinkRequest: {
-            /** Entry Id */
-            entry_id?: string | null;
-            /** Period Id */
-            period_id?: string | null;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            /**
-             * Supported Claim
-             * @default
-             */
-            supported_claim: string;
-            /** Url */
-            url: string;
-        };
         /** LoginIn */
         LoginIn: {
             /** Email */
@@ -4006,39 +3967,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    attach_link_api_v1_artifacts_links_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LinkRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArtifactVersionOut"];
                 };
             };
             /** @description Validation Error */

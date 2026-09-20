@@ -166,7 +166,9 @@ misattribution challengeable rather than merely regrettable.
 
 Two further design commitments are worth naming because they shape day-to-day use rather than the
 assessment contract. Professors are co-equal, and a professor may belong to several workspaces at
-once, reading across all of them and writing into the one they are working in
+once, reading across all of them and writing into the one they are working in — a student belongs
+to exactly one, and a project belongs to the workspace it was created in, so a student's projects
+are the projects of their workspace and a membership cannot straddle two
 ([ADR 0011](adr/0011-co-equal-professors.md), [ADR 0016](adr/0016-reads-span-membership.md)); and
 students own the projects they report on — a student may start a project, join one a professor has
 opened to joining, and leave one — while no private record follows a project, because reports,

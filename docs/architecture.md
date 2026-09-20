@@ -269,7 +269,11 @@ class Scope:
 `Scope.within(column)` is the workspace half of every visibility predicate — `column.in_(workspace_ids)` —
 and the only place the read-set is compared, so widening what a read may see is one diff rather than
 thirty-three (ADR 0016). `workspace_id` is where a write lands; `workspace_ids` is what a read may
-see. A student has one membership, so for them the two agree. Both `workspace_ids` and
+see. A student has one membership, so for them the two agree. A professor is not confined to one
+workspace: they belong to as many as they have joined, and `workspace_id` says only which one the
+next write goes to. The invariant that keeps the two apart from each other's records is not in this
+Scope at all — it is the composite foreign keys, which refuse a membership, report or assessment
+whose workspace does not match both the project and the account it names. Both `workspace_ids` and
 `access_epochs` default to the anchor alone, which keeps a hand-built Scope — a job's, a test's —
 single-workspace unless it says otherwise.
 
@@ -603,7 +607,7 @@ class EmailSender(Protocol):
 | Assessment latency | Pipeline steps as separate jobs; two worker processes | Pilot workload; 95 % of runs complete within 10 min of inputs available |
 | Availability and recovery | Compose restart policies; nightly encrypted dump and bucket mirror offsite; RPO 24 h, RTO 4 h | Quarterly restore drill into a scratch stack; checklist item before launch (AC-16) |
 | Reliability | Transactional enqueue; idempotent job keys; `partial` states; manual retry | Chaos test: kill worker mid-run and stub OpenAI failures; report count unchanged, no duplicate versions |
-| Security | TLS via Caddy; server-side sessions; `visible_to` everywhere; presigned URLs; SSRF-guarded link fetch; file type sniffing; secrets in `.env` 600 | Authorization test suite covering every AC on access; dependency scanning in CI |
+| Security | TLS via Caddy; server-side sessions; `visible_to` everywhere; presigned URLs; file type sniffing; secrets in `.env` 600 | Authorization test suite covering every AC on access; dependency scanning in CI |
 | Data control | `retention_sweep` deletes expired drafts and artifacts and propagates to MinIO, chunks, answer cache, and snapshots via cascading service calls; backup expiry documented as 30 days | Deletion test asserts no orphan in bucket, chunks, or cache |
 | AI data boundary | Only `ai/gateway.py` reaches OpenAI; per-project `ai_restricted`; documented content list per prompt | Import-linter contract; unit test that restricted projects produce zero `ai_calls` |
 | Source integrity | Untrusted framing; no tools exposed; citation validation against snapshot; router entities validated against DB | Adversarial README and report fixtures in the evaluation set (AC-12) |

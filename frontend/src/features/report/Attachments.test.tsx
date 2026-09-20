@@ -114,27 +114,6 @@ test("an image is shown as stored rather than as a failure", async () => {
   expect(screen.getByTestId("extraction-badge")).toHaveTextContent(/stored, no text/i);
 });
 
-test("a link is attached through the API, which decides whether to follow it", async () => {
-  server.use(
-    http.post("/api/v1/artifacts/links", () =>
-      HttpResponse.json(
-        attachment({
-          filename: "2401.00001",
-          extraction_state: "failed",
-          extraction_note: "example.com resolves to a private or reserved address",
-        }),
-        { status: 201 },
-      ),
-    ),
-  );
-  const { onAttached } = renderPanel();
-
-  await userEvent.type(screen.getByPlaceholderText("https://…"), "https://example.com/paper");
-  await userEvent.click(screen.getByRole("button", { name: /add link/i }));
-
-  await waitFor(() => expect(onAttached).toHaveBeenCalled());
-});
-
 test("a link is listed by its address, which is the only thing that identifies one", async () => {
   // A link's filename is derived from its path, so two links to different sites both read "link"
   // or share a last segment — and the address was on no screen at all.
@@ -241,49 +220,6 @@ test("a file stays removable after the week is submitted", async () => {
   await userEvent.click(screen.getByTestId("remove-attachment"));
 
   await waitFor(() => expect(removed).toEqual(["a1"]));
-});
-
-test("a typo in the link box is caught before anything is created", async () => {
-  // The server records a refused link rather than rejecting it — deliberately, so the record says
-  // what the student pointed at (REPO-08). That is right for a link resolving somewhere we will
-  // not go, and wrong for `not a url`, which became a permanent row badged COULD NOT BE READ.
-  const posted: unknown[] = [];
-  server.use(
-    http.post("/api/v1/artifacts/links", async ({ request }) => {
-      posted.push(await request.json());
-      return HttpResponse.json(attachment({ source_url: "x" }), { status: 201 });
-    }),
-  );
-  renderPanel();
-  const user = userEvent.setup();
-
-  await user.type(screen.getByPlaceholderText(/https/i), "not a url");
-  await user.click(screen.getByRole("button", { name: /add link/i }));
-
-  expect(await screen.findByTestId("attachment-error")).toHaveTextContent(
-    /http:\/\/ or https:\/\//,
-  );
-  expect(posted).toEqual([]);
-});
-
-test("a real link is still sent", async () => {
-  const posted: unknown[] = [];
-  server.use(
-    http.post("/api/v1/artifacts/links", async ({ request }) => {
-      posted.push(await request.json());
-      return HttpResponse.json(attachment({ source_url: "https://example.org/run" }), {
-        status: 201,
-      });
-    }),
-  );
-  const { onAttached } = renderPanel();
-  const user = userEvent.setup();
-
-  await user.type(screen.getByPlaceholderText(/https/i), "https://example.org/run");
-  await user.click(screen.getByRole("button", { name: /add link/i }));
-
-  await waitFor(() => expect(onAttached).toHaveBeenCalled());
-  expect(posted).toHaveLength(1);
 });
 
 test("the claim the student wrote is shown back on the row", async () => {
@@ -532,4 +468,23 @@ test("while the bytes are moving, the bar says how far", async () => {
     vi.unstubAllGlobals();
     releaseConfirm?.();
   }
+});
+
+test("evidence is a file: there is no link box, and a link already on the record still lists", async () => {
+  // A link was a different thing wearing the same row — fetched by the server, able to change or
+  // vanish after the week it was cited for, and "Remove" deleted our copy of a page that was not
+  // the student's to delete. The box is gone; what was already attached is not.
+  renderPanel([
+    attachment({
+      artifact_id: "a9",
+      filename: "arxiv",
+      source_url: "https://arxiv.org/abs/2401.00001",
+    }),
+  ]);
+
+  expect(screen.queryByPlaceholderText(/https/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /add link/i })).not.toBeInTheDocument();
+  expect(screen.getByLabelText(/attach a file/i)).toBeInTheDocument();
+  // And the one already on the record is still there, named by its address.
+  expect(screen.getByText("https://arxiv.org/abs/2401.00001")).toBeInTheDocument();
 });

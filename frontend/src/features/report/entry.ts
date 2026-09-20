@@ -25,7 +25,6 @@ export type EntryDraft = {
   progress: string;
   challenges: string;
   next_plan_text: string;
-  hours: string;
 };
 
 export function emptyEntry(projectId: string, stage: string): EntryDraft {
@@ -35,7 +34,6 @@ export function emptyEntry(projectId: string, stage: string): EntryDraft {
     progress: "",
     challenges: "",
     next_plan_text: "",
-    hours: "",
   };
 }
 
@@ -84,8 +82,7 @@ export function textOfPlan(next_plan: unknown): string {
 /**
  * The editable form of an entry that has already been submitted.
  *
- * The inverse of what `ReportEditorPage.onSubmit` sends, and `hours` is a number on the wire and a
- * string in the form because an empty box is not zero.
+ * The inverse of what `ReportEditorPage.onSubmit` sends.
  */
 export function draftOfEntry(entry: components["schemas"]["EntryOut"]): EntryDraft {
   return {
@@ -98,7 +95,6 @@ export function draftOfEntry(entry: components["schemas"]["EntryOut"]): EntryDra
     progress: joined(entry.work_performed, entry.results),
     challenges: joined(entry.deviations, entry.questions),
     next_plan_text: textOfPlan(entry.next_plan),
-    hours: entry.hours === null || entry.hours === undefined ? "" : String(entry.hours),
   };
 }
 
@@ -121,39 +117,5 @@ export function draftOfSaved(value: unknown, projectId: string, stage: string): 
     progress: current ? text("progress") : joined(text("work_performed"), text("results")),
     challenges: current ? text("challenges") : joined(text("deviations"), text("questions")),
     next_plan_text: text("next_plan_text"),
-    hours: text("hours"),
   };
-}
-
-/** The server's own bounds on `hours`: `Decimal | None = Field(ge=0, le=168)`. */
-export const HOURS_MIN = 0;
-export const HOURS_MAX = 168;
-
-/**
- * Why this entry cannot be sent, as a translation key — or null when it can.
- *
- * The box advertised `min`, `max` and a half-hour `step` and enforced none of them, so a negative
- * number went to the server, came back 422 in a shape nothing could render, and took the whole
- * application down with it. That crash is fixed at both ends now; this is the half that stops a
- * student reaching it at all, and it is the reason the field is checked before `submit.mutate`
- * rather than after.
- */
-export function hoursProblem(hours: string): string | null {
-  const trimmed = hours.trim();
-  if (trimmed === "") return null;
-  const value = Number(trimmed);
-  if (!Number.isFinite(value)) return "report.hoursNotANumber";
-  if (value < HOURS_MIN || value > HOURS_MAX) return "report.hoursOutOfRange";
-  return null;
-}
-
-/** The first entry that cannot be sent, so the editor can name the tab as well as the field. */
-export function firstHoursProblem(
-  drafts: Record<string, EntryDraft>,
-): { projectId: string; key: string } | null {
-  for (const draft of Object.values(drafts)) {
-    const key = hoursProblem(draft.hours);
-    if (key) return { projectId: draft.project_id, key };
-  }
-  return null;
 }

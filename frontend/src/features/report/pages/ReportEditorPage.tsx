@@ -12,7 +12,6 @@ import {
   draftOfEntry,
   draftOfSaved,
   emptyEntry,
-  firstHoursProblem,
   planOfText,
   type EntryDraft,
 } from "@/features/report/entry";
@@ -150,12 +149,6 @@ export function ReportEditorPage() {
     .map((projectId) => titleOf(String(projectId)))
     .join(", ");
   const owed = required.filter((obligation) => !obligation.submitted).length;
-  // An hours figure the server will refuse. Checked here rather than left to the round trip: the
-  // box advertised bounds it did not enforce, and the 422 that came back took the whole page with
-  // it. That crash is fixed, but a student should not meet a server error for a rule the form
-  // already knows, and the tab it is on has to be named — the offending field may be behind a tab
-  // that is not open.
-  const badHours = drafts ? firstHoursProblem(drafts) : null;
   // More than one version means the record has moved on from the first submission, and the notice
   // should say so — `/me` has read "Resubmitted" for this state all along.
   const resubmitted = (submittedVersion.data?.version_no ?? 1) > 1;
@@ -164,10 +157,6 @@ export function ReportEditorPage() {
     // The flush is a full round-trip, and `submit.isPending` is false throughout it — so without
     // this the button stayed enabled and a second click started a second submission (REP-05).
     if (submitting) return;
-    if (badHours) {
-      setActive(badHours.projectId);
-      return;
-    }
     setSubmitting(true);
     try {
       await autosave.flush();
@@ -186,7 +175,6 @@ export function ReportEditorPage() {
         deviations: draft.challenges,
         questions: "",
         next_plan: planOfText(draft.next_plan_text),
-        hours: draft.hours === "" ? null : Number(draft.hours),
       })),
     );
   }
@@ -287,11 +275,6 @@ export function ReportEditorPage() {
         </div>
       )}
 
-      {badHours && (
-        <p role="alert" className="mt-5 text-sm text-bad" data-testid="submit-blocked">
-          {t("report.hoursBlocks", { project: titleOf(badHours.projectId) })}
-        </p>
-      )}
       {problem && (
         <p role="alert" className="mt-5 text-sm text-bad">
           {missing ? t("report.missingEntries", { projects: missing }) : problem.detail}

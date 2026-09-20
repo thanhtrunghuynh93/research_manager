@@ -69,9 +69,6 @@
     "submitted": "Submitted as version {{version}}.",
     "alreadySubmitted": "Submitted {{when}} — sending again adds a version; this one is kept",
     "resubmitted": "Resubmitted {{when}} as version {{version}} — sending again adds a version; every earlier one is kept",
-    "hoursOutOfRange": "Hours has to be between 0 and 168 — a week is 168 hours.",
-    "hoursNotANumber": "Hours has to be a number, or empty.",
-    "hoursBlocks": "Check the hours on {{project}} before sending.",
     "stillOwed_one": "{{count}} project still has no entry in it",
     "stillOwed_other": "{{count}} projects still have no entry in it",
     "missingEntries": "No entry for {{projects}}. The package has to cover every project you are on this week.",
@@ -106,9 +103,7 @@
       "results": "Results and research learning",
       "deviations": "Deviations and blockers",
       "nextPlan": "Next-week plan",
-      "questions": "Questions for the professor",
-      "hours": "Hours (optional)",
-      "hoursNote": "Self-reported; not treated as verified productivity."
+      "questions": "Questions for the professor"
     },
     "attachments": {
       "title": "Evidence",
@@ -116,9 +111,6 @@
       "claimPlaceholder": "The run log behind the nDCG number",
       "claimNote": "Your description of what this supports, applied to the next file or link you attach. Recorded as your claim, not as a finding.",
       "file": "Attach a file",
-      "link": "Or a link",
-      "addLink": "Add link",
-      "linkInvalid": "That is not a web address. A link has to start with http:// or https://.",
       "download": "Download",
       "none": "Nothing attached yet.",
       "limit": "Up to 25 MB per file. Slides (PPTX), documents (DOCX), Markdown, HTML, PDF, figures, notebooks and data files.",

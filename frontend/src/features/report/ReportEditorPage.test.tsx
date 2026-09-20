@@ -550,39 +550,6 @@ test("shows a validation failure as a sentence instead of blanking the page", as
   expect(screen.getByRole("button", { name: /submit/i })).toBeInTheDocument();
 });
 
-test("an hours figure the server would refuse is stopped here, with the tab named", async () => {
-  // The box advertised min/max and enforced neither, so a negative number reached the API, came
-  // back 422 in a shape nothing could render, and blanked the whole application. That crash is
-  // fixed at both ends; this is the half that stops a student meeting it.
-  const submissions: unknown[] = [];
-  renderPage([
-    http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({})),
-    http.post("/api/v1/periods/p1/report/submit", async ({ request }) => {
-      submissions.push(await request.json());
-      return HttpResponse.json({ version_no: 1 }, { status: 201 });
-    }),
-  ]);
-  const user = userEvent.setup();
-
-  await user.type(await screen.findByLabelText(/hours/i), "-1");
-  await user.click(screen.getByRole("button", { name: /submit/i }));
-
-  expect(await screen.findByTestId("hours-error")).toBeInTheDocument();
-  expect(await screen.findByTestId("submit-blocked")).toHaveTextContent("Baseline evaluation");
-  expect(submissions).toHaveLength(0);
-});
-
-test("three quarters of an hour is a valid figure, whatever the stepper says", async () => {
-  // `step="0.5"` marked 3.75 invalid for a value the server stores happily — the browser was
-  // stricter than the thing it was talking to.
-  renderPage([http.patch("/api/v1/periods/p1/report/draft", () => HttpResponse.json({}))]);
-  const user = userEvent.setup();
-
-  await user.type(await screen.findByLabelText(/hours/i), "3.75");
-
-  expect(screen.queryByTestId("hours-error")).not.toBeInTheDocument();
-});
-
 test("a resubmitted week names the version on the record, not the first one", async () => {
   // It read "Submitted Sep 17, 10:54" in the same breath as "Submitted as version 16", because
   // the notice took `first_submitted_at` and never moved.
@@ -740,7 +707,6 @@ test("a draft autosaved under the old five-field template opens with its text in
               deviations: "The cluster queue was full.",
               questions: "Is the comparison criterion clear?",
               next_plan_text: "Run the ablation",
-              hours: "6",
             },
           },
         },
@@ -762,5 +728,4 @@ test("a draft autosaved under the old five-field template opens with its text in
   expect((screen.getByLabelText(/next steps/i) as HTMLTextAreaElement).value).toBe(
     "Run the ablation",
   );
-  expect((screen.getByLabelText(/hours/i) as HTMLInputElement).value).toBe("6");
 });

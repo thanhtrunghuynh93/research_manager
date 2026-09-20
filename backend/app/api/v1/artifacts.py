@@ -43,14 +43,6 @@ class UploadGrantOut(BaseModel):
     headers: dict[str, str]
 
 
-class LinkRequest(BaseModel):
-    project_id: UUID
-    url: str = Field(min_length=1, max_length=2000)
-    supported_claim: str = ""
-    entry_id: UUID | None = None
-    period_id: UUID | None = None
-
-
 class ArtifactOut(BaseModel):
     artifact_id: UUID
     owner_student_id: UUID
@@ -156,23 +148,6 @@ async def confirm_upload(
 async def remove_artifact(artifact_id: UUID, scope: ScopeDep, session: SessionDep) -> None:
     """REP-04: the student's own correction. Refused once the week has been submitted."""
     await service.remove_artifact(session, scope, artifact_id)
-
-
-@router.post("/links", status_code=status.HTTP_201_CREATED, summary="Attach a link")
-async def attach_link(
-    payload: LinkRequest, scope: ScopeDep, session: SessionDep
-) -> ArtifactVersionOut:
-    """A refused link is still recorded, with the reason it was not followed (REP-04)."""
-    version = await service.attach_link(
-        session,
-        scope,
-        project_id=payload.project_id,
-        url=payload.url,
-        supported_claim=payload.supported_claim,
-        entry_id=payload.entry_id,
-        period_id=payload.period_id,
-    )
-    return ArtifactVersionOut(**_as(version))
 
 
 @router.get("/{artifact_id}/versions", summary="Every stored version of one artifact")

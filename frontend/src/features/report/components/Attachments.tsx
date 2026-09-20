@@ -1,6 +1,12 @@
 /**
  * REP-04: attaching evidence to a project entry.
  *
+ * A file, and only a file. The panel used to take a URL as well, and a link is a different thing
+ * wearing the same row: the server fetches it, what it reads can change or vanish afterwards, and
+ * "Remove" deletes our copy of a page that is not ours. Evidence for a week should be the bytes
+ * the student had, so the box is gone. Links already attached stay on the record and are still
+ * listed, because a submitted week is not rewritten (REP-07).
+ *
  * The file never passes through the API. The client hashes it, asks for permission to write one
  * key, PUTs the bytes straight to object storage, and then asks the server to confirm — which is
  * when the server checks the checksum. Three steps rather than one, because the middle one is the
@@ -50,24 +56,6 @@ export type Attachment = {
   /** What the student said this shows. Recorded on attach, and shown back on the row. */
   supported_claim?: string;
 };
-
-/**
- * Whether this is a link we would even try to fetch, checked before anything is created.
- *
- * The server records a refused link rather than rejecting it, deliberately — REPO-08: the record
- * should say what the student pointed at and why we did not follow it. That is the right answer
- * for a link that resolves somewhere we will not go, and the wrong one for a typo: `not a url`
- * used to become a permanent attachment badged COULD NOT BE READ. A scheme this side of the
- * request keeps the typo out and leaves the deliberate refusals to the server.
- */
-function fetchableLink(value: string): boolean {
-  try {
-    const { protocol } = new URL(value.trim());
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 /** The browser's own SHA-256, so the server has something to verify the upload against. */
 async function sha256(file: File): Promise<string> {
@@ -144,7 +132,6 @@ export function Attachments({
   const [sending, setSending] = useState<Sending | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claim, setClaim] = useState("");
-  const [link, setLink] = useState("");
 
   async function upload(file: File) {
     setBusy(true);
@@ -200,31 +187,6 @@ export function Attachments({
     try {
       await api.delete(`/api/v1/artifacts/${artifactId}`);
       onAttached();
-    } catch (problem) {
-      setError(problem instanceof ApiError ? problem.problem.detail : String(problem));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function attachLink() {
-    if (!link.trim()) return;
-    if (!fetchableLink(link)) {
-      setError(t("report.attachments.linkInvalid"));
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post<Attachment>("/api/v1/artifacts/links", {
-        project_id: projectId,
-        period_id: periodId,
-        url: link,
-        supported_claim: claim,
-      });
-      onAttached();
-      setLink("");
-      setClaim("");
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.problem.detail : String(problem));
     } finally {
@@ -378,25 +340,6 @@ export function Attachments({
               )}
             </div>
           )}
-          <label className="block">
-            <span className="field-label">{t("report.attachments.link")}</span>
-            <span className="mt-2 flex gap-2">
-              <input
-                value={link}
-                onChange={(event) => setLink(event.target.value)}
-                placeholder="https://…"
-                className="min-w-0 flex-1 rounded border border-border-strong bg-surface px-3 py-2.5 text-sm"
-              />
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void attachLink()}
-                className="btn-ghost whitespace-nowrap"
-              >
-                {t("report.attachments.addLink")}
-              </button>
-            </span>
-          </label>
         </div>
       </div>
 

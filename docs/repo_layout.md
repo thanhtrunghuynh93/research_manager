@@ -85,7 +85,6 @@ backend/
 │   ├── reporting/
 │   │   ├── artifacts.py       uploads, links, versions, download (REP-04)
 │   │   ├── extraction.py      text from markdown, csv, pdf, docx, notebooks
-│   │   └── links.py           SSRF-guarded link fetching
 │   ├── evidence/
 │   │   ├── connectors/
 │   │   │   ├── base.py        RepositoryConnector protocol, RepoRef, Page, DiffResult, WebhookEvent

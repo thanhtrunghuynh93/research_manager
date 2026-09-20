@@ -58,7 +58,7 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 95 endpoints, 63 of them called by a screen, and nothing left marked ◻️.**
+**As of this version: 94 endpoints, 62 of them called by a screen, and nothing left marked ◻️.**
 Both numbers are path-and-method pairs over `/api/v1`, counted by the script in §9 — v0.12 gave
 "98 endpoints, 50 of them called by a screen", which counted routes one way and callers another
 and so compared two different things. The units agree now; the pair is not comparable to v0.12's.
@@ -473,7 +473,6 @@ reported **$0 spent** in exactly the case where nothing was capping the bill.
 | Write the weekly report, a tab per required project, autosaving | `PATCH /periods/{id}/report/draft` | 🖥️ |
 | Attach a file, straight from the browser to the object store | `POST /artifacts/uploads`, `/artifacts/{id}/confirm` | 🖥️ |
 | **Remove a file they attached** | `DELETE /artifacts/{id}` | 🖥️ |
-| Attach a link | `POST /artifacts/links` | 🖥️ |
 | Submit the weekly package | `POST /periods/{id}/report/submit` | 🖥️ |
 | **Read the week they submitted, every version of it, and any revision asked for** | `GET /periods/{id}/report`, `/reports/{id}/versions`, `/report-versions/{id}`, `/reports/{id}/revisions` | 🖥️ |
 | Read their own projects, milestones, decisions and progress | `GET /projects/...` | 🖥️ |

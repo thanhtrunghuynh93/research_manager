@@ -34,14 +34,13 @@ from app.core.storage import (
     ObjectStore,
     content_type_for,
     current_store,
-    extension_for_content_type,
     extracted_text_key,
     is_sha256_hex,
     sha256_of,
     storage_key,
 )
 from app.identity import service as identity_service
-from app.reporting import events, extraction, links
+from app.reporting import events, extraction
 from app.reporting.models import (
     Artifact,
     ArtifactKind,
@@ -274,100 +273,6 @@ async def confirm_upload(
         },
     )
     await session.flush()
-    return _out(artifact, version)
-
-
-# ------------------------------------------------------------------ links (REP-04)
-
-
-async def attach_link(
-    session: AsyncSession,
-    scope: Scope,
-    *,
-    project_id: UUID,
-    url: str,
-    supported_claim: str = "",
-    entry_id: UUID | None = None,
-    period_id: UUID | None = None,
-    store: ObjectStore | None = None,
-    fetch: Any = None,
-) -> ArtifactVersionOut:
-    """Record a linked artifact, fetching a snapshot when the link is safe to fetch.
-
-    A refused link is still recorded: the student pointed at something, and the record should say
-    what they pointed at and why we did not follow it (REPO-08).
-    """
-    scope.require_project(project_id)
-    artifact = Artifact(
-        workspace_id=scope.workspace_id,
-        owner_student_id=scope.user_id,
-        project_id=project_id,
-        entry_id=entry_id,
-        period_id=period_id,
-        kind=ArtifactKind.LINK,
-        filename=url.rsplit("/", 1)[-1] or "link",
-        supported_claim=supported_claim,
-        source_url=url,
-    )
-    session.add(artifact)
-    await session.flush()
-
-    key = storage_key(
-        workspace_id=scope.workspace_id,
-        artifact_id=artifact.id,
-        version_no=1,
-        sha256="0" * 64,
-        filename=artifact.filename,
-    )
-    version = ArtifactVersion(
-        workspace_id=scope.workspace_id,
-        artifact_id=artifact.id,
-        version_no=1,
-        storage_key=key,
-        content_type="text/plain",
-    )
-    session.add(version)
-
-    try:
-        fetched = await (fetch or links.fetch)(url)
-    except links.LinkRefusedError as refusal:
-        version.extraction_state = ExtractionState.FAILED
-        version.extraction_note = str(refusal)
-        artifact.current_version_no = 1
-        await session.flush()
-        return _out(artifact, version)
-    except Exception as error:  # noqa: BLE001 - an unreachable link is a state, not a crash
-        log.warning("link fetch failed for %s: %r", url, error)
-        version.extraction_state = ExtractionState.FAILED
-        version.extraction_note = _why_unreachable(error)
-        artifact.current_version_no = 1
-        await session.flush()
-        return _out(artifact, version)
-
-    active = store or current_store()
-    await active.put_bytes(key, fetched.data, content_type=fetched.content_type)
-    version.sha256 = sha256_of(fetched.data)
-    version.byte_size = len(fetched.data)
-    version.content_type = fetched.content_type
-    version.uploaded = True
-
-    # The server's Content-Type, not the URL's last path segment: `/abs/2401.00001` has no
-    # extension worth reading, and the response says what it actually sent.
-    extension = extension_for_content_type(fetched.content_type)
-    result = extraction.extract(
-        f"{artifact.filename}.{extension}" if extension else artifact.filename, fetched.data
-    )
-    version.extraction_state = ExtractionState(result.state.value)
-    version.extraction_note = result.note
-    version.truncated = result.truncated or fetched.truncated
-    if result.text:
-        text_key = extracted_text_key(key)
-        await active.put_bytes(text_key, result.text.encode("utf-8"), content_type="text/plain")
-        version.extracted_text_key = text_key
-
-    artifact.current_version_no = 1
-    await session.flush()
-    await _index(session, artifact, version, result.text)
     return _out(artifact, version)
 
 
@@ -798,31 +703,6 @@ async def _index(
         ),
         session,
     )
-
-
-def _why_unreachable(error: Exception) -> str:
-    """Why a link could not be read, in words a student can act on.
-
-    This used to be the exception's class name — "the link could not be fetched (HTTPStatusError)"
-    — which is httpx's word for it, not anybody's. The student could not tell a typo from a login
-    wall from a site that was down, and all three want different responses. The class name stays
-    in the log, where it belongs.
-    """
-    status = getattr(getattr(error, "response", None), "status_code", None)
-    if status is not None:
-        if status in (401, 403):
-            return f"that page needs a sign-in to read ({status}), so nothing could be extracted"
-        if status == 404:
-            return "there is no page at that address (404)"
-        if status >= 500:
-            return f"the site is not serving that page at the moment ({status})"
-        return f"the site refused the request ({status})"
-    name = type(error).__name__
-    if "Timeout" in name:
-        return "the site did not answer in time"
-    if "Connect" in name or "DNS" in name or "Resolution" in name:
-        return "that address could not be reached"
-    return "the link could not be fetched"
 
 
 def _out(artifact: Artifact, version: ArtifactVersion) -> ArtifactVersionOut:

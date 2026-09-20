@@ -2096,56 +2096,6 @@
         "title": "LinkProjectIn",
         "type": "object"
       },
-      "LinkRequest": {
-        "properties": {
-          "entry_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entry Id"
-          },
-          "period_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period Id"
-          },
-          "project_id": {
-            "format": "uuid",
-            "title": "Project Id",
-            "type": "string"
-          },
-          "supported_claim": {
-            "default": "",
-            "title": "Supported Claim",
-            "type": "string"
-          },
-          "url": {
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "project_id",
-          "url"
-        ],
-        "title": "LinkRequest",
-        "type": "object"
-      },
       "LoginIn": {
         "properties": {
           "email": {
@@ -5697,48 +5647,6 @@
           }
         },
         "summary": "The attachments the caller may see",
-        "tags": [
-          "artifacts"
-        ]
-      }
-    },
-    "/api/v1/artifacts/links": {
-      "post": {
-        "description": "A refused link is still recorded, with the reason it was not followed (REP-04).",
-        "operationId": "attach_link_api_v1_artifacts_links_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LinkRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ArtifactVersionOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Attach a link",
         "tags": [
           "artifacts"
         ]
