@@ -110,3 +110,50 @@ test("an empty profile says so rather than showing nothing", async () => {
 
   expect(await screen.findByText(/has not attached anything yet/)).toBeInTheDocument();
 });
+
+// ---------------------------------------------------------------- weeks that have happened
+//
+// The calendar materialises periods ahead of time, eight weeks out by default. The list took the
+// newest eight, which were therefore the eight that had not begun — a column of empty weeks
+// running into next month, each offering to open a report that cannot exist, with every week the
+// student had actually reported pushed below the cut.
+
+/** A period starting `offsetDays` from today, in the shape the API returns. */
+function period(id: string, offsetDays: number) {
+  const start = new Date();
+  start.setDate(start.getDate() + offsetDays);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return {
+    id,
+    workspace_id: "w1",
+    local_start: iso(start),
+    local_end: iso(end),
+    start_utc: `${iso(start)}T00:00:00Z`,
+    end_utc: `${iso(end)}T23:59:00Z`,
+    meeting_date: iso(end),
+    deadline_utc: `${iso(end)}T16:59:00Z`,
+    reminder_due_utc: `${iso(end)}T17:00:00Z`,
+  };
+}
+
+test("the weekly list holds the weeks that have begun, not the ones the calendar has opened", async () => {
+  server.use(
+    http.get("/api/v1/periods", () =>
+      HttpResponse.json([period("past", -28), period("current", -1), period("future", 21)]),
+    ),
+  );
+  renderProfile([]);
+
+  const list = await screen.findByTestId("weekly-reports");
+  await waitFor(() => expect(within(list).getAllByRole("link").length).toBeGreaterThan(0));
+
+  const weeks = within(list).getAllByRole("link");
+  const hrefs = weeks.map((link) => link.getAttribute("href"));
+  expect(hrefs).toContain("/students/s1/reports/current");
+  expect(hrefs).toContain("/students/s1/reports/past");
+  expect(hrefs).not.toContain("/students/s1/reports/future");
+  // Newest first, so the week just gone is the one at the top rather than the oldest on record.
+  expect(hrefs[0]).toBe("/students/s1/reports/current");
+});

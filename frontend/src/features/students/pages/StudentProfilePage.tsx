@@ -21,7 +21,8 @@ import { Trajectory } from "@/features/assessments/components/Trajectory";
 import { useUser } from "@/features/people/queries";
 import type { Assessment } from "@/features/review/types";
 import { openArtifact, useArtifacts, useAllPeriods, useProjects } from "@/features/report/queries";
-import { formatLocalDate } from "@/lib/dates";
+import { useTimezone } from "@/features/calendar/queries";
+import { formatLocalDate, todayLocal } from "@/lib/dates";
 
 export function StudentProfilePage() {
   const { t } = useTranslation();
@@ -39,6 +40,10 @@ export function StudentProfilePage() {
   const student = useUser(id);
   const projects = useProjects();
   const periods = useAllPeriods();
+  // The workspace's date, not the browser's: `local_start` is a workspace-local calendar date,
+  // and comparing it against UTC would show next week as begun for the first hours of every day
+  // in a UTC+7 workspace.
+  const today = todayLocal(new Date(), useTimezone());
 
   const titleOf = (projectId: string) =>
     projects.data?.items.find((project) => project.id === projectId)?.title ??
@@ -70,10 +75,17 @@ export function StudentProfilePage() {
 
       {/* Every week this student could have reported, each a click from its text. The reader
           itself says "nothing was started" for a week with nothing in it, so no probing is
-          needed here — and a professor with no list had no way into a report at all. */}
+          needed here — and a professor with no list had no way into a report at all.
+
+          Weeks that have not begun are not among them. The calendar materialises periods ahead
+          of time — eight weeks out by default, and the nightly job keeps them there — so the
+          newest eight periods were the eight that had not happened yet. The list read as a
+          column of empty weeks stretching into November, each offering to open a report that
+          could not exist, while every week the student had actually reported sat below the cut. */}
       <h2 className="section-title mt-8">{t("report.reader.weekly")}</h2>
       <ul className="panel mt-2.5" data-testid="weekly-reports">
         {(periods.data ?? [])
+          .filter((period) => period.local_start <= today)
           .slice()
           .reverse()
           .slice(0, 8)
