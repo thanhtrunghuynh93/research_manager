@@ -79,10 +79,10 @@ export function StudentProfilePage() {
           .slice(0, 8)
           .map((period) => (
             <li key={period.id} className="row">
-              <Link to={`/students/${id}/reports/${period.id}`} className="link text-[13.5px]">
+              <Link to={`/students/${id}/reports/${period.id}`} className="link text-prose">
                 {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
               </Link>
-              <span className="font-mono text-[11.5px] text-muted-foreground">
+              <span className="font-mono text-meta text-muted-foreground">
                 {t("report.reader.openWeek")}
               </span>
             </li>
@@ -95,7 +95,7 @@ export function StudentProfilePage() {
       <ul className="panel mt-2.5" data-testid="assessments">
         {assessments.data?.map((assessment) => (
           <li key={assessment.id} className="row">
-            <Link to={`/review/${assessment.id}`} className="text-[13.5px]">
+            <Link to={`/review/${assessment.id}`} className="text-prose">
               {weekOf(assessment.period_id)}
               <span className="ml-2 text-muted-foreground">{titleOf(assessment.project_id)}</span>
             </Link>
@@ -146,15 +146,15 @@ function Materials({ studentId }: { studentId: string }) {
         {artifacts.data?.map((artifact) => (
           <li key={artifact.artifact_id} className="row items-start">
             <span className="min-w-0">
-              <span className="font-mono text-[12.5px]">{artifact.filename}</span>
+              <span className="font-mono text-note">{artifact.filename}</span>
               {artifact.supported_claim ? (
-                <span className="mt-1 block text-[13px] text-muted-foreground">
+                <span className="mt-1 block text-ui text-muted-foreground">
                   {artifact.supported_claim}
                 </span>
               ) : null}
             </span>
             <span className="flex shrink-0 items-center gap-2.5">
-              <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+              <span className="font-mono text-meta uppercase tracking-[0.06em] text-faint">
                 {t(`report.attachments.state.${artifact.extraction_state}`, {
                   defaultValue: artifact.extraction_state,
                 })}

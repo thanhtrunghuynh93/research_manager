@@ -89,7 +89,7 @@ export function ReviewPage() {
                 assessment from a screen that never named the student it was about. */}
             <p className="eyebrow mb-1.5">{t("review.title")}</p>
             <h1 className="page-title">{student.data?.display_name ?? t("review.subject")}</h1>
-            <p className="mt-2 font-mono text-[13px] text-muted-foreground">
+            <p className="mt-2 font-mono text-ui text-muted-foreground">
               {week} {project ? `on ${project}` : ""}
             </p>
           </div>
@@ -145,7 +145,7 @@ export function ReviewPage() {
                   CLAIM_EDGE[String(item.status)] ?? "border-l-border-strong"
                 }`}
               >
-                <p className="text-[13.5px] leading-relaxed">{String(item.claim ?? "")}</p>
+                <p className="text-prose leading-relaxed">{String(item.claim ?? "")}</p>
                 <Badge tone={item.status === "supported" ? "good" : "warn"} className="mt-2.5">
                   {t(`review.claimStatus.${String(item.status)}`, {
                     defaultValue: String(item.status),
@@ -165,7 +165,7 @@ export function ReviewPage() {
           <ul className="grid gap-2.5" data-testid="evidence">
             {evidence.data?.map((item) => (
               <li key={item.evidence_ref_id} className="card">
-                <p className="line-clamp-4 text-[12.5px] leading-relaxed text-ink2">{item.text}</p>
+                <p className="line-clamp-4 text-note leading-relaxed text-ink2">{item.text}</p>
                 <p className="stamp mt-2.5">
                   {item.locator}
                   {item.integration_of_earlier_work ? ` · ${t("review.integrated")}` : ""}
@@ -188,7 +188,7 @@ export function ReviewPage() {
               return (
                 <li key={dimension} className="card">
                   <div className="flex items-center justify-between gap-2.5">
-                    <span className="text-[13px] font-medium">
+                    <span className="text-ui font-medium">
                       {t(`assessment.dimension.${dimension}`)}
                     </span>
                     <select
@@ -213,7 +213,7 @@ export function ReviewPage() {
                     {rating?.rationale}
                   </p>
                   {(rating?.validation_notes ?? []).map((note, index) => (
-                    <p key={index} className="mt-1.5 text-[11.5px] leading-relaxed text-warn">
+                    <p key={index} className="mt-1.5 text-meta leading-relaxed text-warn">
                       {note}
                     </p>
                   ))}
@@ -229,7 +229,7 @@ export function ReviewPage() {
                 value={rationale}
                 onChange={(event) => setRationale(event.target.value)}
                 rows={3}
-                className="textarea font-sans text-[13px]"
+                className="textarea font-sans text-ui"
                 placeholder={t("review.rationalePlaceholder")}
               />
             </label>
@@ -248,7 +248,7 @@ export function ReviewPage() {
               {changed ? t("review.approveWithOverride") : t("review.approve")}
             </button>
             {approve.isSuccess && (
-              <p className="mt-2.5 font-mono text-[11.5px] text-good" data-testid="published">
+              <p className="mt-2.5 font-mono text-meta text-good" data-testid="published">
                 {t("review.published", {
                   when: formatInstant(
                     approve.data.published_at ?? new Date().toISOString(),

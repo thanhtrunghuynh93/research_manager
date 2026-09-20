@@ -69,7 +69,7 @@ export function PeoplePage() {
           {single ? t("people.label") : t("people.acrossWorkspaces", { count: all.length })}
         </p>
         <h1 className="page-title">{t("people.title")}</h1>
-        <p className="mt-2 max-w-2xl text-[13.5px] text-muted-foreground">{t("people.intro")}</p>
+        <p className="mt-2 max-w-2xl text-prose text-muted-foreground">{t("people.intro")}</p>
       </header>
 
       <InviteForm />
@@ -171,18 +171,18 @@ function Person({ user, isYou, linkTo }: { user: User; isYou?: boolean; linkTo?:
     <span className="min-w-0">
       <span className="flex flex-wrap items-center gap-2.5">
         {linkTo ? (
-          <Link to={linkTo} className="text-[13.5px]">
+          <Link to={linkTo} className="text-prose">
             {user.display_name}
           </Link>
         ) : (
-          <span className="text-[13.5px]">{user.display_name}</span>
+          <span className="text-prose">{user.display_name}</span>
         )}
         {isYou && <span className="eyebrow">{t("people.you")}</span>}
         <Badge tone={STATE_TONE[user.state]}>
           {t(`people.state.${user.state}`, { defaultValue: user.state })}
         </Badge>
       </span>
-      <span className="mt-1 block font-mono text-[12px] text-faint">{user.email}</span>
+      <span className="mt-1 block font-mono text-note text-faint">{user.email}</span>
       {user.state === "deactivated" && user.deactivated_at && (
         <span className="stamp mt-0.5 block">
           {t("people.closedOn", { when: formatInstant(user.deactivated_at, timezone) })}
@@ -261,7 +261,7 @@ function StudentActions({
               type="button"
               onClick={() => remove.mutate(user.id, { onSuccess: () => setConfirming(false) })}
               disabled={pending}
-              className="btn-primary py-1.5 text-[13px]"
+              className="btn-primary py-1.5 text-ui"
             >
               {t("people.removeConfirm")}
             </button>
@@ -313,7 +313,7 @@ function MoveStudent({ user, workspaces }: { user: User; workspaces: Workspace[]
       </label>
       <select
         id={`move-${user.id}`}
-        className="select py-1 text-[13px]"
+        className="select py-1 text-ui"
         value=""
         disabled={move.isPending}
         onChange={(event) =>
@@ -426,7 +426,7 @@ function InviteForm() {
           {t("people.send")}
         </button>
         {invite.isSuccess && (
-          <span role="status" className="text-[13px] text-muted-foreground">
+          <span role="status" className="text-ui text-muted-foreground">
             {t("people.sent", { email: invite.data.email })}
           </span>
         )}

@@ -58,7 +58,7 @@ export function AssistantPage() {
     <section className="max-w-3xl animate-rise-in">
       <header>
         <h1 className="page-title">{t("assistant.title")}</h1>
-        <p className="mt-2 text-[13.5px] text-muted-foreground">{t("assistant.readOnly")}</p>
+        <p className="mt-2 text-prose text-muted-foreground">{t("assistant.readOnly")}</p>
       </header>
 
       <form onSubmit={submit} className="mt-6 flex flex-wrap gap-2">
@@ -96,7 +96,7 @@ export function AssistantPage() {
           ) : (
             <>
               <p
-                className="mt-5 whitespace-pre-line font-display text-[1.1875rem] leading-relaxed [text-wrap:pretty]"
+                className="mt-5 whitespace-pre-line font-display text-lead leading-relaxed [text-wrap:pretty]"
                 data-testid="answer-text"
               >
                 {answer.answer}
@@ -111,7 +111,7 @@ export function AssistantPage() {
                   <p className="stamp mt-1.5">{t("assistant.factsNote")}</p>
                   <ul className="panel mt-2.5">
                     {answer.facts.map((fact) => (
-                      <li key={fact.name} className="px-4 py-2.5 text-[13.5px]">
+                      <li key={fact.name} className="px-4 py-2.5 text-prose">
                         <span className="font-medium">{fact.label}: </span>
                         <span>{renderValue(fact.value)}</span>
                         <p className="stamp mt-1">
@@ -131,7 +131,7 @@ export function AssistantPage() {
                     <span className="chip chip-accent uppercase">{t("assistant.modelBadge")}</span>
                   </h2>
                   <p className="stamp mt-1.5">{t("assistant.synthesisNote")}</p>
-                  <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
+                  <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-prose leading-relaxed">
                     {answer.synthesis.map((line, index) => (
                       <li key={index}>{line}</li>
                     ))}
@@ -143,7 +143,7 @@ export function AssistantPage() {
                 <div className="mt-6" data-testid="suggestions">
                   <h2 className="section-title">{t("assistant.suggestions")}</h2>
                   <p className="stamp mt-1.5">{t("assistant.suggestionsNote")}</p>
-                  <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
+                  <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-prose leading-relaxed">
                     {answer.suggestions.map((line, index) => (
                       <li key={index}>{line}</li>
                     ))}
@@ -161,7 +161,7 @@ export function AssistantPage() {
           {answer.gaps.length > 0 && (
             <div className="notice-warn mt-6" data-testid="gaps">
               <h2 className="section-title">{t("assistant.gaps")}</h2>
-              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-prose leading-relaxed">
                 {answer.gaps.map((gap, index) => (
                   <li key={index}>{gap}</li>
                 ))}

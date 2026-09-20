@@ -75,7 +75,7 @@ export function ConfidenceReasons({
   return (
     <ul className={cn("mt-1", className)} data-testid="confidence-reasons">
       {reasons.map((reason) => (
-        <li key={reason} className="text-[12.5px] leading-relaxed text-muted-foreground">
+        <li key={reason} className="text-note leading-relaxed text-muted-foreground">
           {reason}
         </li>
       ))}
@@ -132,7 +132,7 @@ export function ProgressIndex({
   }
   return (
     <span
-      className={cn("font-display leading-none", size === "figure" ? "text-[2.125rem]" : "text-lg")}
+      className={cn("font-display leading-none", size === "figure" ? "text-figure" : "text-lg")}
       data-testid="progress-index"
     >
       {value}

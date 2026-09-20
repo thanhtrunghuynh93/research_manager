@@ -27,7 +27,7 @@ export function StatusPage() {
       {readiness.data && (
         <ul className="panel">
           {Object.entries(readiness.data.checks).map(([name, state]) => (
-            <li key={name} className="row font-mono text-[13px]">
+            <li key={name} className="row font-mono text-ui">
               <span>{name}</span>
               <span
                 className={

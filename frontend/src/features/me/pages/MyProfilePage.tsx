@@ -58,7 +58,7 @@ export function MyProfilePage() {
       <ul className="panel" data-testid="my-assessments">
         {released.map((one) => (
           <li key={one.id} className="row">
-            <Link to={`/me/assessments/${one.id}`} className="link text-[13px]">
+            <Link to={`/me/assessments/${one.id}`} className="link text-ui">
               {titleOf(String(one.project_id)) ?? String(one.project_id).slice(0, 8)}
             </Link>
             <span className="flex items-center gap-2.5 text-right">
@@ -67,7 +67,7 @@ export function MyProfilePage() {
                 confidence={one.confidence}
                 reasons={(one.confidence_reasons ?? []).map(String)}
               />
-              <span className="font-mono text-[11.5px] text-muted-foreground">
+              <span className="font-mono text-meta text-muted-foreground">
                 {one.published_at ? formatInstant(one.published_at, timezone) : ""}
               </span>
             </span>

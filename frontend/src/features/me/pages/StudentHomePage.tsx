@@ -60,10 +60,7 @@ export function StudentHomePage() {
       <div className="panel mt-6 flex flex-wrap items-center justify-between gap-5 p-5">
         <div>
           <p className="eyebrow">{t("me.dueBy")}</p>
-          <p
-            className="mt-1.5 font-display text-[1.625rem] leading-none"
-            data-testid="next-deadline"
-          >
+          <p className="mt-1.5 font-display text-display leading-none" data-testid="next-deadline">
             {formatInstant(period.deadline_utc, timezone)}
           </p>
           {/* Held back until the report has answered. Defaulting to `not_started` meant a
@@ -142,7 +139,7 @@ function ObligationState({ obligation }: { obligation: Obligation }) {
   const { t } = useTranslation();
   if (obligation.state === "excused") {
     return (
-      <span className="font-mono text-[11.5px] text-faint">
+      <span className="font-mono text-meta text-faint">
         {t("report.obligation.excused")}
         {obligation.excuse_reason ? ` — ${obligation.excuse_reason}` : ""}
       </span>
@@ -152,8 +149,8 @@ function ObligationState({ obligation }: { obligation: Obligation }) {
     <span
       className={
         obligation.submitted
-          ? "font-mono text-[11px] uppercase tracking-[0.06em] text-good"
-          : "font-mono text-[11px] uppercase tracking-[0.06em] text-warn"
+          ? "font-mono text-meta uppercase tracking-[0.06em] text-good"
+          : "font-mono text-meta uppercase tracking-[0.06em] text-warn"
       }
     >
       {t(obligation.submitted ? "report.obligation.submitted" : "report.obligation.required")}

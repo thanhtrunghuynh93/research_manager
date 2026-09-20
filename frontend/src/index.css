@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /**
- * The ledger theme. Every colour is a token here and nowhere else, so the dark variant is the
+ * The house theme: a white light and a cool product dark. Every colour is a token here and nowhere else, so the dark variant is the
  * same stylesheet with a different `:root`, and a screen cannot quietly invent a colour.
  *
  * Type has three jobs and three families: Newsreader for headings and figures the reader is meant
@@ -13,27 +13,27 @@
  */
 @layer base {
   :root {
-    --background: 41 27% 93%;
-    --surface: 43 100% 98%;
-    --raised: 40 32% 95%;
-    --foreground: 34 19% 7%;
-    --ink-2: 39 14% 20%;
-    --muted: 38 29% 89%;
-    --muted-foreground: 35 11% 38%;
-    --faint: 38 9% 49%;
-    --border: 36 24% 79%;
-    --border-strong: 35 22% 73%;
-    --divider: 38 29% 89%;
-    --track: 38 29% 86%;
-    --paper-dot: 39 25% 85%;
+    --background: 0 0% 100%;
+    --surface: 0 0% 100%;
+    --raised: 228 18% 95%;
+    --foreground: 220 13% 9%;
+    --ink-2: 220 10% 25%;
+    --muted: 228 18% 95%;
+    --muted-foreground: 218 8% 37%;
+    --faint: 218 7% 44%;
+    --border: 223 14% 89%;
+    --border-strong: 220 11% 82%;
+    --divider: 228 12% 93%;
+    --track: 225 12% 91%;
+    --paper-dot: 0 0% 100%;
 
-    --accent: 214 51% 25%;
-    --accent-soft: 212 29% 93%;
-    --accent-line: 212 25% 81%;
+    --accent: 221 76% 48%;
+    --accent-soft: 221 83% 96%;
+    --accent-line: 221 45% 86%;
 
-    --good: 148 33% 27%;
-    --good-soft: 111 22% 92%;
-    --good-line: 113 20% 78%;
+    --good: 156 61% 24%;
+    --good-soft: 150 44% 94%;
+    --good-line: 145 34% 80%;
 
     --warn: 39 100% 27%;
     --warn-strong: 40 89% 19%;
@@ -41,79 +41,87 @@
     --warn-line: 40 60% 71%;
     --warn-rule: 43 79% 41%;
 
-    --bad: 3 49% 32%;
-    --bad-soft: 8 60% 93%;
-    --bad-line: 9 38% 78%;
+    --bad: 2 67% 39%;
+    --bad-soft: 8 83% 95%;
+    --bad-line: 8 66% 84%;
 
-    --primary: 34 19% 7%;
-    --primary-foreground: 43 100% 98%;
-    --radius: 4px;
+    --primary: 221 76% 48%;
+    --primary-foreground: 0 0% 100%;
+    --radius: 6px;
   }
 
+  /* The product dark. Chosen against the white light above: on a dark ground the warm paper
+     neutrals read as dust, and this cool slate keeps the same token names and jobs. */
   .dark {
-    --background: 30 8% 7%;
-    --surface: 35 12% 10%;
-    --raised: 30 12% 11%;
-    --foreground: 38 32% 91%;
-    --ink-2: 39 21% 80%;
-    --muted: 30 9% 14%;
-    --muted-foreground: 37 13% 60%;
-    --faint: 37 9% 50%;
-    --border: 38 14% 17%;
-    --border-strong: 37 14% 21%;
-    --divider: 30 9% 14%;
-    --track: 33 11% 15%;
-    --paper-dot: 35 15% 13%;
+    --background: 220 9% 6%;
+    --surface: 220 7% 9%;
+    --raised: 220 9% 12%;
+    --foreground: 220 11% 95%;
+    --ink-2: 218 11% 81%;
+    --muted: 220 9% 12%;
+    --muted-foreground: 216 7% 59%;
+    --faint: 214 7% 53%;
+    --border: 225 8% 16%;
+    --border-strong: 220 7% 22%;
+    --divider: 220 9% 12%;
+    --track: 220 8% 15%;
+    --paper-dot: 220 9% 6%;
 
-    --accent: 214 47% 74%;
-    --accent-soft: 217 28% 16%;
-    --accent-line: 215 28% 28%;
+    --accent: 233 83% 81%;
+    --accent-soft: 236 29% 14%;
+    --accent-line: 236 35% 29%;
 
-    --good: 149 35% 62%;
-    --good-soft: 155 24% 12%;
-    --good-line: 143 22% 22%;
+    --good: 158 52% 61%;
+    --good-soft: 168 39% 10%;
+    --good-line: 162 36% 18%;
 
-    --warn: 38 66% 63%;
-    --warn-strong: 38 63% 74%;
-    --warn-soft: 42 33% 12%;
-    --warn-line: 41 42% 20%;
-    --warn-rule: 45 68% 47%;
+    --warn: 44 72% 59%;
+    --warn-strong: 43 68% 75%;
+    --warn-soft: 46 33% 11%;
+    --warn-line: 45 38% 20%;
+    --warn-rule: 45 63% 47%;
 
-    --bad: 6 60% 72%;
-    --bad-soft: 7 26% 13%;
-    --bad-line: 10 27% 23%;
+    --bad: 4 80% 74%;
+    --bad-soft: 353 23% 12%;
+    --bad-rule: 4 48% 56%;
+    --bad-line: 353 27% 22%;
 
-    --primary: 38 32% 91%;
-    --primary-foreground: 30 8% 7%;
+    /* The primary action is the accent itself: on this ground an almost-white button is the
+       loudest object on screen, and few acts here are the loudest act. */
+    --primary: 236 62% 60%;
+    --primary-foreground: 0 0% 100%;
   }
 
   body {
     @apply bg-background font-sans text-foreground antialiased;
-    /* The ruled-paper ground. One pixel of texture is the whole difference between a document
-       and a dialog box. */
+    /* The ruled-paper ground, dark only. On the white light theme the same grain reads as dirt,
+       and --paper-dot is set to the background there so the gradient is invisible. */
     background-image: radial-gradient(hsl(var(--paper-dot)) 0.5px, transparent 0.5px);
     background-size: 18px 18px;
   }
 
+  /* Links are the ink, not the accent: at the density of these tables a coloured identifier in
+     every row reads as decoration. The underline on hover carries the affordance, and the accent
+     is reserved for the primary action. */
   a {
-    @apply text-accent underline-offset-2;
+    @apply text-foreground no-underline;
   }
   a:hover {
-    @apply text-foreground;
+    @apply underline underline-offset-2;
   }
 }
 
 @layer components {
   /* Labels for things the reader scans rather than reads. */
   .eyebrow {
-    @apply font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-faint;
+    @apply font-mono text-meta font-medium uppercase tracking-[0.14em] text-faint;
   }
   /* Provenance: when a figure was true, which version it came from, what produced it. */
   .stamp {
-    @apply font-mono text-[11px] leading-relaxed text-faint;
+    @apply font-mono text-meta leading-relaxed text-faint;
   }
   .figure {
-    @apply font-display text-[2.125rem] font-normal leading-none;
+    @apply font-display text-figure font-normal leading-none;
   }
   .figure-unit {
     @apply font-mono text-xs text-faint;
@@ -140,7 +148,7 @@
   }
 
   .chip {
-    @apply inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[11px] font-medium leading-none;
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-meta font-medium leading-none;
   }
   .chip-neutral {
     @apply border-border bg-surface text-muted-foreground;
@@ -159,16 +167,16 @@
   }
 
   .field-label {
-    @apply block font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-faint;
+    @apply block font-mono text-meta font-medium uppercase tracking-[0.12em] text-faint;
   }
   .input {
     @apply mt-2 w-full rounded border border-border-strong bg-surface px-3 py-2.5 text-sm;
   }
   .textarea {
-    @apply mt-2 w-full resize-y rounded border border-border-strong bg-surface px-3 py-2.5 font-mono text-[13px] leading-relaxed;
+    @apply mt-2 w-full resize-y rounded border border-border-strong bg-surface px-3 py-2.5 font-mono text-ui leading-relaxed;
   }
   .select {
-    @apply rounded border border-border-strong bg-raised px-2 py-1 font-mono text-[13px];
+    @apply rounded border border-border-strong bg-raised px-2 py-1 font-mono text-ui;
   }
 
   .btn-primary {
@@ -178,7 +186,7 @@
     @apply rounded border border-border bg-surface px-3.5 py-2 text-sm transition-colors hover:border-foreground disabled:opacity-50;
   }
   .btn-quiet {
-    @apply text-xs text-accent underline underline-offset-2;
+    @apply text-xs text-foreground underline underline-offset-2;
   }
 
   /* A file input carries its own button, drawn by the browser and reachable only through the
@@ -190,7 +198,7 @@
      its colour from the page; `::file-selector-button` does not — the browser gives it its own,
      which is near-black, so on the dark theme it was dark text on a dark surface. */
   .file-input {
-    @apply mt-2 w-full rounded border border-dashed border-border-strong bg-surface px-3 py-2.5 text-[13px];
+    @apply mt-2 w-full rounded border border-dashed border-border-strong bg-surface px-3 py-2.5 text-ui;
     @apply file:mr-3.5 file:cursor-pointer file:rounded file:border file:border-border file:bg-surface;
     @apply file:px-3.5 file:py-2 file:text-sm file:text-foreground file:transition-colors;
     @apply hover:file:border-foreground disabled:opacity-60;

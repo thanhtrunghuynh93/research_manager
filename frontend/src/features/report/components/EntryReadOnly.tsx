@@ -18,9 +18,9 @@ export function EntryReadOnly({ entry }: { entry: EntryOut }) {
     <div>
       <p className="field-label">{label}</p>
       {value ? (
-        <p className="mt-1 font-mono text-[13px] leading-relaxed whitespace-pre-wrap">{value}</p>
+        <p className="mt-1 font-mono text-ui leading-relaxed whitespace-pre-wrap">{value}</p>
       ) : (
-        <p className="mt-1 text-[13px] text-faint">{t("report.reader.nothingWritten")}</p>
+        <p className="mt-1 text-ui text-faint">{t("report.reader.nothingWritten")}</p>
       )}
     </div>
   );

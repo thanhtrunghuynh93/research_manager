@@ -48,9 +48,7 @@ function renderPage(me: object = PROF, items: object[] = [PROJECT], joinable: ob
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json(me)),
     http.get("/api/v1/projects/joinable", () => HttpResponse.json(joinable)),
-    http.get("/api/v1/projects", () =>
-      HttpResponse.json({ items, next_cursor: null, limit: 50 }),
-    ),
+    http.get("/api/v1/projects", () => HttpResponse.json({ items, next_cursor: null, limit: 50 })),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -111,11 +109,8 @@ test("a student is offered the create form, and told their project is active at 
   // The professor's note says the opposite thing, and showing a student the wrong one would tell
   // them their project owes nothing when it does.
   expect(screen.getByText(/active as soon as you create it/i)).toBeInTheDocument();
-  expect(
-    screen.queryByText(/A new project is proposed/i),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/A new project is proposed/i)).not.toBeInTheDocument();
 });
-
 
 const OPEN = {
   id: "p9",
@@ -153,7 +148,6 @@ test("the professor is not offered projects to join, and a student with none see
   expect(screen.queryByTestId("joinable")).not.toBeInTheDocument();
 });
 
-
 test("the repository link is optional and travels with the new project", async () => {
   const posted: Record<string, unknown>[] = [];
   renderPage(STUDENT);
@@ -166,10 +160,7 @@ test("the repository link is optional and travels with the new project", async (
 
   await screen.findByTestId("project-list");
   await userEvent.type(screen.getByLabelText(/^title$/i), "With a repo");
-  await userEvent.type(
-    screen.getByLabelText(/git repository/i),
-    "https://github.com/lab/thing",
-  );
+  await userEvent.type(screen.getByLabelText(/git repository/i), "https://github.com/lab/thing");
   await userEvent.click(screen.getByRole("button", { name: /create project/i }));
   await new Promise((resolve) => setTimeout(resolve, 50));
 

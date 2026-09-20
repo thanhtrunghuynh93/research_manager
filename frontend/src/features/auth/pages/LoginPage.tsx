@@ -27,7 +27,7 @@ export function LoginPage() {
 
   return (
     <section className="mx-auto max-w-sm animate-rise-in py-10">
-      <h1 className="font-display text-[2.125rem] font-normal tracking-[-0.015em]">
+      <h1 className="font-display text-figure font-normal tracking-[-0.015em]">
         {t("auth.signIn")}
       </h1>
       {justReset && (
@@ -101,7 +101,7 @@ function RecoveryRequest({ email: initial }: { email: string }) {
 
   if (request.isSuccess) {
     return (
-      <p role="status" className="text-[13px] text-muted-foreground">
+      <p role="status" className="text-ui text-muted-foreground">
         {t("reset.requested")}
       </p>
     );

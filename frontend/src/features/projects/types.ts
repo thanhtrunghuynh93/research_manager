@@ -25,10 +25,4 @@ export const STAGES: ResearchStage[] = [
   "writing",
 ];
 
-export const STATUSES: ProjectStatus[] = [
-  "proposed",
-  "active",
-  "paused",
-  "completed",
-  "archived",
-];
+export const STATUSES: ProjectStatus[] = ["proposed", "active", "paused", "completed", "archived"];

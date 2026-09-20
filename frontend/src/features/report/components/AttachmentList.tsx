@@ -39,24 +39,22 @@ export function AttachmentList({
                   href={artifact.source_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="link block break-all font-mono text-[12.5px]"
+                  className="link block break-all font-mono text-note"
                 >
                   {artifact.source_url}
                 </a>
               ) : (
-                <span className="block font-mono text-[12.5px]">{artifact.filename}</span>
+                <span className="block font-mono text-note">{artifact.filename}</span>
               )}
               {artifact.supported_claim ? (
-                <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                  {artifact.supported_claim}
-                </p>
+                <p className="mt-0.5 text-note text-muted-foreground">{artifact.supported_claim}</p>
               ) : null}
               {artifact.extraction_state === "failed" && artifact.extraction_note ? (
-                <p className="mt-0.5 text-[12.5px] text-bad">{artifact.extraction_note}</p>
+                <p className="mt-0.5 text-note text-bad">{artifact.extraction_note}</p>
               ) : null}
             </span>
             <span className="flex shrink-0 items-center gap-2.5">
-              <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+              <span className="font-mono text-meta uppercase tracking-[0.06em] text-faint">
                 {t(`report.attachments.state.${artifact.extraction_state}`, {
                   defaultValue: artifact.extraction_state,
                 })}

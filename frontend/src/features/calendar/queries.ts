@@ -46,8 +46,7 @@ export function useTimezone(): string {
 export function useConfigureCalendar() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: CalendarConfigIn) =>
-      api.put<CalendarConfig>("/api/v1/calendar", payload),
+    mutationFn: (payload: CalendarConfigIn) => api.put<CalendarConfig>("/api/v1/calendar", payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: calendarKey });
       void queryClient.invalidateQueries({ queryKey: periodsKey });

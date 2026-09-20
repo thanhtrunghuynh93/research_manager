@@ -1,0 +1,227 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * The product theme — an alternative to `index.css`, same class names, same token names, so no
+ * component file changes. Swap the import in `main.tsx` to try it:
+ *
+ *     import "./theme-product.css";   // instead of "./index.css"
+ *
+ * What differs from the ledger, and why:
+ *
+ * - One family, not three. The serif goes; headings are the interface grotesk, small and tight.
+ *   A dense product surface reads as one voice, and a 40px serif title on a 13px screen is a
+ *   document's proportion, not an application's.
+ * - The mono keeps exactly one job: provenance. Timestamps, identifiers, versions, rubric ids,
+ *   sync states. It is off eyebrows and off field labels, which are sans caps here — those are
+ *   furniture, not assertions, and setting them in mono was what made the ledger look typed.
+ * - No paper texture, flatter ground, tighter rhythm, softer corners.
+ *
+ * The signal colours (good / warn / bad / their soft fills and lines) keep their meaning and
+ * their contrast: an amber that means "deferred, retryable" is load-bearing, not decoration.
+ *
+ * Dark is the default here — `:root` IS the dark palette, and `.light` is the opt-out. That
+ * matches `lib/theme.ts`, which defaults to dark outright.
+ */
+@layer base {
+  :root {
+    --background: 213 22% 7%;
+    --surface: 213 26% 11%;
+    --raised: 214 27% 15%;
+    --foreground: 215 24% 92%;
+    --ink-2: 214 18% 82%;
+    --muted: 214 22% 14%;
+    --muted-foreground: 214 17% 66%;
+    --faint: 213 14% 60%;
+    --border: 214 24% 20%;
+    --border-strong: 214 21% 25%;
+    --divider: 214 25% 16%;
+    --track: 214 24% 18%;
+
+    --accent: 233 100% 84%;
+    --accent-soft: 234 32% 19%;
+    --accent-line: 234 30% 32%;
+
+    --good: 158 56% 63%;
+    --good-soft: 168 43% 11%;
+    --good-line: 162 41% 20%;
+
+    --warn: 44 73% 58%;
+    --warn-strong: 43 70% 74%;
+    --warn-soft: 46 39% 12%;
+    --warn-line: 45 41% 21%;
+    --warn-rule: 45 70% 46%;
+
+    --bad: 4 82% 75%;
+    --bad-soft: 353 26% 14%;
+    --bad-line: 353 25% 25%;
+
+    --primary: 233 100% 84%;
+    --primary-foreground: 213 22% 7%;
+    --radius: 6px;
+  }
+
+  /* The opt-out. `useTheme` toggles `.dark`; for this stylesheet invert that to `.light`, or
+     leave the app dark-only and drop the toggle. */
+  .light {
+    --background: 220 20% 98%;
+    --surface: 0 0% 100%;
+    --raised: 220 20% 96%;
+    --foreground: 215 30% 12%;
+    --ink-2: 215 18% 28%;
+    --muted: 220 18% 95%;
+    --muted-foreground: 215 14% 42%;
+    --faint: 215 12% 48%;
+    --border: 217 18% 88%;
+    --border-strong: 217 16% 82%;
+    --divider: 220 18% 93%;
+    --track: 220 18% 90%;
+
+    --accent: 235 62% 54%;
+    --accent-soft: 234 76% 96%;
+    --accent-line: 234 45% 86%;
+
+    --good: 160 62% 26%;
+    --good-soft: 158 48% 95%;
+    --good-line: 158 32% 82%;
+
+    --warn: 36 92% 30%;
+    --warn-strong: 36 85% 22%;
+    --warn-soft: 44 88% 95%;
+    --warn-line: 42 62% 79%;
+    --warn-rule: 41 85% 45%;
+
+    --bad: 356 62% 40%;
+    --bad-soft: 356 76% 96%;
+    --bad-line: 356 44% 86%;
+
+    --primary: 235 62% 54%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-[13px] text-foreground antialiased;
+  }
+
+  /* Colour carries the link; a rule under every identifier in a dense table is noise. The
+     underline comes back on hover, so the affordance is still there for anyone hunting it. */
+  a {
+    @apply text-accent no-underline;
+  }
+  a:hover {
+    @apply text-foreground underline underline-offset-2;
+  }
+}
+
+@layer components {
+  /* Labels for things the reader scans rather than reads. Sans caps: furniture, not assertion. */
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.07em] text-faint;
+  }
+  /* Provenance: when a figure was true, which version it came from, what produced it. The one
+     surviving use of the mono. */
+  .stamp {
+    @apply font-mono text-[11px] leading-relaxed text-faint;
+  }
+  .figure {
+    @apply text-[1.75rem] font-semibold leading-none tracking-[-0.02em];
+  }
+  .figure-unit {
+    @apply font-mono text-[11px] text-faint;
+  }
+
+  .page-title {
+    @apply text-[1.625rem] font-semibold leading-tight tracking-[-0.02em];
+  }
+  .section-title {
+    @apply text-[0.9375rem] font-semibold tracking-[-0.01em];
+  }
+
+  .panel {
+    @apply rounded-lg border border-border bg-surface;
+  }
+  .panel > * + * {
+    @apply border-t border-divider;
+  }
+  .row {
+    @apply flex flex-wrap items-center justify-between gap-3 px-3.5 py-2 text-[13px];
+  }
+  .card {
+    @apply rounded-lg border border-border bg-surface p-4;
+  }
+
+  /* Square-ish, not pills — a status chip sits in a row of data, and a pill reads as a button. */
+  .chip {
+    @apply inline-flex items-center rounded border px-2 py-[3px] text-[11px] font-semibold leading-none;
+  }
+  .chip-neutral {
+    @apply border-border bg-raised text-muted-foreground;
+  }
+  .chip-accent {
+    @apply border-accent-line bg-accent-soft text-accent;
+  }
+  .chip-good {
+    @apply border-good-line bg-good-soft text-good;
+  }
+  .chip-warn {
+    @apply border-warn-line bg-warn-soft text-warn;
+  }
+  .chip-bad {
+    @apply border-bad-line bg-bad-soft text-bad;
+  }
+
+  .field-label {
+    @apply block text-[11px] font-semibold uppercase tracking-[0.06em] text-faint;
+  }
+  .input {
+    @apply mt-1.5 w-full rounded-md border border-border-strong bg-raised px-2.5 py-2 text-[13px];
+    @apply transition-colors focus:border-accent focus:outline-none;
+  }
+  .textarea {
+    @apply mt-1.5 w-full resize-y rounded-md border border-border-strong bg-raised px-2.5 py-2 text-[13px] leading-relaxed;
+    @apply transition-colors focus:border-accent focus:outline-none;
+  }
+  .select {
+    @apply rounded-md border border-border-strong bg-raised px-2 py-1.5 text-[13px];
+  }
+
+  /* The primary is the accent itself, not the ink. On a dark product surface an almost-white
+     button is the loudest object on screen, and "Send invitation" is not the loudest act. */
+  .btn-primary {
+    @apply rounded-md border border-primary bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground;
+    @apply transition-opacity hover:opacity-90 disabled:opacity-60;
+  }
+  .btn-ghost {
+    @apply rounded-md border border-border bg-raised px-3 py-1.5 text-[13px] text-muted-foreground;
+    @apply transition-colors hover:border-border-strong hover:text-foreground disabled:opacity-50;
+  }
+  .btn-quiet {
+    @apply text-[12px] text-accent hover:underline hover:underline-offset-2;
+  }
+
+  /* A file input carries its own button, drawn by the browser and reachable only through the
+     `file:` variants — left alone it is the one control here that does not look like a control.
+     `file:text-foreground` stays: `::file-selector-button` does not inherit page colour, and the
+     browser's own near-black would vanish on this ground. */
+  .file-input {
+    @apply mt-1.5 w-full rounded-md border border-dashed border-border-strong bg-raised px-2.5 py-2 text-[13px];
+    @apply file:mr-3 file:cursor-pointer file:rounded file:border file:border-border file:bg-surface;
+    @apply file:px-3 file:py-1.5 file:text-[13px] file:text-foreground file:transition-colors;
+    @apply hover:file:border-foreground disabled:opacity-60;
+  }
+
+  /* A caution that states a reason. Never used for decoration. */
+  .notice-warn {
+    @apply rounded-md border border-warn-line border-l-[3px] bg-warn-soft px-3.5 py-2.5 text-[13px];
+    border-left-color: hsl(var(--warn-rule));
+    color: hsl(var(--warn-strong));
+  }
+
+  .meter {
+    @apply h-1 w-full overflow-hidden rounded-full bg-track;
+  }
+  .meter-fill {
+    @apply block h-full bg-accent;
+  }
+}

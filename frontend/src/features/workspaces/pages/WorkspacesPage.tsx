@@ -67,9 +67,9 @@ function WorkspaceRow({ workspace, here }: { workspace: Workspace; here: boolean
   return (
     <li className="row flex-wrap gap-y-2">
       <span className="flex flex-wrap items-center gap-2.5">
-        <span className="text-[13.5px]">{workspace.name}</span>
+        <span className="text-prose">{workspace.name}</span>
         {here && <Badge>{t("workspaces.here")}</Badge>}
-        <span className="font-mono text-[11.5px] text-faint">{workspace.timezone}</span>
+        <span className="font-mono text-meta text-faint">{workspace.timezone}</span>
       </span>
       <span className="flex flex-wrap items-center gap-3">
         {/* Belonging and working in are different, so a workspace you are a member of but not in

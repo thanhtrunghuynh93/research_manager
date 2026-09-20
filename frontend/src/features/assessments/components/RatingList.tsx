@@ -21,10 +21,8 @@ export function RatingList({ assessment }: { assessment: Assessment }) {
         return (
           <li key={dimension} className="card">
             <div className="flex items-center justify-between gap-2.5">
-              <span className="text-[13px] font-medium">
-                {t(`assessment.dimension.${dimension}`)}
-              </span>
-              <span className="font-mono text-[13px]">
+              <span className="text-ui font-medium">{t(`assessment.dimension.${dimension}`)}</span>
+              <span className="font-mono text-ui">
                 {value === undefined || value === null || value === "unknown"
                   ? t("assessment.unknown")
                   : String(value)}
@@ -36,7 +34,7 @@ export function RatingList({ assessment }: { assessment: Assessment }) {
               </p>
             ) : null}
             {(rating?.validation_notes ?? []).map((note, index) => (
-              <p key={index} className="mt-1.5 text-[11.5px] leading-relaxed text-warn">
+              <p key={index} className="mt-1.5 text-meta leading-relaxed text-warn">
                 {note}
               </p>
             ))}

@@ -51,7 +51,7 @@ export function AiBudgetPanel() {
           : t("budget.none", { spent: current.spent_usd })}
       </p>
       {current.reason ? (
-        <p className="mt-1 text-[13px] text-warn" data-testid="budget-reason">
+        <p className="mt-1 text-ui text-warn" data-testid="budget-reason">
           {current.reason}
         </p>
       ) : null}

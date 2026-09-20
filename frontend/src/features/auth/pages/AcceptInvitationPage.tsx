@@ -38,7 +38,7 @@ export function AcceptInvitationPage() {
   if (!token) {
     return (
       <section className="mx-auto max-w-sm animate-rise-in py-10">
-        <h1 className="font-display text-[2.125rem] font-normal tracking-[-0.015em]">
+        <h1 className="font-display text-figure font-normal tracking-[-0.015em]">
           {t("accept.title")}
         </h1>
         <p role="alert" className="notice-warn mt-6">
@@ -59,10 +59,10 @@ export function AcceptInvitationPage() {
 
   return (
     <section className="mx-auto max-w-sm animate-rise-in py-10">
-      <h1 className="font-display text-[2.125rem] font-normal tracking-[-0.015em]">
+      <h1 className="font-display text-figure font-normal tracking-[-0.015em]">
         {t("accept.title")}
       </h1>
-      <p className="mt-2 text-[13.5px] text-muted-foreground">{t("accept.intro")}</p>
+      <p className="mt-2 text-prose text-muted-foreground">{t("accept.intro")}</p>
 
       <form className="panel mt-6 space-y-4 p-5" onSubmit={onSubmit}>
         <div>

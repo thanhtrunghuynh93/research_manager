@@ -31,16 +31,17 @@ export function AppShell() {
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-7 py-3.5">
           <Link to="/" className="flex items-center gap-3 text-foreground no-underline">
-            <span className="font-display text-[1.55rem] font-medium tracking-[-0.01em]">
+            <span className="font-display text-display-sm font-medium tracking-[-0.01em]">
               {t("app.title")}
             </span>
-            <span className="h-4 w-px bg-border" />
-            <span className="eyebrow">{t("app.tagline")}</span>
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             {/* Named, not just badged: the header is where you confirm whose workspace this is. */}
             {user && (
-              <span className="text-[13px] text-muted-foreground" data-testid="greeting">
+              <span
+                className="whitespace-nowrap text-ui text-muted-foreground"
+                data-testid="greeting"
+              >
                 {t("app.greeting", { name: user.display_name })}
               </span>
             )}
@@ -48,8 +49,24 @@ export function AppShell() {
                 is the one place that says which — the roll, the overview and the assistant all
                 change underneath it. */}
             {workspace && (
-              <span className="chip chip-neutral" data-testid="current-workspace">
-                {workspace.name}
+              // A name, not a tag: muted 11px on a muted fill disappeared into the chrome, and
+              // this is the one line on the page that says which workspace everything below is
+              // about. The dot marks "working here"; the mask fades a long name at the cap
+              // rather than cutting it against the border, and `overflow-hidden` keeps a long
+              // one from pushing the row onto a second line. Not `truncate`: the ellipsis is
+              // computed from a frozen width and misfires in screenshot/PDF renderers, clipping
+              // names that fit.
+              <span
+                className="inline-flex min-w-0 max-w-48 items-center gap-1.5 overflow-hidden rounded-md border border-border-strong bg-raised py-[5px] pl-2.5 pr-5 text-xs font-semibold text-foreground"
+                style={{
+                  maskImage: "linear-gradient(to right, #000 calc(100% - 14px), transparent)",
+                  WebkitMaskImage: "linear-gradient(to right, #000 calc(100% - 14px), transparent)",
+                }}
+                data-testid="current-workspace"
+                title={workspace.name}
+              >
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                <span className="whitespace-nowrap">{workspace.name}</span>
               </span>
             )}
             <button
@@ -70,7 +87,7 @@ export function AppShell() {
               <button
                 type="button"
                 onClick={() => logout.mutate()}
-                className="rounded border border-border bg-surface px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
+                className="whitespace-nowrap rounded border border-border bg-surface px-2.5 py-1.5 text-ui text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
               >
                 {t("auth.signOut")}
               </button>

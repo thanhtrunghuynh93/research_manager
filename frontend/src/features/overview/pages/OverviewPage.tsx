@@ -52,7 +52,7 @@ export function OverviewPage() {
           <p className="eyebrow mb-1.5">{t("overview.currentPeriod")}</p>
           <h1 className="page-title">{t("overview.title")}</h1>
           {period ? (
-            <p className="mt-2 font-mono text-[13px] text-muted-foreground">
+            <p className="mt-2 font-mono text-ui text-muted-foreground">
               {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
             </p>
           ) : (
@@ -63,7 +63,7 @@ export function OverviewPage() {
 
       {data.ai_budget.analysis_delayed && (
         <p className="notice-warn mt-6 flex gap-3" data-testid="budget-warning">
-          <span className="font-mono text-[10px] uppercase leading-relaxed tracking-[0.12em]">
+          <span className="font-mono text-tag uppercase leading-relaxed tracking-[0.12em]">
             budget
           </span>
           <span>{data.ai_budget.reason}</span>
@@ -75,7 +75,7 @@ export function OverviewPage() {
           message, and no other way into an invitation-only system. */}
       {data.mail.warning && (
         <p className="notice-warn mt-6 flex gap-3" data-testid="mail-warning">
-          <span className="font-mono text-[10px] uppercase leading-relaxed tracking-[0.12em]">
+          <span className="font-mono text-tag uppercase leading-relaxed tracking-[0.12em]">
             mail
           </span>
           <span>{data.mail.reason}</span>
@@ -102,10 +102,10 @@ export function OverviewPage() {
               key={`${String(entry.student_id)}:${String(entry.project_id)}:${index}`}
               className="row"
             >
-              <Link to={`/students/${String(entry.student_id)}`} className="text-[13px]">
+              <Link to={`/students/${String(entry.student_id)}`} className="text-ui">
                 {String(entry.student_name || "") || String(entry.student_id).slice(0, 8)}
               </Link>
-              <span className="text-right text-[13px] text-muted-foreground">
+              <span className="text-right text-ui text-muted-foreground">
                 {String(entry.project_title ?? "")}
               </span>
             </li>
@@ -119,7 +119,7 @@ export function OverviewPage() {
         >
           {data.review_queue.map((draft, index) => (
             <li key={`${String(draft.assessment_id)}:${index}`} className="row">
-              <Link to={`/review/${String(draft.assessment_id)}`} className="text-[13px]">
+              <Link to={`/review/${String(draft.assessment_id)}`} className="text-ui">
                 {t("overview.draftFor", {
                   student: String(draft.student_name || "") || String(draft.student_id).slice(0, 8),
                 })}
@@ -144,7 +144,7 @@ export function OverviewPage() {
         >
           {data.sync_issues.map((issue, index) => (
             <li key={`${String(issue.repository_id)}:${index}`} className="row">
-              <span className="font-mono text-[12.5px]">{String(issue.full_name)}</span>
+              <span className="font-mono text-note">{String(issue.full_name)}</span>
               <FreshnessBadge
                 state={String(issue.state)}
                 lastFinishedAt={issue.last_finished_at as string | null}
@@ -161,8 +161,8 @@ export function OverviewPage() {
         >
           {data.stalled_analyses.map((run, index) => (
             <li key={`${String(run.run_id)}:${index}`} className="row items-start">
-              <span className="min-w-0 text-[13px]">
-                <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-warn">
+              <span className="min-w-0 text-ui">
+                <span className="font-mono text-meta uppercase tracking-[0.06em] text-warn">
                   {String(run.state)}
                 </span>
                 <span className="text-muted-foreground"> — {String(run.reason || "")}</span>
@@ -296,9 +296,14 @@ function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string
             <div className="panel mt-2">
               {(workspace.projects ?? []).map((project) => (
                 <div key={project.project_id} className="border-b border-border last:border-b-0">
+                  {/* The project heads its students, so it has to look like it does. At 13.5px
+                      over their 13px the two were the same size to anyone not measuring, and the
+                      board read as one flat list of names rather than as projects with people on
+                      them. The step is size and weight together; colour is already spoken for,
+                      since both are links. */}
                   <Link
                     to={`/projects/${project.project_id}`}
-                    className="link block px-4 pt-2.5 text-[13.5px] font-medium"
+                    className="link block px-4 pt-2.5 text-title font-semibold"
                   >
                     {project.project_title}
                   </Link>
@@ -310,7 +315,7 @@ function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string
                       >
                         <Link
                           to={`/students/${student.student_id}`}
-                          className="link text-[13px]"
+                          className="link text-ui"
                           data-testid="week-student"
                         >
                           {student.student_name}
@@ -353,7 +358,7 @@ function WeekState({
 
   if (student.state === "excused") {
     return (
-      <span className="text-right font-mono text-[11.5px] text-faint">
+      <span className="text-right font-mono text-meta text-faint">
         {t("report.obligation.excused")}
         {student.excuse_reason ? ` — ${student.excuse_reason}` : ""}
       </span>
@@ -364,8 +369,8 @@ function WeekState({
     <span
       className={
         submitted
-          ? "font-mono text-[11px] uppercase tracking-[0.06em] text-good"
-          : "font-mono text-[11px] uppercase tracking-[0.06em] text-warn"
+          ? "font-mono text-meta uppercase tracking-[0.06em] text-good"
+          : "font-mono text-meta uppercase tracking-[0.06em] text-warn"
       }
     >
       {t(submitted ? "report.obligation.submitted" : "report.obligation.required")}
@@ -387,7 +392,7 @@ function WeekState({
         mark
       )}
       {!submitted && student.extension_until_utc ? (
-        <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+        <span className="ml-2 font-mono text-meta text-muted-foreground">
           {t("overview.extendedUntil", {
             when: formatInstant(student.extension_until_utc, timezone),
           })}

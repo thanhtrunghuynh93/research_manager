@@ -63,7 +63,7 @@ export function EntryForm({
           <p
             id={`${entry.project_id}-hours-error`}
             role="alert"
-            className="mt-2 text-[13px] text-bad"
+            className="mt-2 text-ui text-bad"
             data-testid="hours-error"
           >
             {t(problem)}

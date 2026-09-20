@@ -28,10 +28,10 @@ export function AutosaveIndicator({
       data-testid="autosave-indicator"
       className={
         state === "error"
-          ? "font-mono text-[13px] text-bad"
+          ? "font-mono text-ui text-bad"
           : state === "saving"
-            ? "font-mono text-[13px] text-warn"
-            : "font-mono text-[13px] text-muted-foreground"
+            ? "font-mono text-ui text-warn"
+            : "font-mono text-ui text-muted-foreground"
       }
     >
       {text}

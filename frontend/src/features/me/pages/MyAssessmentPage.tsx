@@ -119,8 +119,8 @@ function FeedbackThread({ assessmentId }: { assessmentId: string }) {
       <ul className="panel" data-testid="feedback">
         {feedback.data?.map((item) => (
           <li key={item.id} className="row">
-            <span className="text-[13px] leading-relaxed">{item.body}</span>
-            <span className="text-right font-mono text-[11.5px] text-muted-foreground">
+            <span className="text-ui leading-relaxed">{item.body}</span>
+            <span className="text-right font-mono text-meta text-muted-foreground">
               {t(`assessment.feedbackKind.${item.kind}`, { defaultValue: item.kind })} ·{" "}
               {formatInstant(item.created_at, timezone)}
             </span>

@@ -12,7 +12,7 @@ export function Failure({ error }: { error: unknown }) {
   if (!error) return null;
   const detail = error instanceof ApiError ? error.problem.detail || error.problem.title : null;
   return detail ? (
-    <span role="alert" className="text-[12.5px] text-bad">
+    <span role="alert" className="text-note text-bad">
       {detail}
     </span>
   ) : null;

@@ -41,7 +41,7 @@ export function Trajectory({
         {t("student.trajectory", { project: title ?? projectId.slice(0, 8) })}
       </h2>
       {rubricVersions.size > 1 && (
-        <p className="mt-1.5 text-[12.5px] text-warn" data-testid="rubric-break">
+        <p className="mt-1.5 text-note text-warn" data-testid="rubric-break">
           {t("student.rubricBreak", { count: rubricVersions.size })}
         </p>
       )}

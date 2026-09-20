@@ -121,7 +121,7 @@ export function ProjectPage() {
         {data.research_questions.length > 0 && (
           <div>
             <h2 className="section-title mb-2">{t("project.researchQuestions")}</h2>
-            <ol className="list-decimal space-y-1.5 pl-5 text-[13.5px] leading-relaxed">
+            <ol className="list-decimal space-y-1.5 pl-5 text-prose leading-relaxed">
               {data.research_questions.map((question, index) => (
                 <li key={index}>{question}</li>
               ))}
@@ -170,10 +170,10 @@ export function ProjectPage() {
               <ul className="panel">
                 {members.data?.map((member) => (
                   <li key={member.id} className="row">
-                    <Link to={`/students/${member.student_id}`} className="text-[13px]">
+                    <Link to={`/students/${member.student_id}`} className="text-ui">
                       {member.student_name || member.student_id.slice(0, 8)}
                     </Link>
-                    <span className="text-right font-mono text-[11.5px] text-muted-foreground">
+                    <span className="text-right font-mono text-meta text-muted-foreground">
                       {member.responsibility || t("project.noResponsibility")} ·{" "}
                       {formatLocalDate(member.joined_on)}
                       {member.left_on ? ` – ${formatLocalDate(member.left_on)}` : ""}
@@ -197,7 +197,7 @@ export function ProjectPage() {
                     <span>
                       {milestone.title}
                       {milestone.target_on ? (
-                        <span className="ml-2 font-mono text-[11px] text-faint">
+                        <span className="ml-2 font-mono text-meta text-faint">
                           {formatLocalDate(milestone.target_on)}
                         </span>
                       ) : null}
@@ -225,8 +225,8 @@ export function ProjectPage() {
           >
             {decisions.data?.map((decision) => (
               <li key={decision.id} className="card">
-                <p className="text-[13.5px] font-medium">{decision.decision}</p>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                <p className="text-prose font-medium">{decision.decision}</p>
+                <p className="mt-1.5 text-ui leading-relaxed text-muted-foreground">
                   {decision.rationale}
                 </p>
                 <p className="stamp mt-2">{formatLocalDate(decision.decided_on)}</p>

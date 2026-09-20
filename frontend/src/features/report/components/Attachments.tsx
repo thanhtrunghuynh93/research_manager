@@ -251,24 +251,24 @@ export function Attachments({
                   href={attachment.source_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="link block break-all font-mono text-[12.5px]"
+                  className="link block break-all font-mono text-note"
                 >
                   {attachment.source_url}
                 </a>
               ) : (
-                <span className="block font-mono text-[12.5px]">{attachment.filename}</span>
+                <span className="block font-mono text-note">{attachment.filename}</span>
               )}
               {/* The claim was written into a box labelled "What does this show?" and then never
                   shown again, so nobody could check it, correct it, or notice it was empty. */}
               {attachment.supported_claim ? (
-                <p className="mt-0.5 text-[12.5px] text-muted-foreground" data-testid="claim">
+                <p className="mt-0.5 text-note text-muted-foreground" data-testid="claim">
                   {attachment.supported_claim}
                 </p>
               ) : null}
               {/* Why a file or link could not be read, as text. It was the badge's `title`, which
                   a phone has no way to show and a screen reader does not announce as content. */}
               {attachment.extraction_state === "failed" && attachment.extraction_note ? (
-                <p className="mt-0.5 text-[12.5px] text-bad" data-testid="extraction-note">
+                <p className="mt-0.5 text-note text-bad" data-testid="extraction-note">
                   {attachment.extraction_note}
                 </p>
               ) : null}

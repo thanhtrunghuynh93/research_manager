@@ -180,7 +180,10 @@ function Periods({ configured }: { configured: boolean }) {
     <div className="mt-5 border-t border-border pt-4">
       <p className="text-sm" data-testid="period-state">
         {opened.length
-          ? t("calendar.periods", { count: opened.length, through: formatLocalDate(last!.local_end) })
+          ? t("calendar.periods", {
+              count: opened.length,
+              through: formatLocalDate(last!.local_end),
+            })
           : t("calendar.noPeriods")}
       </p>
 

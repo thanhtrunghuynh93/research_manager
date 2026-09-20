@@ -194,7 +194,7 @@ export function ReportEditorPage() {
           <h1 className="page-title">{t("report.title")}</h1>
         </div>
         <div className="text-right">
-          <p className="font-mono text-[12.5px] text-muted-foreground" data-testid="deadline">
+          <p className="font-mono text-note text-muted-foreground" data-testid="deadline">
             {t("me.dueBy")} {formatInstant(period.deadline_utc, timezone)}
           </p>
           {/* Without this a submitted week and an untouched one were pixel-identical, which is
@@ -219,7 +219,7 @@ export function ReportEditorPage() {
           {report.data?.first_submitted_at ? (
             <Link
               to={`/report/${periodId}/submitted`}
-              className="link mt-1 block font-mono text-[11.5px]"
+              className="link mt-1 block font-mono text-meta"
             >
               {t("report.reader.seeSubmitted")}
             </Link>
@@ -227,7 +227,7 @@ export function ReportEditorPage() {
           {/* A week can be submitted and still incomplete — a project joined or started after the
               package went in owes an entry the submission never covered. */}
           {report.data?.first_submitted_at && owed > 0 ? (
-            <p className="mt-1 font-mono text-[11.5px] text-warn" data-testid="still-owed">
+            <p className="mt-1 font-mono text-meta text-warn" data-testid="still-owed">
               {t("report.stillOwed", { count: owed })}
             </p>
           ) : null}
@@ -258,7 +258,7 @@ export function ReportEditorPage() {
           {requestsFor(active).map((request) => (
             <p
               key={request.id}
-              className="mt-3.5 border-l-[3px] border-l-warn-rule bg-muted px-3.5 py-2.5 text-[13px] text-warn"
+              className="mt-3.5 border-l-[3px] border-l-warn-rule bg-muted px-3.5 py-2.5 text-ui text-warn"
               data-testid="revision-request"
             >
               {t("report.reader.revisionAsked", {
@@ -291,7 +291,7 @@ export function ReportEditorPage() {
         </p>
       )}
       {submit.isSuccess && (
-        <p className="mt-5 font-mono text-[12.5px] text-good">
+        <p className="mt-5 font-mono text-note text-good">
           {t("report.submitted", { version: submit.data.version_no })}
         </p>
       )}
@@ -378,8 +378,8 @@ function EntryTabs({
             }}
             className={
               selected
-                ? "rounded border border-foreground bg-muted px-3.5 py-2 text-[13px] font-medium"
-                : "rounded border border-border bg-surface px-3.5 py-2 text-[13px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
+                ? "rounded border border-foreground bg-muted px-3.5 py-2 text-ui font-medium"
+                : "rounded border border-border bg-surface px-3.5 py-2 text-ui text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
             }
           >
             {tab.title}
@@ -388,8 +388,8 @@ function EntryTabs({
             <span
               className={
                 tab.revisionRequested || !tab.submitted
-                  ? "ml-2 font-mono text-[10px] uppercase tracking-[0.06em] text-warn"
-                  : "ml-2 font-mono text-[10px] uppercase tracking-[0.06em] text-good"
+                  ? "ml-2 font-mono text-tag uppercase tracking-[0.06em] text-warn"
+                  : "ml-2 font-mono text-tag uppercase tracking-[0.06em] text-good"
               }
               data-testid={`tab-state-${tab.projectId}`}
             >

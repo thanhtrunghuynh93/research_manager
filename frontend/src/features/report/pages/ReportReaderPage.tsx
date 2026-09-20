@@ -129,7 +129,7 @@ export function ReportReaderPage() {
         </div>
         {/* The one link back, and only while the week is still the student's to edit. */}
         {!canReview ? (
-          <Link to={`/report/${periodId}`} className="link mt-3 inline-block text-[13px]">
+          <Link to={`/report/${periodId}`} className="link mt-3 inline-block text-ui">
             {t("report.reader.toEditor")}
           </Link>
         ) : null}
@@ -149,12 +149,12 @@ export function ReportReaderPage() {
                 aria-current={current ? "true" : undefined}
                 className={
                   current
-                    ? "rounded border border-foreground bg-muted px-3 py-1.5 text-[12.5px]"
-                    : "rounded border border-border bg-surface px-3 py-1.5 text-[12.5px] text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
+                    ? "rounded border border-foreground bg-muted px-3 py-1.5 text-note"
+                    : "rounded border border-border bg-surface px-3 py-1.5 text-note text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
                 }
               >
                 {t("report.reader.version", { n: one.version_no })}
-                <span className="ml-2 font-mono text-[11px]">
+                <span className="ml-2 font-mono text-meta">
                   {formatInstant(one.submitted_at, timezone)}
                 </span>
               </button>
@@ -194,7 +194,7 @@ export function ReportReaderPage() {
                 .map((request) => (
                   <p
                     key={request.id}
-                    className="mt-4 border-t border-border pt-3.5 text-[13px] text-warn"
+                    className="mt-4 border-t border-border pt-3.5 text-ui text-warn"
                     data-testid="revision-reason"
                   >
                     {t("report.reader.revisionAsked", {
