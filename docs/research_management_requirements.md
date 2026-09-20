@@ -74,15 +74,17 @@ The initial release covers supervision and research records. Automatic grading, 
 | --- | --- |
 | Research stage and milestone | Select the stage and link relevant milestones |
 | Planned work | Reference the frozen plan for this week |
-| Work performed | Explain concrete actions and individual contribution |
-| Results and research learning | Record findings, including negative or inconclusive results |
+| Progress | Work completed, results, and lessons learned: concrete actions, individual contribution, and findings including negative or inconclusive ones |
 | Evidence | Attach or link artifacts; identify what each item supports |
 | Experiments when applicable | Hypothesis, setup, dataset/version, baseline, metrics, result, and interpretation |
-| Deviations and blockers | Explain changes, dependencies, unsuccessful attempts, and help needed |
-| Next-week plan | Specify outcomes, acceptance criteria, and relevant milestones |
-| Questions for the professor | Identify decisions or feedback requested |
+| Challenges | Deviations, blockers, and questions for the professor: changes, dependencies, unsuccessful attempts, help needed, and the decisions or feedback requested |
+| Next steps | Tasks and expected deliverables for next week, with outcomes, acceptance criteria, and relevant milestones |
 
-Hours worked may be an optional self-reported field. They must not be treated as independently verified productivity. Support English and Vietnamese report text and preserve technical terminology, equations, tables, and links.
+Three questions rather than five. The template asked separately for work performed and results, and separately for blockers and questions, and a student filling it in every week was answering each pair twice: what was done and what came of it are one account of a week, and a blocker and the question it raises are one problem. The prompts under each heading name what belongs there, so nothing the five fields asked for has stopped being asked.
+
+The record keeps the fields it was written with. A week filed under the five-field template is never rewritten (REP-07), so `results` and `questions` remain on those versions and are shown as filed; entries written since carry the same account under Progress and Challenges. A week reopened for revision folds the older pair into the two sections that now ask for them, so a resubmission cannot silently drop what a student wrote.
+
+Hours worked may be an optional self-reported field, asked beside Progress. They must not be treated as independently verified productivity. Support English and Vietnamese report text and preserve technical terminology, equations, tables, and links.
 
 **REP-04 — Editor and evidence.** Provide autosave, Markdown or rich-text editing, draft recovery, and file attachments. MVP inputs should include text/Markdown, PDF, DOCX, figures, and links to repository objects or experiment results. Preserve original files and extracted text, mark extraction failures, read the text out of a file when the report it belongs to is submitted rather than as each file arrives — so attaching returns as soon as the bytes are safe, and a file attached and then removed before submitting is never read at all — and propose a configurable upload limit of 25 MB per file with a configurable total per project entry. The student who attached a file may remove it, submitted week or not, and removal is real: the stored object, the extracted text, the search index entries and the cached answers that could quote it all go (§11). An assessment written against a removed file keeps its rationale and loses the citation. OCR and specialist experiment integrations can follow later. Restrict and validate link fetching.
 

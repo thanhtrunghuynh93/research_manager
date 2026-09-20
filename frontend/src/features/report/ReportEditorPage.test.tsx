@@ -94,7 +94,7 @@ test("autosaves the draft after typing stops", async () => {
   ]);
   const user = userEvent.setup();
 
-  await user.type(await screen.findByLabelText(/work performed/i), "Implemented the data loader");
+  await user.type(await screen.findByLabelText(/progress/i), "Implemented the data loader");
 
   await waitFor(() => expect(saved.length).toBeGreaterThan(0), { timeout: 4000 });
   expect(await screen.findByTestId("autosave-indicator")).toHaveTextContent(/saved/i);
@@ -122,9 +122,9 @@ test("submits one package for every required project with an idempotency key", a
   ]);
   const user = userEvent.setup();
 
-  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  await user.type(await screen.findByLabelText(/progress/i), "Loader done");
   await user.click(screen.getByRole("tab", { name: /Theory of the estimator/ }));
-  await user.type(screen.getByLabelText(/work performed/i), "Proved the bound");
+  await user.type(screen.getByLabelText(/progress/i), "Proved the bound");
   await user.click(screen.getByRole("button", { name: /submit/i }));
 
   await waitFor(() => expect(submissions).toHaveLength(1));
@@ -193,7 +193,7 @@ test("opening the editor without typing saves nothing", async () => {
     }),
   ]);
 
-  await screen.findByLabelText(/work performed/i);
+  await screen.findByLabelText(/progress/i);
   await new Promise((resolve) => setTimeout(resolve, 2500));
 
   expect(saved).toEqual([]);
@@ -202,7 +202,7 @@ test("opening the editor without typing saves nothing", async () => {
 test("an edit made just before navigating away is still saved", async () => {
   // The effect cleanup cancelled the pending timer, so an edit within the debounce window was
   // dropped with no error and the indicator's last word was "saved".
-  const saved: { entries: Record<string, { work_performed: string }> }[] = [];
+  const saved: { entries: Record<string, { progress: string }> }[] = [];
   const { unmount } = renderPage([
     http.patch("/api/v1/periods/p1/report/draft", async ({ request }) => {
       const body = (await request.json()) as { content: (typeof saved)[number] };
@@ -212,11 +212,11 @@ test("an edit made just before navigating away is still saved", async () => {
   ]);
   const user = userEvent.setup();
 
-  await user.type(await screen.findByLabelText(/work performed/i), "Two paragraphs of work");
+  await user.type(await screen.findByLabelText(/progress/i), "Two paragraphs of work");
   unmount();
 
   await waitFor(() => expect(saved.length).toBeGreaterThan(0));
-  expect(saved[0]!.entries.pr1!.work_performed).toBe("Two paragraphs of work");
+  expect(saved[0]!.entries.pr1!.progress).toBe("Two paragraphs of work");
 });
 
 test("a double click on submit creates one version, not two", async () => {
@@ -243,7 +243,7 @@ test("a double click on submit creates one version, not two", async () => {
   ]);
   const user = userEvent.setup();
 
-  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  await user.type(await screen.findByLabelText(/progress/i), "Loader done");
   const button = screen.getByRole("button", { name: /submit/i });
   await Promise.all([user.click(button), user.click(button)]);
 
@@ -273,7 +273,7 @@ test("a retried submission carries the same idempotency key", async () => {
   ]);
   const user = userEvent.setup();
 
-  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  await user.type(await screen.findByLabelText(/progress/i), "Loader done");
   await user.click(screen.getByRole("button", { name: /submit/i }));
   await screen.findByRole("alert");
   await user.click(screen.getByRole("button", { name: /submit/i }));
@@ -308,7 +308,7 @@ test("waits for the projects before deciding each entry's stage", async () => {
   ]);
   const user = userEvent.setup();
 
-  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
+  await user.type(await screen.findByLabelText(/progress/i), "Loader done");
   await user.click(screen.getByRole("button", { name: /submit/i }));
 
   await waitFor(() => expect(submissions).toHaveLength(1));
@@ -403,10 +403,11 @@ test("a week already submitted reopens with what was submitted, not with empty b
     ),
   ]);
 
-  expect(
-    await screen.findByDisplayValue("Reproduced the published split sizes."),
-  ).toBeInTheDocument();
-  expect(screen.getByDisplayValue("nDCG within 0.01 of the paper.")).toBeInTheDocument();
+  // Both halves of the old template come back, in the one section that now asks for them: the
+  // form has no "Results" box any more, and a resubmission that dropped the text would lose it.
+  const progress = (await screen.findByLabelText(/progress/i)) as HTMLTextAreaElement;
+  expect(progress.value).toContain("Reproduced the published split sizes.");
+  expect(progress.value).toContain("nDCG within 0.01 of the paper.");
   // `next_plan` goes out as `{ outcomes: [text] }` and has to come back as the text.
   expect(screen.getByDisplayValue("Run the ablation")).toBeInTheDocument();
   // And the screen says the week is already in, which is what makes resubmitting a decision.
@@ -449,8 +450,8 @@ test("the next-week plan goes out in the shape a baseline is frozen from", async
   ]);
   const user = userEvent.setup();
 
-  await user.type(await screen.findByLabelText(/work performed/i), "Loader done");
-  await user.type(screen.getByLabelText(/next-week plan/i), "Fit the seasonal term");
+  await user.type(await screen.findByLabelText(/progress/i), "Loader done");
+  await user.type(screen.getByLabelText(/next steps/i), "Fit the seasonal term");
   await user.click(screen.getByRole("button", { name: /submit/i }));
 
   await waitFor(() => expect(submissions).toHaveLength(1));
@@ -716,4 +717,50 @@ test("a request already answered by a later version is not still asked for", asy
 
   await screen.findByRole("tab", { name: /Baseline evaluation/ });
   expect(screen.queryByTestId("revision-request")).not.toBeInTheDocument();
+});
+
+test("a draft autosaved under the old five-field template opens with its text intact", async () => {
+  // `draft_content` is free-form JSON this client writes and reads. A draft saved before the form
+  // became three sections is still five keys on the server, and reading it straight would have
+  // shown a student empty boxes over text that was saved, present, and theirs.
+  renderPage([
+    http.get("/api/v1/periods/p1/report", () =>
+      HttpResponse.json({
+        id: "r1",
+        student_id: "s1",
+        period_id: "p1",
+        workflow_state: "draft",
+        draft_content: {
+          entries: {
+            pr1: {
+              project_id: "pr1",
+              stage: "implementation",
+              work_performed: "Reproduced the split sizes.",
+              results: "nDCG within 0.01.",
+              deviations: "The cluster queue was full.",
+              questions: "Is the comparison criterion clear?",
+              next_plan_text: "Run the ablation",
+              hours: "6",
+            },
+          },
+        },
+        draft_saved_at: "2026-09-19T02:00:00Z",
+        first_submitted_at: null,
+        current_version_id: null,
+      }),
+    ),
+  ]);
+
+  const progress = (await screen.findByLabelText(/progress/i)) as HTMLTextAreaElement;
+  expect(progress.value).toContain("Reproduced the split sizes.");
+  expect(progress.value).toContain("nDCG within 0.01.");
+
+  const challenges = screen.getByLabelText(/challenges/i) as HTMLTextAreaElement;
+  expect(challenges.value).toContain("The cluster queue was full.");
+  expect(challenges.value).toContain("Is the comparison criterion clear?");
+
+  expect((screen.getByLabelText(/next steps/i) as HTMLTextAreaElement).value).toBe(
+    "Run the ablation",
+  );
+  expect((screen.getByLabelText(/hours/i) as HTMLInputElement).value).toBe("6");
 });

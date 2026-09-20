@@ -10,6 +10,7 @@ import { AutosaveIndicator } from "@/features/report/components/AutosaveIndicato
 import { EntryForm } from "@/features/report/components/EntryForm";
 import {
   draftOfEntry,
+  draftOfSaved,
   emptyEntry,
   firstHoursProblem,
   planOfText,
@@ -98,10 +99,13 @@ export function ReportEditorPage() {
     );
     const initial: Drafts = {};
     for (const obligation of required) {
-      initial[obligation.project_id] =
-        saved[obligation.project_id] ??
-        sent.get(obligation.project_id) ??
-        emptyEntry(obligation.project_id, stageOf(obligation.project_id));
+      const savedEntry = saved[obligation.project_id];
+      initial[obligation.project_id] = savedEntry
+        ? // Read through `draftOfSaved`, because a draft autosaved under the five-field template
+          // is still five keys on the server and would otherwise open as empty boxes.
+          draftOfSaved(savedEntry, obligation.project_id, stageOf(obligation.project_id))
+        : (sent.get(obligation.project_id) ??
+          emptyEntry(obligation.project_id, stageOf(obligation.project_id)));
     }
     setDrafts(initial);
     // Open on the entry that was asked about, when one was: it is the reason the student is here.
@@ -171,13 +175,16 @@ export function ReportEditorPage() {
       setSubmitting(false);
     }
     submit.mutate(
+      // Three sections out, five field names in: `results` and `questions` are no longer asked
+      // for and are sent empty, because the record keeps the columns it was written with and the
+      // form is what changed (see `entry.ts`).
       Object.values(drafts ?? {}).map((draft) => ({
         project_id: draft.project_id,
         stage: draft.stage,
-        work_performed: draft.work_performed,
-        results: draft.results,
-        deviations: draft.deviations,
-        questions: draft.questions,
+        work_performed: draft.progress,
+        results: "",
+        deviations: draft.challenges,
+        questions: "",
         next_plan: planOfText(draft.next_plan_text),
         hours: draft.hours === "" ? null : Number(draft.hours),
       })),

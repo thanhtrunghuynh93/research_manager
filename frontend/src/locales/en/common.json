@@ -96,6 +96,12 @@
       "failed": "Not saved — retrying"
     },
     "fields": {
+      "progress": "Progress",
+      "progressHint": "Work completed, results, and lessons learned.",
+      "challenges": "Challenges",
+      "challengesHint": "Deviations, blockers, and questions for the professor.",
+      "nextSteps": "Next steps",
+      "nextStepsHint": "Tasks and expected deliverables for next week.",
       "workPerformed": "Work performed",
       "results": "Results and research learning",
       "deviations": "Deviations and blockers",

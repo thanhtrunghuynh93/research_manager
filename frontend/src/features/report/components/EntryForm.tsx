@@ -3,7 +3,11 @@ import { useTranslation } from "react-i18next";
 import { hoursProblem, type EntryDraft } from "@/features/report/entry";
 
 /**
- * REP-03: the fields the template requires, in the order the specification lists them.
+ * REP-03: three questions a week asks — what happened, what got in the way, what is next.
+ *
+ * Each carries the list of what belongs in it, because the sections are broader than the fields
+ * they replaced and a student who met the old form knows where "results" used to go and not where
+ * it goes now. The hint is part of the question, not decoration.
  *
  * The body text is mono because this is a record of work, and because a monospaced column makes
  * the difference between a sentence and a filled-in field visible at a glance.
@@ -17,13 +21,17 @@ export function EntryForm({
 }) {
   const { t } = useTranslation();
   const problem = hoursProblem(entry.hours);
-  const field = (key: keyof EntryDraft, label: string, rows = 4) => (
+  const field = (key: keyof EntryDraft, label: string, hint: string, rows = 5) => (
     <div>
       <label className="field-label" htmlFor={`${entry.project_id}-${key}`}>
         {label}
       </label>
+      <p className="stamp mb-1.5" id={`${entry.project_id}-${key}-hint`}>
+        {hint}
+      </p>
       <textarea
         id={`${entry.project_id}-${key}`}
+        aria-describedby={`${entry.project_id}-${key}-hint`}
         rows={rows}
         value={entry[key]}
         onChange={(event) => onChange({ ...entry, [key]: event.target.value })}
@@ -34,11 +42,9 @@ export function EntryForm({
 
   return (
     <div className="mt-5 grid gap-5">
-      {field("work_performed", t("report.fields.workPerformed"))}
-      {field("results", t("report.fields.results"))}
-      {field("deviations", t("report.fields.deviations"), 3)}
-      {field("next_plan_text", t("report.fields.nextPlan"), 3)}
-      {field("questions", t("report.fields.questions"), 2)}
+      {field("progress", t("report.fields.progress"), t("report.fields.progressHint"), 6)}
+      {/* Hours sits under Progress rather than on its own: it is one more thing about the week
+          that happened, and a lone numeric box at the end of the form read as a sixth question. */}
       <div>
         <label className="field-label" htmlFor={`${entry.project_id}-hours`}>
           {t("report.fields.hours")}
@@ -71,6 +77,8 @@ export function EntryForm({
         ) : null}
         <p className="stamp mt-2">{t("report.fields.hoursNote")}</p>
       </div>
+      {field("challenges", t("report.fields.challenges"), t("report.fields.challengesHint"), 4)}
+      {field("next_plan_text", t("report.fields.nextSteps"), t("report.fields.nextStepsHint"), 4)}
     </div>
   );
 }

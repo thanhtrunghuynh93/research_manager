@@ -4,14 +4,27 @@
  */
 import type { components } from "@/api/generated/schema";
 
+/**
+ * Three questions, not five (REP-03).
+ *
+ * The template asked for work performed, results, deviations, a next-week plan and questions for
+ * the professor, and a student filling it in weekly was answering the same thing twice: what was
+ * done and what came of it are one account, and a blocker and the question it raises are one
+ * problem. Three sections — what happened, what got in the way, what is next — is the same report
+ * with the seams taken out.
+ *
+ * The wire keeps the five names it always had. `progress` is sent as `work_performed` and
+ * `challenges` as `deviations`, because the submitted record of a week is never rewritten
+ * (REP-07) and a column renamed underneath it would make every past entry unreadable. What a
+ * student typed into "Results" in September is still in the record, under the label they typed it
+ * under; `draftOfEntry` folds it into Progress if they open that week again.
+ */
 export type EntryDraft = {
   project_id: string;
   stage: string;
-  work_performed: string;
-  results: string;
-  deviations: string;
+  progress: string;
+  challenges: string;
   next_plan_text: string;
-  questions: string;
   hours: string;
 };
 
@@ -19,13 +32,16 @@ export function emptyEntry(projectId: string, stage: string): EntryDraft {
   return {
     project_id: projectId,
     stage,
-    work_performed: "",
-    results: "",
-    deviations: "",
+    progress: "",
+    challenges: "",
     next_plan_text: "",
-    questions: "",
     hours: "",
   };
+}
+
+/** Two fields that are now one, kept apart by a blank line rather than run together. */
+function joined(first: string, second: string): string {
+  return [first.trim(), second.trim()].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -75,12 +91,37 @@ export function draftOfEntry(entry: components["schemas"]["EntryOut"]): EntryDra
   return {
     project_id: String(entry.project_id),
     stage: entry.stage,
-    work_performed: entry.work_performed,
-    results: entry.results,
-    deviations: entry.deviations,
+    // An entry submitted under the five-field template carries text in `results` and `questions`
+    // that the form no longer has a box for. Folding them in is what keeps a resubmission from
+    // quietly dropping them: the words survive into the new version, under the section that now
+    // asks for them. The version they were first submitted in is untouched either way.
+    progress: joined(entry.work_performed, entry.results),
+    challenges: joined(entry.deviations, entry.questions),
     next_plan_text: textOfPlan(entry.next_plan),
-    questions: entry.questions,
     hours: entry.hours === null || entry.hours === undefined ? "" : String(entry.hours),
+  };
+}
+
+/**
+ * A saved draft, whichever template it was typed under.
+ *
+ * `draft_content` is free-form JSON the client writes and reads, so a draft autosaved before the
+ * form became three sections is still sitting there in five keys. Read straight, its
+ * `work_performed` means nothing to a form asking for `progress`, and the student would have
+ * opened the week to find the boxes empty and their own text gone — autosaved, present on the
+ * server, and unreachable. So an old draft is folded the same way a submitted entry is.
+ */
+export function draftOfSaved(value: unknown, projectId: string, stage: string): EntryDraft {
+  const saved = (value ?? {}) as Record<string, unknown>;
+  const text = (key: string) => String(saved[key] ?? "");
+  const current = "progress" in saved || "challenges" in saved;
+  return {
+    project_id: String(saved.project_id ?? projectId),
+    stage: String(saved.stage ?? stage),
+    progress: current ? text("progress") : joined(text("work_performed"), text("results")),
+    challenges: current ? text("challenges") : joined(text("deviations"), text("questions")),
+    next_plan_text: text("next_plan_text"),
+    hours: text("hours"),
   };
 }
 
