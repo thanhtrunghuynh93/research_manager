@@ -12,6 +12,13 @@
  *
  * The extraction state is shown rather than hidden. A PDF the server could not read is not the
  * same as a PDF with nothing in it, and the student is the person best placed to fix it.
+ *
+ * Attaching takes a while, and the three steps take it for different reasons: the browser hashes
+ * the whole file before anything leaves it, the bytes then cross the network to object storage,
+ * and the server verifies the checksum at the end. On the live stack a 25 MB file spends seconds
+ * in each. The panel says which step it is on and, while the bytes are moving, how far — a wait
+ * a person can see the shape of is a wait they will sit through, and one that names no stage is
+ * the wait they reload the page in the middle of.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -68,6 +75,53 @@ async function sha256(file: File): Promise<string> {
     .join("");
 }
 
+/**
+ * What is in flight, and how far along. `fraction` is null whenever nothing is measuring it —
+ * hashing and confirming have no progress to report, and a browser may send the bytes without
+ * ever firing a progress event. Null means "no number", and the bar is then not drawn at all
+ * rather than drawn at a number nobody measured.
+ */
+type Sending = {
+  name: string;
+  stage: "checking" | "sending" | "recording";
+  fraction: number | null;
+};
+
+/**
+ * PUT the bytes, reporting how many have gone.
+ *
+ * `fetch` cannot do this: it reports a response arriving and says nothing about a request body
+ * leaving, which is the half that takes the time here. XHR still has `upload.onprogress`, so the
+ * one request whose duration a student actually waits through is the one request not made with
+ * fetch. The rest of the flow stays on the shared client.
+ */
+function putWithProgress(
+  url: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", url);
+    for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
+    request.upload.addEventListener("progress", (event) => {
+      // `lengthComputable` is the browser saying it knows the total. Without it, dividing by
+      // `event.total` yields Infinity or NaN and the bar reads as complete before anything is.
+      if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+    });
+    request.addEventListener("load", () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error(`upload failed with ${request.status}`));
+    });
+    // A refused connection, a DNS failure or a cancelled tab: all three end the upload without a
+    // status, and none of them may leave the panel sitting at "Sending…" for ever.
+    request.addEventListener("error", () => reject(new Error("the upload could not be sent")));
+    request.addEventListener("abort", () => reject(new Error("the upload was interrupted")));
+    request.send(file);
+  });
+}
+
 export function Attachments({
   projectId,
   periodId,
@@ -85,32 +139,37 @@ export function Attachments({
   // What is in flight, purely so the screen can say so. The file input cannot hold it: its value
   // is cleared on selection (see the change handler), and a disabled input showing nothing for the
   // several seconds this takes is indistinguishable from a broken one.
-  const [sending, setSending] = useState<string | null>(null);
+  const [sending, setSending] = useState<Sending | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claim, setClaim] = useState("");
   const [link, setLink] = useState("");
 
   async function upload(file: File) {
     setBusy(true);
-    setSending(file.name);
+    // Hashing reads the whole file before a byte leaves the machine, and on a 25 MB file that is
+    // a visible pause with nothing happening on screen. It gets a stage of its own.
+    setSending({ name: file.name, stage: "checking", fraction: null });
     setError(null);
     try {
+      const checksum = await sha256(file);
       const grant = await api.post<Grant>("/api/v1/artifacts/uploads", {
         project_id: projectId,
         period_id: periodId,
         filename: file.name,
         byte_size: file.size,
-        sha256: await sha256(file),
+        sha256: checksum,
         supported_claim: claim,
       });
 
-      const response = await fetch(grant.url, {
-        method: "PUT",
-        headers: grant.headers,
-        body: file,
-      });
-      if (!response.ok) throw new Error(`upload failed with ${response.status}`);
+      setSending({ name: file.name, stage: "sending", fraction: 0 });
+      await putWithProgress(grant.url, grant.headers, file, (fraction) =>
+        setSending({ name: file.name, stage: "sending", fraction }),
+      );
 
+      // The bytes have landed; the server now verifies the checksum against them. It is the step
+      // that took 4.6s on the live stack, and it is not the upload — saying so is the difference
+      // between a wait that looks stuck and a wait that looks like work.
+      setSending({ name: file.name, stage: "recording", fraction: null });
       await api.post<Attachment>(`/api/v1/artifacts/${grant.artifact_id}/confirm`);
       onAttached();
       setClaim("");
@@ -287,9 +346,35 @@ export function Attachments({
             />
           </label>
           {sending && (
-            <p className="stamp" role="status" data-testid="attachment-sending">
-              {t("report.attachments.sending", { name: sending })}
-            </p>
+            <div data-testid="attachment-sending">
+              {/* `role="status"` rather than an alert: it is progress, not a problem, and it is
+                  announced when it changes rather than interrupting whatever is being read. */}
+              <p className="stamp" role="status">
+                {t(`report.attachments.${sending.stage}`, { name: sending.name })}
+                {sending.fraction === null
+                  ? ""
+                  : ` · ${t("report.attachments.percent", {
+                      percent: Math.round(sending.fraction * 100),
+                    })}`}
+              </p>
+              {/* Only drawn against a number something measured. An indeterminate bar here would
+                  be decoration claiming to be information. */}
+              {sending.fraction === null ? null : (
+                <span
+                  className="meter mt-1.5 block"
+                  role="progressbar"
+                  aria-label={t("report.attachments.sending", { name: sending.name })}
+                  aria-valuenow={Math.round(sending.fraction * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span
+                    className="meter-fill motion-safe:transition-[width] motion-safe:duration-200"
+                    style={{ width: `${Math.round(sending.fraction * 100)}%` }}
+                  />
+                </span>
+              )}
+            </div>
           )}
           <label className="block">
             <span className="field-label">{t("report.attachments.link")}</span>

@@ -1,5 +1,5 @@
 /** REP-04: the three-step upload, and saying plainly what happened to the file afterwards. */
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -348,4 +348,188 @@ test("removing a link says what actually happens to it, and names it by its addr
   expect(asked).toContain("https://example.com/");
   expect(asked).not.toContain("The file and its extracted text are deleted");
   expect(asked).toMatch(/page itself is untouched/);
+});
+
+test("the wait is named at each step, because each step waits for a different thing", async () => {
+  // "Sending…" covered all three: hashing the file, moving the bytes, and the server verifying
+  // the checksum. They fail differently and they take their time for different reasons, and a
+  // student watching one word for ten seconds has no way to tell a slow upload from a stuck one.
+  let releaseGrant: (() => void) | undefined;
+  let releaseConfirm: (() => void) | undefined;
+  const grantHeld = new Promise<void>((resolve) => {
+    releaseGrant = resolve;
+  });
+  const confirmHeld = new Promise<void>((resolve) => {
+    releaseConfirm = resolve;
+  });
+  server.use(
+    http.post("/api/v1/artifacts/uploads", async () => {
+      await grantHeld;
+      return HttpResponse.json(GRANT, { status: 201 });
+    }),
+    http.put("https://objects.example/upload/a1", () => new HttpResponse(null, { status: 200 })),
+    http.post("/api/v1/artifacts/a1/confirm", async () => {
+      await confirmHeld;
+      return HttpResponse.json(attachment());
+    }),
+  );
+  const { onAttached } = renderPanel();
+
+  await userEvent.upload(
+    screen.getByLabelText(/attach a file/i),
+    new File(["# notes"], "notes.md", { type: "text/markdown" }),
+  );
+
+  // Nothing has left the machine yet, and the wording says so rather than claiming to send.
+  await waitFor(() =>
+    expect(screen.getByTestId("attachment-sending")).toHaveTextContent(/before it leaves/i),
+  );
+
+  releaseGrant?.();
+
+  // The bytes have landed and the server is checking them against the checksum. Not "Sending".
+  await waitFor(() =>
+    expect(screen.getByTestId("attachment-sending")).toHaveTextContent(/verifying/i),
+  );
+  expect(screen.getByTestId("attachment-sending")).toHaveTextContent(/notes\.md/);
+
+  releaseConfirm?.();
+  await waitFor(() => expect(onAttached).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByTestId("attachment-sending")).not.toBeInTheDocument());
+});
+
+test("no progress bar is drawn for a step nothing is measuring", async () => {
+  // An indeterminate bar would be decoration claiming to be information: hashing and verifying
+  // report no progress, and a bar sitting at some invented width says the opposite.
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.post("/api/v1/artifacts/uploads", async () => {
+      await held;
+      return HttpResponse.json(GRANT, { status: 201 });
+    }),
+    http.put("https://objects.example/upload/a1", () => new HttpResponse(null, { status: 200 })),
+    http.post("/api/v1/artifacts/a1/confirm", () => HttpResponse.json(attachment())),
+  );
+  const { onAttached } = renderPanel();
+
+  await userEvent.upload(
+    screen.getByLabelText(/attach a file/i),
+    new File(["# notes"], "notes.md", { type: "text/markdown" }),
+  );
+
+  await waitFor(() =>
+    expect(screen.getByTestId("attachment-sending")).toHaveTextContent(/before it leaves/i),
+  );
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+
+  release?.();
+  await waitFor(() => expect(onAttached).toHaveBeenCalled());
+});
+
+test("an upload the network refuses ends the wait and says so", async () => {
+  // The PUT is the one request not made through the shared client, so it needs its own answer to
+  // a connection that never completes — otherwise the panel sits at "Sending…" for ever and the
+  // file input stays disabled with it.
+  server.use(
+    http.post("/api/v1/artifacts/uploads", () => HttpResponse.json(GRANT, { status: 201 })),
+    http.put("https://objects.example/upload/a1", () => HttpResponse.error()),
+  );
+  renderPanel();
+
+  await userEvent.upload(
+    screen.getByLabelText(/attach a file/i),
+    new File(["# notes"], "notes.md", { type: "text/markdown" }),
+  );
+
+  expect(await screen.findByTestId("attachment-error")).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByTestId("attachment-sending")).not.toBeInTheDocument());
+  expect(screen.getByLabelText(/attach a file/i)).not.toBeDisabled();
+});
+
+test("while the bytes are moving, the bar says how far", async () => {
+  // The one thing a student watches during a 25 MB upload, and the one thing msw cannot drive:
+  // its interceptor completes the request without emitting upload progress. So the transport is
+  // replaced for this test with one that emits it, which is what a browser does.
+  class ProgressingXHR {
+    static latest: ProgressingXHR | undefined;
+    status = 200;
+    upload = new EventTarget();
+    private listeners = new EventTarget();
+    open() {}
+    setRequestHeader() {}
+    addEventListener(type: string, listener: EventListener) {
+      this.listeners.addEventListener(type, listener);
+    }
+    send() {
+      ProgressingXHR.latest = this;
+    }
+    /** What the browser fires as the body goes out. */
+    emit(loaded: number, total: number) {
+      const event = new Event("progress") as Event & {
+        lengthComputable: boolean;
+        loaded: number;
+        total: number;
+      };
+      event.lengthComputable = true;
+      event.loaded = loaded;
+      event.total = total;
+      this.upload.dispatchEvent(event);
+    }
+    finish() {
+      this.listeners.dispatchEvent(new Event("load"));
+    }
+  }
+
+  let releaseConfirm: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    releaseConfirm = resolve;
+  });
+  try {
+    // `vi.stubGlobal` rather than an assignment: msw installs its own XMLHttpRequest as a
+    // non-writable property, and assigning to it throws.
+    vi.stubGlobal("XMLHttpRequest", ProgressingXHR);
+    server.use(
+      http.post("/api/v1/artifacts/uploads", () => HttpResponse.json(GRANT, { status: 201 })),
+      http.post("/api/v1/artifacts/a1/confirm", async () => {
+        await held;
+        return HttpResponse.json(attachment());
+      }),
+    );
+    const { onAttached } = renderPanel();
+
+    await userEvent.upload(
+      screen.getByLabelText(/attach a file/i),
+      new File(["# notes"], "notes.md", { type: "text/markdown" }),
+    );
+
+    await waitFor(() => expect(ProgressingXHR.latest).toBeDefined());
+    // In `act`, because a progress event is a state update React is not otherwise told about.
+    act(() => ProgressingXHR.latest!.emit(1024, 4096));
+
+    const bar = await screen.findByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getByTestId("attachment-sending")).toHaveTextContent(/25% sent/);
+
+    act(() => ProgressingXHR.latest!.emit(4096, 4096));
+    await waitFor(() =>
+      expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100"),
+    );
+
+    // 100% sent is not 100% done: the server still has to verify the checksum, and the bar goes
+    // away rather than sitting full while that happens.
+    act(() => ProgressingXHR.latest!.finish());
+    await waitFor(() =>
+      expect(screen.getByTestId("attachment-sending")).toHaveTextContent(/verifying/i),
+    );
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+
+    releaseConfirm?.();
+    await waitFor(() => expect(onAttached).toHaveBeenCalled());
+  } finally {
+    vi.unstubAllGlobals();
+    releaseConfirm?.();
+  }
 });

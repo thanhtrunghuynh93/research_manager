@@ -123,7 +123,10 @@
         "failed": "Could not be read",
         "unsupported": "Stored, no text"
       },
+      "checking": "Checking {{name}} before it leaves your machine…",
       "sending": "Sending {{name}}…",
+      "percent": "{{percent}}% sent",
+      "recording": "{{name}} has arrived. Verifying it…",
       "remove": "Remove",
       "removeConfirm": "Remove {{name}}? The file and its extracted text are deleted, and it stops being searchable.",
       "removeLinkConfirm": "Remove {{name}}? The link and the text read from it stop being evidence for this week and stop being searchable. The page itself is untouched."
