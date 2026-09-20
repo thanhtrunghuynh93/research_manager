@@ -14,6 +14,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
+from app.core.clock import local_date, now
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -49,9 +50,17 @@ async def _week(
         await projects_service.add_member(
             db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
         )
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
-    return period, project
+    # Through *today* on the workspace's calendar, not through a fixed 20 September. The week of
+    # 14–20 September was the current one when this was written and stopped being it at local
+    # midnight on the 21st, after which `current_period` was None and this file failed on a clock
+    # rather than on a change. A test that asserts something is current has to open the week that
+    # contains now.
+    periods = await reporting_service.ensure_periods(
+        db, prof_scope, through=local_date(now(), "Asia/Ho_Chi_Minh")
+    )
+    current = periods[-1]
+    await reporting_service.ensure_obligations(db, prof_scope, current.id)
+    return current, project
 
 
 async def test_a_student_may_not_read_the_professor_overview(
@@ -244,7 +253,12 @@ async def test_the_week_lists_every_report_owed_and_which_of_them_are_in(
     assert len(body["week"]) == 1, "one workspace"
     board = body["week"][0]
     assert board["workspace_name"]
-    assert (board["local_start"], board["local_end"]) == ("2026-09-14", "2026-09-20")
+    # The week `_week` opened, not a date this file was written in: the board is whichever week
+    # contains today, and pinning it to 14–20 September made this pass only until that week ended.
+    assert (board["local_start"], board["local_end"]) == (
+        period.local_start.isoformat(),
+        period.local_end.isoformat(),
+    )
     assert (board["submitted"], board["owed"], board["excused"]) == (1, 1, 0)
 
     assert [one["project_title"] for one in board["projects"]] == ["Retrieval baselines"]
