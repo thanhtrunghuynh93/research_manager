@@ -346,7 +346,7 @@
     "role": "Role",
     "roleStudent": "Student",
     "roleProf": "Professor",
-    "roleNote": "The invitation link is emailed to the address, never shown here. A professor invited as a colleague has the same authority over students as you do.",
+    "roleNote": "The invitation link is emailed to the address, never shown here. A professor invited as a colleague has the same authority over students as you do. Resending an invitation issues a new link and stops the earlier one working.",
     "send": "Send invitation",
     "sent": "Invitation sent to {{email}}.",
     "professors": "Professors",
@@ -369,7 +369,9 @@
     "workspace": "Workspace",
     "acrossWorkspaces": "Across {{count}} workspaces",
     "elsewhere": "Join its workspace to act on this account",
-    "moveTo": "Move to…"
+    "moveTo": "Move to…",
+    "resend": "Resend invitation",
+    "resent": "Invitation resent"
   },
   "workspaces": {
     "title": "Workspaces",

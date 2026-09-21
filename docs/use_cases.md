@@ -254,11 +254,24 @@ would always fail.
 | Use case | Endpoint | |
 | --- | --- | --- |
 | Invite a student, or a colleague as a professor | `POST /users/invitations` | 🖥️ |
+| **Send an invitation again** | `POST /users/invitations` | 🖥️ — a button on any row still `invited`, either role |
 | See everyone in the workspace | `GET /users` | 🖥️ |
 | Read one user's record directly | `GET /users/{id}` | 🖥️ |
 | Suspend an account's access | `POST /users/{id}/deactivate` | 🖥️ |
 | Reactivate an account | `POST /users/{id}/reactivate` | 🖥️ |
 | Remove a student from the workspace | `POST /users/{id}/remove` | 🖥️ |
+
+**Resending was always possible and never offered.** `invite_user` has reissued rather than
+refused for an address still in `invited` since ADR 0011 — it revokes the pending link and mails a
+new one, and the role travels on the user row so a re-invitation may also change it. The only way
+to reach that branch was to retype the address into the invite form and know what would happen, so
+the screen now carries a button on every unaccepted row, professors' included: a colleague who
+never received their invitation was previously unreachable from this screen, because an accepted
+professor correctly has no controls on them (ADR 0011) and the two cases shared a row.
+
+What reissuing costs is stated once, in the note under the invite form rather than in each row:
+the earlier link stops working the moment a new one is issued, which matters to whoever is reading
+an older email.
 
 Enrolment is invitation-only and there is no self-registration, so the invitation email is the only
 door into the system. Deactivation, role change and password reset each revoke every session and

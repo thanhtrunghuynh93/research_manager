@@ -48,7 +48,7 @@ test("A3 the professor invites a student, and the invitation names a workspace",
   await page.goto("/people");
   await page.getByLabel(/^email$/i).fill(STUDENT.email);
   await page.getByLabel(/name \(optional\)/i).fill(STUDENT.name);
-  await page.getByRole("button", { name: /send invitation/i }).click();
+  await page.getByRole("button", { name: /^send invitation$/i }).click();
   await expect(page.getByText(new RegExp(`invitation sent to ${STUDENT.email}`, "i"))).toBeVisible({
     timeout: 15_000,
   });

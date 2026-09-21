@@ -145,6 +145,11 @@ function Roll({
         {professors.map((user) => (
           <li key={user.id} className="row">
             <Person user={user} isYou={user.id === meId} />
+            {isCurrent && (
+              <span className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
+                <ResendInvitation user={user} />
+              </span>
+            )}
           </li>
         ))}
         {professors.length === 0 && <Empty>{t("people.noProfessors")}</Empty>}
@@ -189,6 +194,51 @@ function Person({ user, isYou, linkTo }: { user: User; isYou?: boolean; linkTo?:
         </span>
       )}
     </span>
+  );
+}
+
+/**
+ * Sending the invitation again, for an account that has not accepted one yet.
+ *
+ * The button carries its own result — it reads "Invitation resent" afterwards — rather than
+ * printing a sentence next to it. The first attempt put the consequence in the row and the row
+ * could not hold it: a shrink-0 column beside three controls and a select grew to the width of
+ * the sentence and pushed "Remove from workspace" off the panel. The consequence is said once, in
+ * the note under the invite form, where there is room for a sentence.
+ *
+ * `POST /users/invitations` has always reissued rather than refused for an address still in
+ * `invited` — it revokes the pending link and mails a new one — so this adds no rule, only the
+ * button. Until now the way to do it was to retype the address into the invite form and know that
+ * it would reissue, which is knowledge the screen kept to itself.
+ *
+ * The consequence is said rather than implied: the earlier link stops working the moment this
+ * issues a new one, which matters to the person who is about to be told "your link expired" by
+ * someone reading an older email.
+ *
+ * Offered only in the workspace the professor is working in. Reissuing into another one is allowed
+ * by the API for a workspace they *own*, and the roll spans every workspace they *belong to* —
+ * two different sets, so a button here would sometimes be a 403 with no way to tell in advance.
+ */
+function ResendInvitation({ user }: { user: User }) {
+  const { t } = useTranslation();
+  const invite = useInvite();
+
+  if (user.state !== "invited") return null;
+  return (
+    <>
+      <button
+        type="button"
+        disabled={invite.isPending || invite.isSuccess}
+        onClick={() =>
+          invite.mutate({ email: user.email, role: user.role, workspace_id: user.workspace_id })
+        }
+        className="btn-ghost"
+        data-testid={`resend-${user.id}`}
+      >
+        {invite.isSuccess ? t("people.resent") : t("people.resend")}
+      </button>
+      <Failure error={invite.error} />
+    </>
   );
 }
 
@@ -272,6 +322,7 @@ function StudentActions({
         </span>
       ) : (
         <span className="flex flex-wrap items-center justify-end gap-2.5">
+          {inCurrent && <ResendInvitation user={user} />}
           {move}
           <button
             type="button"

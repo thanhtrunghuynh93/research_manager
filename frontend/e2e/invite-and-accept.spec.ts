@@ -34,7 +34,7 @@ test("the professor invites a student from the roll", async ({ page, request }) 
 
   await page.getByLabel(/^email$/i).fill(INVITEE.email);
   await page.getByLabel(/name \(optional\)/i).fill(INVITEE.name);
-  await page.getByRole("button", { name: /send invitation/i }).click();
+  await page.getByRole("button", { name: /^send invitation$/i }).click();
 
   await expect(page.getByRole("status")).toContainText(INVITEE.email);
   // Invited, not yet active: the account exists but has no password.
