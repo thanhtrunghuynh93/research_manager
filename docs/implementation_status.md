@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.7 — 19 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.14
+Version 0.8 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.7, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.15
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -37,6 +37,29 @@ Test counts and coverage are deliberately not recorded here. A number in prose g
 after it is written — the previous version of this section claimed 794 backend tests and 91.3 %
 coverage, and both had drifted by the time anyone read them. Section 6 says how to obtain the
 current figures, and CI enforces the 85 % gate rather than a sentence.
+
+**21 September 2026 — the project screen, and three rules that had drifted from their documents.**
+Four changes went out together, and the shape worth recording is that two of them were the
+*documents* being wrong rather than the code.
+
+Switching workspaces moved from `/workspaces` into the header, where every screen can reach it.
+The project screen lost milestone completion and dated decisions — both computed, both shown, and
+neither writable by any screen, so completion read 0% for every project as though that were a
+finding — and gained related documents, which is PROJ-01's "shared resources" built at last
+([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)). Ending a membership
+became the professor's ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
+
+The rule that had drifted: `memberships_active_in_range` required an `ACTIVE` project to *derive*
+an obligation, and `memberships_open_through`, which judges obligations already derived, tested
+only `left_on`. A professor completed a project and the student still owed a report for it that
+week — and was emailed at 00:00 on the meeting day. One query, three readers. The docstring beside
+it already claimed the two agreed, which is the failure mode this document keeps recording: the
+comment was the specification, and nothing checked it against the query underneath.
+
+Requirements went to v0.7 in the same pass, amending AUTH-01, PROJ-07, REP-06, UI-03, PROJ-01,
+PROJ-06 and section 9 to describe what is built. Before it, four documents said a student could
+leave a project, one said the project workspace showed decisions, and one called an artifact a
+file *or URL* two releases after links were withdrawn.
 
 **15 September 2026 — first deployment preparation.** §1 and §2 of
 [production-readiness.md](runbooks/production-readiness.md) are closed bar mail deliverability.

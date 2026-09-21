@@ -1,6 +1,6 @@
 # How professor, student, workspace, project and reports are organized
 
-Version 0.1 — 20 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md) v0.4, [use_cases.md](use_cases.md) v0.14, and the [ADRs](adr/)
+Version 0.2 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.7, [architecture.md](architecture.md) v0.5, [use_cases.md](use_cases.md) v0.15, and the [ADRs](adr/)
 
 This document is an orientation to the central relations: what belongs to what, which of those
 relations are plural, and where each one is enforced. It is derived from the documents above and
@@ -103,9 +103,11 @@ Four rules follow from the boundary rather than from taste:
   belongs to a user in another workspace is refused, so a second invitation is not how a student
   moves.
 - **A student owns the projects they report on** ([ADR 0017](adr/0017-students-own-their-projects.md),
-  PROJ-07, AUTH-07): they may start a project, join one a professor has marked open to joining, edit
-  the record of what they started — including after leaving it — and end **their own** membership
-  and no one else's. They may not place another account on a project.
+  PROJ-07, AUTH-07): they may start a project, join one a professor has marked open to joining, and
+  edit the record of what they started — including after their membership on it has ended. They may
+  not place another account on a project, and **they may not end a membership, their own included**
+  ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)): joining adds work to a student's
+  week and ending one removes an obligation, and only the second is a supervision decision.
 - **Reads:** their own reports and drafts; their own assessments, and only once a review has
   approved them; the projects they are a member of; the contributions and identity mappings
   attributed to them, which is the precondition for contesting misattribution (REPO-04).
@@ -136,6 +138,10 @@ is attributed from it (PROJ-01).
   creator may not change its *standing*: `status`, `open_to_join` and `ai_restricted` are whether
   work is owed, who else may read it, and whether the text may be sent to a model provider. A
   project with no recorded creator is the professor's alone.
+- **A project carries its own documents.** Files attached to the project and to no week are its
+  shared resources (PROJ-01): everyone on the project reads them, whoever attached one removes it,
+  and they are not extracted, indexed or citable
+  ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)).
 - **A membership is the entire grant of access to a project.** The predicate is same workspace and
   `project_id IN scope.project_ids`, with no second gate, so joining hands over the project record,
   its milestones, its tasks — including the free-text blockers and completion reasons another
@@ -169,7 +175,9 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
 - **Obligations are derived, never assigned.** The input is a membership on an `active` project
   overlapping the week, bounded by the first and last required period and edited by exemptions and
   extensions. An obligation is derived as soon as the membership exists rather than at the next
-  scheduled run.
+  scheduled run, and the same two tests are applied again when one is read — so a project taken out
+  of `active` owes no week, including the one in progress (REP-06,
+  [ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 - **One package, many entries** (REP-02). A report is unique per student and period; an entry is
   unique per report version and project. The student submits once a week, and assessments stay
   separate per student–project–week rather than collapsing into one ranking score.
@@ -217,10 +225,18 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
 ## 8 Where the build diverges from the specification
 
 Recorded here because a reader of sections 2 to 6 would otherwise assume all of it is reachable;
-[implementation_status.md](implementation_status.md) §3 is the authority.
+[implementation_status.md](implementation_status.md) §3 is the authority. The list is shorter than
+it was: requirements v0.7 amended UI-03, PROJ-01, PROJ-06, PROJ-07, AUTH-01 and REP-06 to say what
+the product does, so those are no longer divergences at all.
 
 - Moving a student who has written anything is refused, by the constraint set rather than by a check
   (§2).
+- Milestone completion and dated decisions are computed and stored but shown on no screen, because
+  nothing writes what they would show — `accepted_completion` and `POST /{id}/decisions` have no
+  authoring screen (UI-03, amended).
+- A finished project leaves a student's week silently: the obligation is filtered rather than
+  excused, so nothing on `/me` names the project that stopped owing
+  ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 - Pre-deadline reminder rows are written and nothing reads them: the in-app surface was withdrawn
   and only the missed-deadline message is emailed, so no student is reminded before a deadline
   today (REP-07).

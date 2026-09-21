@@ -1,8 +1,8 @@
 # The Research Management Framework — Problem, Innovation, Impact
 
-Version 0.2 — 19 September 2026 — an overview of what this framework is for and what is new in it.
-It summarises [research_management_requirements.md](research_management_requirements.md) v0.6,
-[architecture.md](architecture.md) v0.4, the [ADRs](adr/), and
+Version 0.3 — 21 September 2026 — an overview of what this framework is for and what is new in it.
+It summarises [research_management_requirements.md](research_management_requirements.md) v0.7,
+[architecture.md](architecture.md) v0.5, the [ADRs](adr/), and
 [implementation_status.md](implementation_status.md); those documents remain authoritative where
 this one abbreviates them.
 
@@ -171,9 +171,11 @@ to exactly one, and a project belongs to the workspace it was created in, so a s
 are the projects of their workspace and a membership cannot straddle two
 ([ADR 0011](adr/0011-co-equal-professors.md), [ADR 0016](adr/0016-reads-span-membership.md)); and
 students own the projects they report on — a student may start a project, join one a professor has
-opened to joining, and leave one — while no private record follows a project, because reports,
-assessments, feedback and notes are keyed to a student
-([ADR 0017](adr/0017-students-own-their-projects.md)).
+opened to joining, and edit the record of what they started, while ending a membership is the
+professor's, because whether research is finished is a supervision judgement rather than a
+student's to record — and no private record follows a project, because reports, assessments,
+feedback and notes are keyed to a student ([ADR 0017](adr/0017-students-own-their-projects.md),
+[ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 
 ## 4 Impact
 

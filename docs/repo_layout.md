@@ -1,6 +1,6 @@
 # Research Management System — Repository Layout
 
-Version 0.3 — 16 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.6, and [use_cases.md](use_cases.md) v0.14
+Version 0.4 — 21 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.7, and [use_cases.md](use_cases.md) v0.15
 
 This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 
@@ -339,7 +339,7 @@ frontend/
     ├── hooks/                 useAutosave, useTheme. `useScope` and `useIdempotencyKey` were never
     │                          built: scope is resolved server-side and the idempotency header is
     │                          set in api/client.ts
-    ├── lib/                   dates (period formatting in workspace timezone), i18n setup, theme
+    ├── lib/                   dates (period formatting in workspace timezone), i18n setup, theme, upload (hash, PUT, confirm — shared by report evidence and project documents)
     ├── locales/
     │   └── en/common.json     one language, deliberately: i18n.ts initialises `en` alone, so a
     │                          second is a resource file and a switcher rather than a refactor

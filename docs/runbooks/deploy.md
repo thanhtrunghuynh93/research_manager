@@ -1,6 +1,6 @@
 # Runbook — Deploy
 
-Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
+Trigger: a change on `main` is to go out, or a hotfix must. Nothing here is driven by a tag today — the stack is built from the checkout, so what deploys is what is committed and present in the working tree.
 
 > **Never `down -v` on this host.** `infra/.env` line 1 says PRODUCTION; the volumes it would
 > remove are `pgdata` and `objects` — the database and every uploaded attachment. Stopping the
@@ -20,7 +20,8 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
    it. Without that record, uploads fail at the moment the browser PUTs the file, after the
    student has already chosen it, and `RM_S3_PUBLIC_ENDPOINT` in `infra/.env` must be
    `https://objects.<domain>` to match.
-1. On the VPS: `cd /opt/research-management && git fetch --tags && git checkout <tag>`.
+1. On the VPS, in the checkout the compose project runs from — `/root/workspace/research_manager` on this host, which is what `docker inspect research-management-api-1` reports as the compose working directory, not `/opt/…`:
+   `git fetch origin && git checkout main && git pull --ff-only`. Deploy a commit that is pushed: the build reads the tree, so an uncommitted edit ships and no one can reproduce it.
 2. Run `scripts/preflight.sh`. It compares the keys in `infra/.env` against `.env.example` and
    then checks the things a key comparison structurally cannot see: an empty value, a variable
    that never reaches the container that reads it, a bind-mounted file that does not exist (Docker
@@ -39,7 +40,26 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
      webhook secret, `POST /api/v1/webhooks/github` returns 503 rather than verifying deliveries
      against an empty HMAC key, so pushes will not trigger a sync until it is set. It must match
      the secret entered in the GitHub App itself.
-3. Pull images: `docker compose --env-file infra/.env -f infra/docker-compose.yml pull`.
+3. Get the images. **This host builds them; it pulls nothing.** `RM_BACKEND_IMAGE` and
+   `RM_CADDY_IMAGE` in `infra/.env` are `rm-backend:local` and `rm-caddy:local`, which no registry
+   holds, and the compose project's working directory *is* the checkout — so the deployed artifact
+   is whatever is in the tree at this moment, and committing before deploying is what makes it
+   reproducible.
+
+   ```bash
+   docker compose --env-file infra/.env -f infra/docker-compose.yml build
+   ```
+
+   The caddy image builds the SPA (`infra/caddy/Dockerfile` runs `npm run build` and copies
+   `dist` into `/srv`), so a frontend change ships only if caddy is rebuilt. `pull` is the step a
+   registry deployment would run instead, and it is kept here for the day this uses one.
+
+   > **The mock stack shares these tags unless told otherwise.** `scripts/run_mock.sh` builds the
+   > `builder` target — the one with `uv` in it — and writing that to `rm-backend:local` leaves the
+   > production containers pointing at a dev image the moment they are next recreated. It happened
+   > on 21 September 2026 in the other direction: a production build overwrote the tag and the mock
+   > worker then died with `uv: executable file not found`. Set `RM_BACKEND_IMAGE=rm-backend:dev`
+   > and `RM_CADDY_IMAGE=rm-caddy:dev` in `infra/.env.mock` so the two can never trade images.
 4. Take a pre-deploy backup: `docker compose ... exec backup backup.sh`.
 5. Apply: `docker compose ... up -d`. Migrations run from the api container:
    `docker compose ... exec api alembic upgrade head`.
@@ -88,11 +108,21 @@ Trigger: a tagged release (`v*`) has built images, or a hotfix must go out.
    An empty `todo` and a rising `succeeded` is the product running unattended. Rows stuck in
    `todo` mean the worker is not consuming; no rows at all after a submission mean nothing is
    deferring, which is what `tests/jobs/test_defer_seam.py` exists to catch before a deploy.
-9. If readiness fails: `docker compose ... logs --tail=200 api worker`, then roll back with
-   `git checkout <previous-tag> && docker compose ... up -d` and `alembic downgrade <rev>` only if
-   the migration is reversible (check the migration file first).
+10. If readiness fails: `docker compose ... logs --tail=200 api worker`, then roll back with
+    `git checkout <previous-tag> && docker compose ... up -d`, **rebuilding** as in step 3, and
+    `alembic downgrade <rev>` only if the migration is reversible (check the migration file first).
 
-Record the deploy (tag, time, operator) in the operations log.
+A frontend-only change is verified from the served bundle rather than from the API, because
+`readyz` cannot see it:
+
+```bash
+BUNDLE=$(curl -s https://<domain>/ | grep -o '/assets/[^"]*\.js' | head -1)
+curl -s "https://<domain>$BUNDLE" | grep -c "<a string the change introduced>"
+```
+
+Record the deploy (tag, time, operator) in the operations log. There is no operations log in this
+repository; if one is being kept, it is somewhere else, and if it is not, this line is the thing
+to fix rather than to follow.
 
 ## Loading a demo workspace
 

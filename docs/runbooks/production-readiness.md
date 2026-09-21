@@ -220,7 +220,10 @@ audit because they are properties of the deployment rather than of the code:
   source as a *directory*, so the backup container would have failed on its first nightly run
   with nothing watching it. `scripts/preflight.sh` now fails on each.
 - **No release tag had ever been cut**, so `ghcr.io/.../rm-backend` held no images and deploy.md
-  step 3 (`docker compose pull`) had nothing to pull.
+  step 3 (`docker compose pull`) had nothing to pull. *Corrected on 21 September 2026:* that step
+  was the runbook describing a deployment this host does not do. It builds from the checkout into
+  `rm-backend:local` and `rm-caddy:local`, no registry is involved, and deploy.md step 3 now says
+  `build`.
 - **Postgres was tuned for a larger host** — `shared_buffers = 1GB` and
   `effective_cache_size = 3GB` on a 4 GB VPS that also runs the api, the worker, MinIO and Caddy.
   Now 512MB/2GB, with `work_mem` at 8MB, and the host has 2 GB of swap as a floor.

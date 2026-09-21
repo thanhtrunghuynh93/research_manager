@@ -53,9 +53,10 @@ derived and the professor's history reads them, and they are filtered on the way
 
 ## Consequences
 
-- **PROJ-07 and AUTH-01 no longer describe the product.** Both say a student may end their own
-  membership. They are the specification and this ADR is the amendment; `use_cases.md` §3 records
-  the divergence where a reader meets it.
+- **PROJ-07 and AUTH-01 were amended rather than left standing.** Both said a student may end
+  their own membership; requirements v0.7 says the professor does, and REP-06 gained the rule
+  about a project that is no longer active. The specification and the product agree, which is
+  what stops this ADR from being the only place the real rule is written down.
 - **A student who wants off a project has to ask.** That is the intent, and it is a real cost: the
   corridor conversation ADR 0017 was written to remove comes back for this one case. It is the
   trade for the professor knowing that a project stopped producing reports.

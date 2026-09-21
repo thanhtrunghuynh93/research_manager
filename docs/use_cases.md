@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.14 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.15 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.7, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -91,15 +91,15 @@ dead end rather than about security.
 | `/me` | student | nav, and the student's home | The deadline set as a figure, the report's state, obligations per project, earlier weeks, and the way through to the released record |
 | `/me/profile` | student | a link on `/me` — it is not on the navigation bar, and `/me` no longer lists assessments itself | Trajectory per project, every released assessment |
 | `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: ratings, rationales, feedback, and a correction request |
-| `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments and links; submit |
+| `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments, which are files (REP-04); submit |
 | `/overview` | professor | nav, and the professor's home | Budget and mail warnings, this week's reports by workspace, project and student, outstanding reports, review queue, sync issues, stalled analyses |
 | `/people` | professor | nav | Everyone in every workspace they belong to, grouped by workspace; invite, move, suspend / restore / remove |
-| `/workspaces` | professor | nav | The workspaces they belong to or own; join, leave, create, archive. The reporting calendar, and the weeks it opens |
+| `/workspaces` | professor | nav | The workspaces they belong to or own; join, leave, create, archive. The reporting calendar, and the weeks it opens. *Switching* between them is the workspace name in the header, on every screen (§2.1) |
 | `/projects` | signed in | nav (both roles since PROJ-07; a student's bar is their week, then this); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
 | `/students/:id` | professor | a name on `/people`, or on the overview's outstanding list | Approved assessments, trajectory per project, downloadable materials |
 | `/review/:assessmentId` | professor | the overview's review queue, or a student's profile | Ratings per dimension, confidence, the evidence snapshot, approve with a rationale |
 | `/assistant` | professor | nav | Facts, synthesis, citations, gaps |
-| `/projects/:id` | signed in | the list at `/projects`, a title on `/me`, a member row | Research questions, weighted progress, members, milestones, dated decisions. Activate the project, open it to joining, assign a student (professor); edit the record (its creator); leave it (a student on it) |
+| `/projects/:id` | signed in | the list at `/projects`, a title on `/me`, a member row | Research questions, members, the project's related documents; the stage and the milestones to a professor only. Activate the project, open it to joining, assign a student, end a membership (professor); attach a document (anyone on it); edit the record (its creator) |
 
 v0.4 removed two rows, `/notifications` and `/exports`, and they were the two either role could
 open; v0.5 added `/workspaces`. What is left is a professor's six and a student's two, meeting
@@ -300,8 +300,9 @@ gone and `end_membership` refuses a student outright: whether research is finish
 the weekly meeting exists to make, and a student who has stopped owing a report is a student the
 professor is no longer told about. The professor gains the control on the member row, and the
 usual way to end a project is its status — setting it out of `active` now takes the week off
-everyone on it, including the week in progress, which it did not do before. **PROJ-07 and AUTH-01
-still say a student may end their own membership; they no longer describe the product.**
+everyone on it, including the week in progress, which it did not do before. PROJ-07, AUTH-01 and
+REP-06 were amended to match in requirements v0.7, so the specification and the product agree
+rather than the ADR standing against both.
 
 A student's project view also drops the **stage** and the **milestones**: both are the professor's
 plan for the project rather than the student's account of it, and the student's own screens — the
@@ -818,7 +819,8 @@ A student who joins an open project can therefore read, for that project: the re
 milestones with their retained baselines and the professor's reasons for moving a target, its tasks
 — including the free-text `blocker` and `completion_reason` another student wrote about their own
 work — its dated decisions and rationales, its repositories and their sync errors, its shared
-evidence, and the member list including past members. That last one matters more than it looks:
+evidence, **the documents anyone on it has attached** ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)),
+and the member list including past members. That last one matters more than it looks:
 `user_visible_to` restricts a student to their own account, and `MembershipOut.student_name` is the
 only route by which one student learns another's name. Joining every open project in turn is how a
 roster gets enumerated.

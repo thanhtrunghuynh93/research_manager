@@ -12,6 +12,7 @@ Professors are co-equal inside a workspace ([ADR 0011](docs/adr/0011-co-equal-pr
 - [Repository layout](docs/repo_layout.md) — where things live and the conventions
 - [Implementation status](docs/implementation_status.md) — what is built, what is left, and why
 - [Use cases](docs/use_cases.md) — what each role can do, and which of it has a screen
+- [Domain model](docs/domain_model.md) — how professor, student, workspace, project and reports are organized
 - [ADRs](docs/adr/) — decisions and their reasons
 - [Runbooks](docs/runbooks/) — operate it
 

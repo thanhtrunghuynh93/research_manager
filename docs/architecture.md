@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.4 — 19 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.6
+Version 0.5 — 21 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.7
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -240,7 +240,7 @@ The freeze point is `reporting_periods.start_utc` by default. A periodic task `f
 
 ### 5.6 File storage
 
-Bucket layout: `{workspace_id}/artifacts/{artifact_id}/{version_no}/{sha256}.{ext}` for originals and `.../extracted.txt` for text. `artifact_versions` stores `sha256, byte_size, content_type, storage_key, extraction_state ENUM(pending, ok, failed, unsupported), extracted_text_key`. Upload flow: the API validates size against the configured per-file limit (25 MB default) and per-entry total, issues a presigned PUT, and on completion the worker verifies the checksum, runs extraction (PDF, DOCX, Markdown, images stored as-is), and enqueues indexing. A file attached to a project and to no reporting period is a project document rather than a week's evidence: same table, same bucket, read by everyone on the project, and **not** extracted or indexed, so its version stays `pending` and nothing can cite it ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)). Link fetching for external URLs runs in the worker with an allowlist of schemes, a DNS resolution check against private ranges, a 10 s timeout, and a 5 MB cap (REP-04, section 11 "Security").
+Bucket layout: `{workspace_id}/artifacts/{artifact_id}/{version_no}/{sha256}.{ext}` for originals and `.../extracted.txt` for text. `artifact_versions` stores `sha256, byte_size, content_type, storage_key, extraction_state ENUM(pending, ok, failed, unsupported), extracted_text_key`. Upload flow: the API validates size against the configured per-file limit (25 MB default) and per-entry total, issues a presigned PUT, and on completion the worker verifies the checksum, runs extraction (PDF, DOCX, Markdown, images stored as-is), and enqueues indexing. A file attached to a project and to no reporting period is a project document rather than a week's evidence: same table, same bucket, read by everyone on the project, and **not** extracted or indexed, so its version stays `pending` and nothing can cite it ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)). There is no link fetching: REP-04 made evidence a file, the endpoint and the worker's fetch path went with it, and no code in the backend resolves a URL. `artifacts.source_url` and `ArtifactKind.LINK` remain as historical values on rows filed before that, which the reader still shows and nothing re-reads.
 
 ### 5.7 Search and retrieval storage
 
