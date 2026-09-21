@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Research Management",
+    "title": "Research Space",
     "greeting": "Hello {{name}}",
     "turnedAway": "{{path}} is not a page your account can open, so this is your own home instead.",
     "toDark": "Switch to dark",

@@ -30,7 +30,11 @@ export function AppShell() {
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-7 py-3.5">
           <Link to="/" className="flex items-center gap-3 text-foreground no-underline">
-            <span className="font-display text-display-sm font-medium tracking-[-0.01em]">
+            {/* The wordmark is the one place the product says its own name, so it is set apart
+                from the page titles below it rather than matching them: Newsreader at its lightest
+                with the letters opened up, which is the name's own idea. The negative tracking the
+                titles use pulls words together, and this one wants the opposite. */}
+            <span className="font-display text-display-sm font-light tracking-[0.06em]">
               {t("app.title")}
             </span>
           </Link>
