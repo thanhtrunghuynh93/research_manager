@@ -40,7 +40,6 @@ const entry = (id: string, projectId: string, work: string) => ({
   questions: "",
   hours: null,
   evidence_refs: [],
-  milestone_ids: [],
   experiments: [],
   planned_work_ref: {},
 });

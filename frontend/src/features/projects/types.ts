@@ -3,9 +3,7 @@ import type { components } from "@/api/generated/schema";
 
 export type Project = components["schemas"]["ProjectOut"];
 export type ProjectMember = components["schemas"]["MembershipOut"];
-export type Milestone = components["schemas"]["MilestoneOut"];
 export type Decision = components["schemas"]["ResearchDecisionOut"];
-export type ProjectProgress = components["schemas"]["ProjectProgressOut"];
 export type ProjectIn = components["schemas"]["ProjectIn"];
 export type ProjectPatch = components["schemas"]["ProjectPatch"];
 export type MembershipIn = components["schemas"]["MembershipIn"];

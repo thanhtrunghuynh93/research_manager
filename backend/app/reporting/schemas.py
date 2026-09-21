@@ -101,7 +101,6 @@ class EntryIn(BaseModel):
 
     project_id: UUID
     stage: str
-    milestone_ids: list[UUID] = Field(default_factory=list)
     planned_work_ref: dict[str, Any] = Field(default_factory=dict)
     work_performed: str = ""
     results: str = ""
@@ -120,7 +119,6 @@ class EntryOut(BaseModel):
     report_version_id: UUID
     project_id: UUID
     stage: str
-    milestone_ids: list[UUID]
     planned_work_ref: dict[str, Any]
     work_performed: str
     results: str

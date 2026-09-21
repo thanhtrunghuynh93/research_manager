@@ -1,6 +1,6 @@
 # Research Management System — Repository Layout
 
-Version 0.4 — 21 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.7, and [use_cases.md](use_cases.md) v0.15
+Version 0.4 — 21 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.8, and [use_cases.md](use_cases.md) v0.16
 
 This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 
@@ -159,7 +159,7 @@ backend/
 │           │                  entering and reading follow membership as well
 │           ├── projects.py    projects, members, decisions, progress — membership has no
 │           │                  router of its own
-│           ├── milestones.py  milestones and tasks
+│           ├── tasks.py       weekly tasks (milestones withdrawn, migration 0026)
 │           ├── reports.py     calendar, periods, obligations, excuse/extend, draft, submit,
 │           │                  versions, revisions — there is no periods.py
 │           ├── artifacts.py   presigned upload, confirm, links, versions, download (REP-04)
@@ -322,7 +322,7 @@ frontend/
     │   ├── people/            the roll across every workspace the professor belongs to, grouped
     │   │                      by workspace: invite, move, suspend, restore, remove (AUTH-01, UI-08)
     │   ├── projects/          the project list and the project workspace: create, activate,
-    │                          assign a student, milestones, decisions (PROJ-01, UI-03)
+    │                          assign a student, end a membership, documents (PROJ-01, UI-03)
     │   ├── students/          research profile (UI-04)
     │   ├── report/            weekly package editor: a tab per required project, EntryForm,
     │   │                      Attachments, AutosaveIndicator

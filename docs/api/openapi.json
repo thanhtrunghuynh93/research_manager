@@ -1348,14 +1348,6 @@
             ],
             "title": "Hours"
           },
-          "milestone_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Milestone Ids",
-            "type": "array"
-          },
           "next_plan": {
             "additionalProperties": true,
             "title": "Next Plan",
@@ -1436,14 +1428,6 @@
             "title": "Id",
             "type": "string"
           },
-          "milestone_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Milestone Ids",
-            "type": "array"
-          },
           "next_plan": {
             "additionalProperties": true,
             "title": "Next Plan",
@@ -1486,7 +1470,6 @@
           "report_version_id",
           "project_id",
           "stage",
-          "milestone_ids",
           "planned_work_ref",
           "work_performed",
           "results",
@@ -2344,398 +2327,6 @@
         "title": "MessageRole",
         "type": "string"
       },
-      "MilestoneIn": {
-        "properties": {
-          "contributor_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Contributor Ids",
-            "type": "array"
-          },
-          "description": {
-            "default": "",
-            "title": "Description",
-            "type": "string"
-          },
-          "owner_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Owner Id"
-          },
-          "success_criteria": {
-            "default": "",
-            "title": "Success Criteria",
-            "type": "string"
-          },
-          "target_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target On"
-          },
-          "title": {
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "weight": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "default": "1",
-            "title": "Weight"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "title": "MilestoneIn",
-        "type": "object"
-      },
-      "MilestoneOut": {
-        "properties": {
-          "accepted_completion": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Accepted Completion",
-            "type": "string"
-          },
-          "contributor_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Contributor Ids",
-            "type": "array"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "owner_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Owner Id"
-          },
-          "project_id": {
-            "format": "uuid",
-            "title": "Project Id",
-            "type": "string"
-          },
-          "revision_no": {
-            "title": "Revision No",
-            "type": "integer"
-          },
-          "status": {
-            "$ref": "#/components/schemas/MilestoneStatus"
-          },
-          "success_criteria": {
-            "title": "Success Criteria",
-            "type": "string"
-          },
-          "target_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target On"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "weight": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Weight",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "project_id",
-          "title",
-          "description",
-          "contributor_ids",
-          "status",
-          "success_criteria",
-          "weight",
-          "accepted_completion",
-          "revision_no",
-          "created_at"
-        ],
-        "title": "MilestoneOut",
-        "type": "object"
-      },
-      "MilestonePatch": {
-        "description": "A change that alters scope, weight, or criteria keeps the previous revision (PROJ-06).",
-        "properties": {
-          "accepted_completion": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Accepted Completion"
-          },
-          "change_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Change Reason"
-          },
-          "contributor_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contributor Ids"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "owner_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Owner Id"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MilestoneStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "success_criteria": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Success Criteria"
-          },
-          "target_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target On"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "maxLength": 300,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          },
-          "weight": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weight"
-          }
-        },
-        "title": "MilestonePatch",
-        "type": "object"
-      },
-      "MilestoneRevisionOut": {
-        "properties": {
-          "accepted_completion": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Accepted Completion",
-            "type": "string"
-          },
-          "change_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Change Reason"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "milestone_id": {
-            "format": "uuid",
-            "title": "Milestone Id",
-            "type": "string"
-          },
-          "revision_no": {
-            "title": "Revision No",
-            "type": "integer"
-          },
-          "status": {
-            "$ref": "#/components/schemas/MilestoneStatus"
-          },
-          "success_criteria": {
-            "title": "Success Criteria",
-            "type": "string"
-          },
-          "target_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target On"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "weight": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Weight",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "milestone_id",
-          "revision_no",
-          "title",
-          "success_criteria",
-          "weight",
-          "accepted_completion",
-          "status",
-          "created_at"
-        ],
-        "title": "MilestoneRevisionOut",
-        "type": "object"
-      },
-      "MilestoneStatus": {
-        "enum": [
-          "planned",
-          "in_progress",
-          "at_risk",
-          "completed",
-          "cancelled"
-        ],
-        "title": "MilestoneStatus",
-        "type": "string"
-      },
       "MoveStudentIn": {
         "description": "Where to move a student to. Only a student who has not started work can be moved.",
         "properties": {
@@ -3536,54 +3127,6 @@
           }
         },
         "title": "ProjectPatch",
-        "type": "object"
-      },
-      "ProjectProgressOut": {
-        "description": "PROJ-06: completion from professor-defined weights, never from student scores.",
-        "properties": {
-          "completed_milestones": {
-            "title": "Completed Milestones",
-            "type": "integer"
-          },
-          "milestone_count": {
-            "title": "Milestone Count",
-            "type": "integer"
-          },
-          "open_blockers": {
-            "title": "Open Blockers",
-            "type": "integer"
-          },
-          "overdue_milestones": {
-            "title": "Overdue Milestones",
-            "type": "integer"
-          },
-          "project_id": {
-            "format": "uuid",
-            "title": "Project Id",
-            "type": "string"
-          },
-          "weighted_completion": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weighted Completion"
-          }
-        },
-        "required": [
-          "project_id",
-          "milestone_count",
-          "weighted_completion",
-          "completed_milestones",
-          "overdue_milestones",
-          "open_blockers"
-        ],
-        "title": "ProjectProgressOut",
         "type": "object"
       },
       "ProjectStatus": {
@@ -4394,18 +3937,6 @@
             "default": "1",
             "title": "Effort Weight"
           },
-          "milestone_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Milestone Id"
-          },
           "planned_outcome": {
             "default": "",
             "title": "Planned Outcome",
@@ -4490,18 +4021,6 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
-          },
-          "milestone_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Milestone Id"
           },
           "planned_outcome": {
             "title": "Planned Outcome",
@@ -4612,18 +4131,6 @@
               }
             ],
             "title": "Effort Weight"
-          },
-          "milestone_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Milestone Id"
           },
           "planned_outcome": {
             "anyOf": [
@@ -7005,106 +6512,6 @@
         ]
       }
     },
-    "/api/v1/milestones/{milestone_id}": {
-      "patch": {
-        "operationId": "update_milestone_api_v1_milestones__milestone_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "milestone_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Milestone Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MilestonePatch"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MilestoneOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update a milestone",
-        "tags": [
-          "milestones"
-        ]
-      }
-    },
-    "/api/v1/milestones/{milestone_id}/revisions": {
-      "get": {
-        "operationId": "list_milestone_revisions_api_v1_milestones__milestone_id__revisions_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "milestone_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Milestone Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/MilestoneRevisionOut"
-                  },
-                  "title": "Response List Milestone Revisions Api V1 Milestones  Milestone Id  Revisions Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "The retained baselines of a milestone",
-        "tags": [
-          "milestones"
-        ]
-      }
-    },
     "/api/v1/notifications/reminder-offsets": {
       "put": {
         "operationId": "set_reminder_offsets_api_v1_notifications_reminder_offsets_put",
@@ -8257,147 +7664,6 @@
         ]
       }
     },
-    "/api/v1/projects/{project_id}/milestones": {
-      "get": {
-        "operationId": "list_milestones_api_v1_projects__project_id__milestones_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/MilestoneOut"
-                  },
-                  "title": "Response List Milestones Api V1 Projects  Project Id  Milestones Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List milestones",
-        "tags": [
-          "milestones"
-        ]
-      },
-      "post": {
-        "operationId": "create_milestone_api_v1_projects__project_id__milestones_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MilestoneIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MilestoneOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create a milestone",
-        "tags": [
-          "milestones"
-        ]
-      }
-    },
-    "/api/v1/projects/{project_id}/progress": {
-      "get": {
-        "operationId": "project_progress_api_v1_projects__project_id__progress_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProjectProgressOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Milestone-weighted project progress",
-        "tags": [
-          "projects"
-        ]
-      }
-    },
     "/api/v1/projects/{project_id}/tasks": {
       "get": {
         "operationId": "list_tasks_api_v1_projects__project_id__tasks_get",
@@ -8410,23 +7676,6 @@
               "format": "uuid",
               "title": "Project Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "milestone_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Milestone Id"
             }
           }
         ],
@@ -8458,7 +7707,7 @@
         },
         "summary": "List tasks",
         "tags": [
-          "milestones"
+          "tasks"
         ]
       },
       "post": {
@@ -8509,7 +7758,7 @@
         },
         "summary": "Create a task",
         "tags": [
-          "milestones"
+          "tasks"
         ]
       }
     },
@@ -9129,7 +8378,7 @@
         },
         "summary": "Update a task or report progress on it",
         "tags": [
-          "milestones"
+          "tasks"
         ]
       }
     },

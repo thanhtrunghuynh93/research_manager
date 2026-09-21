@@ -1,6 +1,6 @@
 # How professor, student, workspace, project and reports are organized
 
-Version 0.2 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.7, [architecture.md](architecture.md) v0.5, [use_cases.md](use_cases.md) v0.15, and the [ADRs](adr/)
+Version 0.3 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.8, [architecture.md](architecture.md) v0.5, [use_cases.md](use_cases.md) v0.16, and the [ADRs](adr/)
 
 This document is an orientation to the central relations: what belongs to what, which of those
 relations are plural, and where each one is enforced. It is derived from the documents above and
@@ -144,7 +144,7 @@ is attributed from it (PROJ-01).
   ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)).
 - **A membership is the entire grant of access to a project.** The predicate is same workspace and
   `project_id IN scope.project_ids`, with no second gate, so joining hands over the project record,
-  its milestones, its tasks — including the free-text blockers and completion reasons another
+  its tasks — including the free-text blockers and completion reasons another
   student wrote — its research decisions, its repositories, its shared evidence, and the member
   list, which is otherwise the only route by which one student learns another's name. That is why
   `open_to_join` defaults false and discovery is a separate, narrower read returning title, stage,
@@ -188,7 +188,7 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
 - **Change is tracked per entry.** `content_hash` over the canonical entry JSON decides whether
   `content_changed_in_version_id` is carried forward, so a resubmission after a revision request on
   one of two entries re-assesses only the entry that changed (ASSESS-09, AC-17).
-- **The template asks three questions, not five** (REP-03): stage and milestone, planned work,
+- **The template asks three questions, not five** (REP-03): stage, planned work,
   **Progress** — work, results and findings including negative ones — **Evidence**, experiments
   where applicable, **Challenges** — deviations, blockers and the questions they raise — and next
   steps. The `results` and `questions` columns remain because a week filed under the older template
@@ -231,9 +231,9 @@ the product does, so those are no longer divergences at all.
 
 - Moving a student who has written anything is refused, by the constraint set rather than by a check
   (§2).
-- Milestone completion and dated decisions are computed and stored but shown on no screen, because
-  nothing writes what they would show — `accepted_completion` and `POST /{id}/decisions` have no
-  authoring screen (UI-03, amended).
+- Dated decisions are stored and shown on no screen, because `POST /{id}/decisions` has no caller
+  (UI-03, amended). Milestones had the same problem and were withdrawn outright instead
+  (requirements 0.8, migration 0026).
 - A finished project leaves a student's week silently: the obligation is filtered rather than
   excused, so nothing on `/me` names the project that stopped owing
   ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).

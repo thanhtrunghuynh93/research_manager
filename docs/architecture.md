@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.5 — 21 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.7
+Version 0.5 — 21 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.8
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -91,7 +91,7 @@ backend/
   app/
     core/           config, db session, migrations hook, authz (Scope, visible_to), audit, jobs (procrastinate app), clock
     identity/       users, invitations, sessions, break-glass CLI
-    projects/       projects, memberships, milestones, tasks, plan_baselines
+    projects/       projects, memberships, tasks, plan_baselines
     reporting/      reporting_periods, obligations, weekly_reports, report_versions, entries, artifacts
     evidence/       repositories, connectors/{base,github}.py, developer_identities, repository_events, contributions,
                     evidence_references, index/ (chunking, embeddings, fts)
@@ -120,7 +120,7 @@ A module reads another module's data only through that module's `service.py`; it
 | --- | --- | --- |
 | `/overview` | Professor overview: current week, missing/late, review queue, attention list, sync issues | UI-01 |
 | `/me` | Student overview: obligations, draft state, next deadline, released feedback, timeline | UI-02 |
-| `/projects/:id` | Project workspace: goals, members, related documents, repositories; stage and milestones are the professor's view only. Milestone completion and decisions are not shown — neither has a screen that writes it (use_cases.md §2.3) | UI-03 |
+| `/projects/:id` | Project workspace: goals, members, related documents, repositories; the stage is the professor's view only. Milestone completion and decisions are not shown — neither has a screen that writes it (use_cases.md §2.3) | UI-03 |
 | `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
 | `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left, and the professor's revision request | REP-02, REP-05, UI-04 |
 | `/people` | The roll across every workspace the professor belongs to, grouped by workspace: invite, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
@@ -141,7 +141,7 @@ A module reads another module's data only through that module's `service.py`; it
 | Group | Tables |
 | --- | --- |
 | Identity | `workspaces`, `workspace_members`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
-| Projects | `projects`, `project_memberships`, `milestones`, `milestone_revisions`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
+| Projects | `projects`, `project_memberships`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
 | Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
 | Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `webhook_deliveries`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
 | Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `feedback`, `supervision_notes` |
@@ -178,7 +178,7 @@ Constraint `uq_report`: unique `(student_id, period_id)`. `first_submitted_at` i
 **report_versions** — `id, workspace_id, report_id, version_no INT, author_id, submitted_at, idempotency_key TEXT, timing_status ENUM(on_time, late, excused)`
 Constraints `uq_report_version (report_id, version_no)`, `uq_report_idem (report_id, idempotency_key)`. Immutable (section 5.3).
 
-**project_report_entries** — `id, workspace_id, report_version_id, project_id, stage, milestone_ids UUID[], planned_work_ref, work_performed TEXT, results TEXT, experiments JSONB, deviations TEXT, next_plan JSONB, questions TEXT, evidence_refs JSONB, hours NUMERIC NULL, content_hash BYTEA, content_changed_in_version_id`
+**project_report_entries** — `id, workspace_id, report_version_id, project_id, stage, planned_work_ref, work_performed TEXT, results TEXT, experiments JSONB, deviations TEXT, next_plan JSONB, questions TEXT, evidence_refs JSONB, hours NUMERIC NULL, content_hash BYTEA, content_changed_in_version_id`
 Constraint `uq_entry (report_version_id, project_id)`. `content_hash` is SHA-256 over the canonical JSON of the entry fields excluding `hours`. On resubmission, if the hash equals the previous version's entry, `content_changed_in_version_id` is copied forward; otherwise it is set to the new version. Immutable.
 
 **plan_baselines** — `id, workspace_id, membership_id, period_id, version_no INT, state ENUM(frozen, empty, proposed, accepted, superseded), frozen_at, source_entry_id NULL, change_reason TEXT NULL, proposed_by NULL, approved_by NULL, approved_at NULL`
@@ -286,7 +286,7 @@ Every repository function accepts `scope` and applies `visible_to(scope, Model)`
 | Artifact — a project document (no period, no entry) | All in workspace | `project_id IN scope.project_ids` ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)) |
 | Assessment version | All | Own, and only where an `approved` review exists |
 | Supervision note | All (co-supervisors share; `author_id` says whose) | Never |
-| Project, milestone, decision | All | `project_id IN scope.project_ids` |
+| Project, task, decision | All | `project_id IN scope.project_ids` |
 | Evidence chunk | All except none | `visibility = 'project_shared' AND project_id IN scope.project_ids` OR `owner_student_id = scope.user_id` |
 | Repository event | All | Own attributed contributions only |
 
@@ -631,10 +631,10 @@ class EmailSender(Protocol):
 | AUTH-07 | 5.1 (`projects.created_by`), 6.3 |
 | PROJ-01 | 5.1 |
 | PROJ-02 | 5.2 (`project_memberships`), 7.1 |
-| PROJ-03 | 5.1 (`milestones`, `tasks`), 5.5 |
+| PROJ-03 | 5.1 (`tasks`), 5.5; milestones withdrawn in requirements 0.8 |
 | PROJ-04 | 5.2 (`plan_baselines`), 5.5 |
 | PROJ-05 | 9.3, 9.4 (`rubric_versions.stage_applicability`) |
-| PROJ-06 | 4.2 (`/projects/:id`), 5.5, 9.5 |
+| PROJ-06 | Withdrawn in requirements 0.8 with the milestones it computed from (migration 0026) |
 | PROJ-07 | 5.1 (`projects.open_to_join`, `project_memberships.origin`), 6.3, 4.2 (`/projects`) |
 | REP-01 | 5.2 (`calendar_configs`, `reporting_periods`), 7.1 |
 | REP-02 | 5.2 (`weekly_reports`, `project_report_entries`), 14 |

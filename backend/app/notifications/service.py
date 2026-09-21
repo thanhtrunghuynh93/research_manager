@@ -48,7 +48,6 @@ DEADLINE_APPROACHING = "deadline_approaching"
 MISSED_DEADLINE = "missed_deadline"
 UNFULFILLED_OBLIGATIONS = "unfulfilled_obligations"
 ASSESSMENT_RELEASED = "assessment_released"
-MILESTONE_OVERDUE = "milestone_overdue"
 SYNC_FAILED = "sync_failed"
 
 MISSED_DEADLINE_TEMPLATE = "missed_deadline"

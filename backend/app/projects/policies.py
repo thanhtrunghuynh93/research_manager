@@ -15,7 +15,6 @@ from sqlalchemy.sql import ColumnElement
 from app.core.authz import Scope, register_policy, register_project_ids_loader
 from app.identity import service as identity_service
 from app.projects.models import (
-    Milestone,
     PlanBaseline,
     Project,
     ProjectMembership,
@@ -25,7 +24,7 @@ from app.projects.models import (
 
 
 def _in_scope(
-    model: type[Project] | type[Milestone] | type[Task] | type[ResearchDecision], scope: Scope
+    model: type[Project] | type[Task] | type[ResearchDecision], scope: Scope
 ) -> ColumnElement[bool]:
     """The project a row belongs to must be one the caller may see."""
     project_column = Project.id if model is Project else model.project_id  # type: ignore[union-attr]
@@ -39,8 +38,8 @@ def _in_scope(
 def project_visible_to(scope: Scope) -> ColumnElement[bool]:
     """Who may read a project *record*: a member, its creator (AUTH-07), and anyone who was on it.
 
-    The extra terms are on `Project` alone and not in `_in_scope`, which `Milestone`, `Task` and
-    `ResearchDecision` share: widening it there would hand a non-member every milestone and every
+    The extra terms are on `Project` alone and not in `_in_scope`, which `Task` and
+    `ResearchDecision` share: widening it there would hand a non-member every task and every
     decision in the workspace in the same edit. Here each grants exactly the row a person is
     entitled to — the creator's, because they may change fields they must be able to read; and a
     past member's, because their own history refers to it.
@@ -48,7 +47,7 @@ def project_visible_to(scope: Scope) -> ColumnElement[bool]:
     That last term is the one to read against AUTH-03, which says ending a membership "must
     invalidate subsequent access" and, in the same breath, "preserve historical records for
     authorized supervision". The access AUTH-03 is protecting is the project's *ongoing work* —
-    its milestones, its tasks including another student's blockers, its decisions, its evidence and
+    its tasks including another student's blockers, its decisions, its evidence and
     the identity of everyone on it — and `scope.project_ids` still gates every one of those, which
     is what §8.4 means by a membership being the entire grant. What it does not need to protect is
     the title of a project a student spent a term on: without it their own retained records — a
@@ -70,11 +69,6 @@ def project_visible_to(scope: Scope) -> ColumnElement[bool]:
             Project.id.in_(was_ever_on),
         ),
     )
-
-
-@register_policy(Milestone)
-def milestone_visible_to(scope: Scope) -> ColumnElement[bool]:
-    return _in_scope(Milestone, scope)
 
 
 @register_policy(Task)

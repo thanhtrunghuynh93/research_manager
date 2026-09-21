@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.8 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.7, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.15
+Version 0.9 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.8, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.16
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -27,8 +27,8 @@ Counted from the tree rather than remembered, and checked by `scripts/check_docs
 
 | Counted | Value |
 | --- | --- |
-| Alembic migrations | 25 |
-| `/api/v1` endpoints | 96 (94 in the schema, 2 `include_in_schema=False`) |
+| Alembic migrations | 26 |
+| `/api/v1` endpoints | 91 (89 in the schema, 2 `include_in_schema=False`) |
 | ADRs | 19 |
 | Acceptance scenarios with a test | 19 of 19 |
 | Import-linter contracts holding | 5 of 5 |
@@ -45,7 +45,8 @@ Four changes went out together, and the shape worth recording is that two of the
 Switching workspaces moved from `/workspaces` into the header, where every screen can reach it.
 The project screen lost milestone completion and dated decisions — both computed, both shown, and
 neither writable by any screen, so completion read 0% for every project as though that were a
-finding — and gained related documents, which is PROJ-01's "shared resources" built at last
+finding; milestones were withdrawn outright the same day (requirements 0.8, migration 0026) — and
+gained related documents, which is PROJ-01's "shared resources" built at last
 ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)). Ending a membership
 became the professor's ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 
@@ -148,11 +149,11 @@ later lets a cached answer be refused.
 `app.cli identity bootstrap` creates the workspace and its professor; without it there was no way
 to get a first account, and the deploy runbook now names it.
 
-### Step 3 — `projects/` and `reporting/` (PROJ-01..06, REP-01..06)
+### Step 3 — `projects/` and `reporting/` (PROJ-01..05, PROJ-07, REP-01..06)
 
 Projects with research questions, stages and statuses; membership history that is never deleted;
-milestones whose baselines are retained as immutable revisions when scope or weight changes; tasks
-whose partial completion must carry a reason; dated research decisions.
+tasks whose partial completion must carry a reason; dated research decisions. Milestones were here
+too, and are not: nothing ever created one, so migration 0026 removed them (requirements 0.8).
 
 The reporting calendar generates periods, derives obligations from membership dates and project
 status, and records exemptions and extensions. Drafts autosave. Submission writes an immutable

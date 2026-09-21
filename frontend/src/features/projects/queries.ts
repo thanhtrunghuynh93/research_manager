@@ -5,7 +5,6 @@ import { putWithProgress, sha256, type Sending, type UploadGrant } from "@/lib/u
 import type {
   JoinableProject,
   MembershipIn,
-  Milestone,
   Project,
   ProjectIn,
   ProjectMember,
@@ -34,14 +33,6 @@ export function useMembers(id: string | undefined, wanted = true) {
   return useQuery({
     queryKey: [...projectKey(id ?? ""), "members"],
     queryFn: () => api.get<ProjectMember[]>(`/api/v1/projects/${id}/members?include_past=true`),
-    enabled: Boolean(id) && wanted,
-  });
-}
-
-export function useMilestones(id: string | undefined, wanted = true) {
-  return useQuery({
-    queryKey: [...projectKey(id ?? ""), "milestones"],
-    queryFn: () => api.get<Milestone[]>(`/api/v1/projects/${id}/milestones`),
     enabled: Boolean(id) && wanted,
   });
 }

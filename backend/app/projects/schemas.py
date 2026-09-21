@@ -12,7 +12,6 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstra
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.projects.models import BaselineState as BaselineState
 from app.projects.models import MembershipOrigin as MembershipOrigin
-from app.projects.models import MilestoneStatus as MilestoneStatus
 from app.projects.models import ProjectStatus as ProjectStatus
 from app.projects.models import ResearchStage as ResearchStage
 from app.projects.models import TaskStatus as TaskStatus
@@ -155,71 +154,11 @@ class MembershipEndIn(BaseModel):
     left_on: date | None = None
 
 
-class MilestoneOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    project_id: UUID
-    title: str
-    description: str
-    owner_id: UUID | None = None
-    contributor_ids: list[UUID]
-    target_on: date | None = None
-    status: MilestoneStatus
-    success_criteria: str
-    weight: Decimal
-    accepted_completion: Decimal
-    revision_no: int
-    created_at: datetime
-
-
-class MilestoneIn(BaseModel):
-    title: str = Field(min_length=1, max_length=300)
-    description: str = ""
-    owner_id: UUID | None = None
-    contributor_ids: list[UUID] = Field(default_factory=list)
-    target_on: date | None = None
-    success_criteria: str = ""
-    weight: Decimal = Field(default=Decimal(1), ge=0)
-
-
-class MilestonePatch(BaseModel):
-    """A change that alters scope, weight, or criteria keeps the previous revision (PROJ-06)."""
-
-    title: str | None = Field(default=None, min_length=1, max_length=300)
-    description: str | None = None
-    owner_id: UUID | None = None
-    contributor_ids: list[UUID] | None = None
-    target_on: date | None = None
-    status: MilestoneStatus | None = None
-    success_criteria: str | None = None
-    weight: Decimal | None = Field(default=None, ge=0)
-    accepted_completion: Decimal | None = Field(default=None, ge=0, le=1)
-    change_reason: str | None = None
-
-
-class MilestoneRevisionOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    milestone_id: UUID
-    revision_no: int
-    title: str
-    success_criteria: str
-    target_on: date | None = None
-    weight: Decimal
-    accepted_completion: Decimal
-    status: MilestoneStatus
-    change_reason: str | None = None
-    created_at: datetime
-
-
 class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     project_id: UUID
-    milestone_id: UUID | None = None
     assignee_id: UUID | None = None
     title: str
     planned_outcome: str
@@ -234,7 +173,6 @@ class TaskOut(BaseModel):
 
 class TaskIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
-    milestone_id: UUID | None = None
     assignee_id: UUID | None = None
     planned_outcome: str = ""
     acceptance_criteria: str = ""
@@ -243,7 +181,6 @@ class TaskIn(BaseModel):
 
 class TaskPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
-    milestone_id: UUID | None = None
     assignee_id: UUID | None = None
     planned_outcome: str | None = None
     acceptance_criteria: str | None = None
@@ -273,17 +210,6 @@ class ResearchDecisionIn(BaseModel):
     decided_on: date | None = None
     participant_ids: list[UUID] = Field(default_factory=list)
     related_evidence: dict[str, Any] = Field(default_factory=dict)
-
-
-class ProjectProgressOut(BaseModel):
-    """PROJ-06: completion from professor-defined weights, never from student scores."""
-
-    project_id: UUID
-    milestone_count: int
-    weighted_completion: Decimal | None
-    completed_milestones: int
-    overdue_milestones: int
-    open_blockers: int
 
 
 class PlanBaselineItemOut(BaseModel):

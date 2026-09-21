@@ -19,7 +19,6 @@ from app.projects.schemas import (
     ProjectIn,
     ProjectOut,
     ProjectPatch,
-    ProjectProgressOut,
     ProjectStatus,
     ResearchDecisionIn,
     ResearchDecisionOut,
@@ -79,13 +78,6 @@ async def update_project(
     return await service.update_project(
         session, scope, project_id, **payload.model_dump(exclude_unset=True)
     )
-
-
-@router.get("/{project_id}/progress", summary="Milestone-weighted project progress")
-async def project_progress(
-    project_id: UUID, scope: ScopeDep, session: SessionDep
-) -> ProjectProgressOut:
-    return await service.project_progress(session, scope, project_id)
 
 
 @router.get("/{project_id}/members", summary="List project members")

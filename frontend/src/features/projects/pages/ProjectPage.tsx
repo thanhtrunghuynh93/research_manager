@@ -1,17 +1,14 @@
 /**
- * UI-03: the project workspace — goals, members and milestones.
+ * UI-03: the project workspace — goals, members, and the documents the project shares.
  *
  * Membership history is shown rather than hidden: a project's record includes who worked on it
  * and when, and deleting that would make the supervision history unreadable (PROJ-02).
  *
- * Two panels UI-03 names are deliberately absent, and both for the same reason — nothing in the
- * product writes what they would show. **Milestone completion** was milestone weights against
- * `accepted_completion`, a column only `PATCH /milestones/{id}` sets and no screen calls, so it
- * read 0% for every project in the deployment and read it as a fact. **Research decisions** is
- * professor-only to record and likewise has no screen, so the panel said "No decisions recorded"
- * about projects whose decisions had simply never had anywhere to go. `GET /{id}/progress` and
- * `GET /{id}/decisions` still answer, and both panels are a screen's worth of work away the day
- * the authoring side exists.
+ * **Research decisions** are recorded and not shown, because only `POST /{id}/decisions` writes
+ * one and no screen calls it; the panel said "No decisions recorded" about projects whose
+ * decisions had never had anywhere to go. Milestones went further and are gone from the product
+ * altogether (migration 0026): nothing wrote them either, and a completion figure computed from
+ * an unwritable column read 0% for every project as though that were a finding.
  */
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
@@ -25,16 +22,8 @@ import {
   ProjectFieldsForm,
   StatusControls,
 } from "@/features/projects/components/ProjectControls";
-import { useMembers, useMilestones, useProject } from "@/features/projects/queries";
-import type { Milestone } from "@/features/projects/types";
+import { useMembers, useProject } from "@/features/projects/queries";
 import { formatLocalDate } from "@/lib/dates";
-
-/** A milestone at risk or cancelled is not the same as one merely planned, and reads differently. */
-function milestoneTone(status: Milestone["status"]): "good" | "warn" | "neutral" | "bad" {
-  if (status === "completed") return "good";
-  if (status === "at_risk") return "warn";
-  return "neutral";
-}
 
 export function ProjectPage() {
   const { t } = useTranslation();
@@ -44,10 +33,10 @@ export function ProjectPage() {
   // The route is signed-in, not professor-only: a student member can open their own project.
   const isProf = session.data?.role === "prof";
   // A student who has left keeps the record — their reports and assessments still refer to it —
-  // but not what the project is doing now: `_in_scope` still gates the milestones and the member
-  // list. Those queries therefore answer empty rather than forbidden, and an empty list rendered
-  // as "No milestones yet" would state something this reader cannot actually know. So the page
-  // shows what it has and says plainly what it is not showing.
+  // but not what the project is doing now: `_in_scope` still gates the member list and the
+  // documents. Those queries therefore answer empty rather than forbidden, and an empty list
+  // rendered as "Nothing attached yet" would state something this reader cannot actually know.
+  // So the page shows what it has and says plainly what it is not showing.
   const left = !isProf && project.data?.viewer_left_on ? project.data.viewer_left_on : null;
   // And asks for none of it: a request answered and then discarded is the shape of a screen that
   // decided what to show after deciding what to fetch. They wait for the project rather than
@@ -55,7 +44,6 @@ export function ProjectPage() {
   // `viewer_left_on` is the field that decides.
   const wanted = Boolean(project.data) && !left;
   const members = useMembers(id, wanted);
-  const milestones = useMilestones(id, wanted && session.data?.role === "prof");
 
   if (project.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (project.isError)
@@ -166,36 +154,6 @@ export function ProjectPage() {
             </ul>
             {isProf ? <AddMemberForm project={data} /> : null}
           </div>
-
-          {isProf && (
-            <div>
-              <h2 className="section-title mb-2.5">{t("project.milestones")}</h2>
-              <ul className="panel">
-                {milestones.data?.map((milestone) => (
-                  <li key={milestone.id} className="row">
-                    <span>
-                      {milestone.title}
-                      {milestone.target_on ? (
-                        <span className="ml-2 font-mono text-meta text-faint">
-                          {formatLocalDate(milestone.target_on)}
-                        </span>
-                      ) : null}
-                    </span>
-                    <Badge tone={milestoneTone(milestone.status)}>
-                      {t(`project.milestoneStatus.${milestone.status}`, {
-                        defaultValue: milestone.status,
-                      })}
-                    </Badge>
-                  </li>
-                ))}
-                {milestones.data?.length === 0 && (
-                  <li className="px-4 py-2.5 text-sm text-muted-foreground">
-                    {t("project.noMilestones")}
-                  </li>
-                )}
-              </ul>
-            </div>
-          )}
 
           {/* A member may attach; a professor may attach and read; a student who has left this
               project never reaches here, because the whole block is withheld from them. */}

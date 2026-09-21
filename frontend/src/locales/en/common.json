@@ -270,8 +270,6 @@
     "members": "Members",
     "noMembers": "Nobody is assigned to this project.",
     "noResponsibility": "No stated responsibility",
-    "milestones": "Milestones",
-    "noMilestones": "No milestones yet.",
     "aiRestricted": "No model processing",
     "stage": {
       "literature_review": "Literature review",
@@ -289,13 +287,6 @@
       "completed": "Completed",
       "archived": "Archived"
     },
-    "milestoneStatus": {
-      "planned": "Planned",
-      "in_progress": "In progress",
-      "at_risk": "At risk",
-      "completed": "Completed",
-      "cancelled": "Cancelled"
-    },
     "activate": "Activate this project",
     "activateNote": "A student owes a weekly report only for an active project. While this one is proposed, assigning someone produces nothing.",
     "setStatus": "Status",
@@ -306,10 +297,10 @@
     "assign": "Assign",
     "noStudents": "No students in this workspace yet — invite one on",
     "openToJoin": "Open to joining",
-    "openToJoinNote": "A student can put themselves on an open project without being assigned. Being on a project shows them its plan, milestones, tasks and decisions, and who else works on it.",
+    "openToJoinNote": "A student can put themselves on an open project without being assigned. Being on a project shows them its plan, tasks, decisions and documents, and who else works on it.",
     "leftOn": "Left {{when}}",
     "backToProjects": "Your projects →",
-    "leftNotice": "You left this project on {{when}}. The record stays readable because your reports and assessments refer to it; its milestones, decisions and members are no longer shown.",
+    "leftNotice": "You left this project on {{when}}. The record stays readable because your reports and assessments refer to it; its tasks, decisions, documents and members are no longer shown.",
     "saveFields": "Save",
     "documents": {
       "title": "Related documents",

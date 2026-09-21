@@ -1,4 +1,4 @@
-"""Project tables: projects, memberships, milestones, tasks, research decisions.
+"""Project tables: projects, memberships, tasks, research decisions.
 
 Requirements PROJ-01..06. Only this module imports these classes; other modules read them through
 projects.service (docs/repo_layout.md §3.2).
@@ -68,14 +68,6 @@ class MembershipOrigin(StrEnum):
     CREATED = "created"
 
 
-class MilestoneStatus(StrEnum):
-    PLANNED = "planned"
-    IN_PROGRESS = "in_progress"
-    AT_RISK = "at_risk"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-
-
 class BaselineState(StrEnum):
     """PROJ-04, architecture §5.5.
 
@@ -107,7 +99,6 @@ def _enum(enum_type: type[StrEnum], name: str) -> Enum:
 STAGE_ENUM = _enum(ResearchStage, "research_stage")
 PROJECT_STATUS_ENUM = _enum(ProjectStatus, "project_status")
 MEMBERSHIP_ORIGIN_ENUM = _enum(MembershipOrigin, "membership_origin")
-MILESTONE_STATUS_ENUM = _enum(MilestoneStatus, "milestone_status")
 TASK_STATUS_ENUM = _enum(TaskStatus, "task_status")
 BASELINE_STATE_ENUM = _enum(BaselineState, "baseline_state")
 
@@ -226,75 +217,18 @@ class ProjectMembership(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class Milestone(UUIDPrimaryKeyMixin, Base):
-    """PROJ-03/PROJ-06: an owned outcome with success criteria, a weight, and accepted progress."""
-
-    __tablename__ = "milestones"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "id"),
-        _workspace_scoped_project_fk(),
-        Index("ix_milestones_project_id_status", "project_id", "status"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    project_id: Mapped[UUID]
-    title: Mapped[str] = mapped_column(Text)
-    description: Mapped[str] = mapped_column(Text, default="")
-    owner_id: Mapped[UUID | None]
-    contributor_ids: Mapped[list[UUID]] = mapped_column(
-        ARRAY(PG_UUID(as_uuid=True)), default=list, server_default="{}"
-    )
-    target_on: Mapped[date | None]
-    status: Mapped[MilestoneStatus] = mapped_column(
-        MILESTONE_STATUS_ENUM, default=MilestoneStatus.PLANNED
-    )
-    success_criteria: Mapped[str] = mapped_column(Text, default="")
-    # PROJ-06: project completion is computed from these weights and accepted fractions, never
-    # from average student scores.
-    weight: Mapped[float] = mapped_column(Numeric(6, 2), default=1)
-    accepted_completion: Mapped[float] = mapped_column(Numeric(3, 2), default=0)
-    revision_no: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
-
-
-class MilestoneRevision(UUIDPrimaryKeyMixin, Base):
-    """PROJ-06: the baseline kept when milestone scope or weights change. Immutable."""
-
-    __tablename__ = "milestone_revisions"
-    __table_args__ = (
-        UniqueConstraint("milestone_id", "revision_no"),
-        Index("ix_milestone_revisions_milestone_id", "milestone_id"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    milestone_id: Mapped[UUID]
-    revision_no: Mapped[int] = mapped_column(Integer)
-    title: Mapped[str] = mapped_column(Text)
-    success_criteria: Mapped[str] = mapped_column(Text, default="")
-    target_on: Mapped[date | None]
-    weight: Mapped[float] = mapped_column(Numeric(6, 2))
-    accepted_completion: Mapped[float] = mapped_column(Numeric(3, 2))
-    status: Mapped[MilestoneStatus] = mapped_column(MILESTONE_STATUS_ENUM)
-    change_reason: Mapped[str | None] = mapped_column(Text)
-    changed_by: Mapped[UUID | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
 class Task(UUIDPrimaryKeyMixin, Base):
-    """PROJ-03: weekly work linked to a milestone, with effort weight and completion criteria."""
+    """PROJ-03: weekly work with an effort weight and completion criteria."""
 
     __tablename__ = "tasks"
     __table_args__ = (
         UniqueConstraint("workspace_id", "id"),
         _workspace_scoped_project_fk(),
         Index("ix_tasks_project_id_status", "project_id", "status"),
-        Index("ix_tasks_milestone_id", "milestone_id"),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     project_id: Mapped[UUID]
-    milestone_id: Mapped[UUID | None]
     assignee_id: Mapped[UUID | None]
     title: Mapped[str] = mapped_column(Text)
     planned_outcome: Mapped[str] = mapped_column(Text, default="")

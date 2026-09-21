@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import AuditEvent
 from app.core.authz import Scope
 from app.core.clock import local_date, now
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.core.types import Role
 from app.identity import models as identity_models
 from app.identity import service as identity_service
@@ -137,7 +137,6 @@ async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
     """
     project = await _project(db, prof_scope)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
-    await service.create_milestone(db, prof_scope, project.id, title="Baseline reproduced")
     await service.record_decision(
         db, prof_scope, project.id, decision="Freeze the split", rationale="Comparability"
     )
@@ -151,10 +150,10 @@ async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
     assert record.viewer_left_on == _workspace_today()
 
     # But nothing of what the project is currently doing: `_in_scope` is untouched, so the
-    # milestones and decisions a membership grants stay behind with the membership (§8.4).
+    # decisions and tasks a membership grants stay behind with the membership (§8.4).
     assert scope.project_ids == frozenset(), "the work is still revoked"
-    assert await service.list_milestones(db, scope, project.id) == []
     assert await service.list_decisions(db, scope, project.id) == []
+    assert await service.list_tasks(db, scope, project.id) == []
 
 
 async def test_a_project_never_worked_on_stays_invisible(
@@ -401,15 +400,15 @@ async def test_joining_grants_the_projects_shared_records(
     fixtures for it live (`test_plan_baselines.py`, `tests/authz/`).
     """
     project = await _open_project(db, prof_scope)
-    await service.create_milestone(
-        db, prof_scope, project.id, title="First ablation", target_on=date(2026, 10, 1)
+    await service.record_decision(
+        db, prof_scope, project.id, decision="Freeze the split", rationale="Comparability"
     )
 
     await service.join_project(db, student_b_scope, project.id)
 
     scope = await identity_service.scope_for(db, student_b)
-    assert [m.title for m in await service.list_milestones(db, scope, project.id)] == [
-        "First ablation"
+    assert [d.decision for d in await service.list_decisions(db, scope, project.id)] == [
+        "Freeze the split"
     ]
 
 

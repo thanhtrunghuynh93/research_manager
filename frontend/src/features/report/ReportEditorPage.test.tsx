@@ -386,7 +386,6 @@ test("a week already submitted reopens with what was submitted, not with empty b
             report_version_id: "v1",
             project_id: "pr1",
             stage: "implementation",
-            milestone_ids: [],
             planned_work_ref: {},
             work_performed: "Reproduced the published split sizes.",
             results: "nDCG within 0.01 of the paper.",

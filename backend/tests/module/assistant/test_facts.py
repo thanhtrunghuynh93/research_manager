@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assistant import facts
 from app.core.authz import Scope
+from app.core.clock import now
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -21,7 +22,12 @@ from app.reporting import service as reporting_service
 
 pytestmark = pytest.mark.module
 
-AFTER_THE_WEEK = datetime(2026, 9, 21, 3, 0, tzinfo=UTC)
+# The instant these questions are asked from: after the reporting week the fixtures build, and
+# after whatever the clock says now, because the submissions in each test are written at the real
+# current time. Pinned to a date, this was a time bomb — it was 2026-09-21T03:00Z, and on the
+# morning of 21 September the clock passed it, so `submitted_at <= as_of` began excluding the
+# test's own submissions and `timing_counts` answered with nothing.
+AFTER_THE_WEEK = max(datetime(2026, 9, 21, 3, 0, tzinfo=UTC), now() + timedelta(hours=1))
 
 
 async def _week(

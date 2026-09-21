@@ -25,8 +25,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UUIDPrimaryKeyMixin
@@ -239,9 +238,6 @@ class ProjectReportEntry(UUIDPrimaryKeyMixin, Base):
     report_version_id: Mapped[UUID]
     project_id: Mapped[UUID]
     stage: Mapped[str] = mapped_column(Text)
-    milestone_ids: Mapped[list[UUID]] = mapped_column(
-        ARRAY(PG_UUID(as_uuid=True)), default=list, server_default="{}"
-    )
     planned_work_ref: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     work_performed: Mapped[str] = mapped_column(Text, default="")
     results: Mapped[str] = mapped_column(Text, default="")

@@ -16,8 +16,6 @@ from app.identity.models import User
 from app.projects.models import (
     BaselineState,
     MembershipOrigin,
-    Milestone,
-    MilestoneRevision,
     PlanBaseline,
     PlanBaselineItem,
     Project,
@@ -271,60 +269,10 @@ async def memberships_active_in_range(
     )
 
 
-async def get_milestone(
-    session: AsyncSession, scope: Scope, milestone_id: UUID
-) -> Milestone | None:
-    return (
-        await session.execute(
-            select(Milestone).where(Milestone.id == milestone_id, visible_to(scope, Milestone))
-        )
-    ).scalar_one_or_none()
-
-
-async def list_milestones(session: AsyncSession, scope: Scope, project_id: UUID) -> list[Milestone]:
-    return list(
-        (
-            await session.execute(
-                select(Milestone)
-                .where(Milestone.project_id == project_id, visible_to(scope, Milestone))
-                .order_by(Milestone.target_on.nulls_last(), Milestone.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-
-async def list_milestone_revisions(
-    session: AsyncSession, milestone_id: UUID
-) -> list[MilestoneRevision]:
-    return list(
-        (
-            await session.execute(
-                select(MilestoneRevision)
-                .where(MilestoneRevision.milestone_id == milestone_id)
-                .order_by(MilestoneRevision.revision_no)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-
-async def get_task(session: AsyncSession, scope: Scope, task_id: UUID) -> Task | None:
-    return (
-        await session.execute(select(Task).where(Task.id == task_id, visible_to(scope, Task)))
-    ).scalar_one_or_none()
-
-
-async def list_tasks(
-    session: AsyncSession, scope: Scope, project_id: UUID, *, milestone_id: UUID | None = None
-) -> list[Task]:
+async def list_tasks(session: AsyncSession, scope: Scope, project_id: UUID) -> list[Task]:
     statement = (
         select(Task).where(Task.project_id == project_id, visible_to(scope, Task)).order_by(Task.id)
     )
-    if milestone_id is not None:
-        statement = statement.where(Task.milestone_id == milestone_id)
     return list((await session.execute(statement)).scalars().all())
 
 
@@ -345,29 +293,6 @@ async def list_decisions(
         .scalars()
         .all()
     )
-
-
-async def milestone_progress(
-    session: AsyncSession, scope: Scope, project_id: UUID, *, today: date
-) -> tuple[int, float | None, int, int]:
-    """PROJ-06: (count, weighted completion, completed, overdue) from weights and fractions."""
-    row = (
-        await session.execute(
-            select(
-                func.count(Milestone.id),
-                func.sum(Milestone.weight * Milestone.accepted_completion),
-                func.sum(Milestone.weight),
-                func.count(Milestone.id).filter(Milestone.status == "completed"),
-                func.count(Milestone.id).filter(
-                    Milestone.target_on < today,
-                    Milestone.status.not_in(("completed", "cancelled")),
-                ),
-            ).where(Milestone.project_id == project_id, visible_to(scope, Milestone))
-        )
-    ).one()
-    count, weighted, total_weight, completed, overdue = row
-    fraction = float(weighted) / float(total_weight) if total_weight else None
-    return count, fraction, completed, overdue
 
 
 async def count_open_blockers(session: AsyncSession, scope: Scope, project_id: UUID) -> int:

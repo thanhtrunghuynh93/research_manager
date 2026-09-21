@@ -2,8 +2,8 @@
 
 Requirements PROJ-01..07. The professor owns the structural decisions — who is assigned, what is
 active, what is open to joining — and since PROJ-07 a student may start a project of their own,
-join one that has been opened, edit what they started, and leave. Everything else a student sees
-here is read, granted by a membership (requirements §2).
+join one that has been opened, and edit what they started; ending a membership is the professor's
+(ADR 0019). Everything else a student sees here is read, granted by a membership (requirements §2).
 """
 
 from __future__ import annotations
@@ -28,9 +28,6 @@ from app.projects import events, policies, repository  # noqa: F401  (policies r
 from app.projects.models import (
     BaselineState,
     MembershipOrigin,
-    Milestone,
-    MilestoneRevision,
-    MilestoneStatus,
     PlanBaseline,
     PlanBaselineItem,
     Project,
@@ -43,28 +40,18 @@ from app.projects.models import (
 from app.projects.schemas import (
     JoinableProjectOut,
     MembershipOut,
-    MilestoneOut,
-    MilestoneRevisionOut,
     PlanBaselineItemOut,
     PlanBaselineOut,
     ProjectOut,
-    ProjectProgressOut,
     ResearchDecisionOut,
     TaskOut,
     normalize_repo_url,
 )
 
-# A change to any of these alters what the milestone promised, so the previous state is retained
-# as a revision (PROJ-06).
-BASELINE_FIELDS = frozenset({"title", "success_criteria", "target_on", "weight", "status"})
-
 # The columns a PATCH may set back to null. Everything else refuses one rather than handing a
 # NOT NULL violation to the database.
 PROJECT_CLEARABLE = frozenset({"target_on", "venue_target", "repo_url"})
-MILESTONE_CLEARABLE = frozenset({"target_on", "owner_id", "change_reason"})
-TASK_CLEARABLE = frozenset(
-    {"blocker", "milestone_id", "assignee_id", "target_on", "completion_reason"}
-)
+TASK_CLEARABLE = frozenset({"blocker", "assignee_id", "target_on", "completion_reason"})
 
 # AUTH-07: what the person who started a project may change about it. Everything omitted here —
 # `status`, `ai_restricted`, `open_to_join`, `shared_resources` — is a decision about the project's
@@ -285,27 +272,6 @@ async def list_projects(
     )
 
 
-async def project_progress(
-    session: AsyncSession, scope: Scope, project_id: UUID
-) -> ProjectProgressOut:
-    """PROJ-06: milestone weights and accepted fractions; never an average of student scores."""
-    await _require_project(session, scope, project_id)
-    # A due date is a workspace-local calendar date, so what counts as overdue has to be read on
-    # the same calendar: against UTC, a milestone due today was already overdue all local morning.
-    today = await identity_service.workspace_today(session, scope.workspace_id)
-    count, fraction, completed, overdue = await repository.milestone_progress(
-        session, scope, project_id, today=today
-    )
-    return ProjectProgressOut(
-        project_id=project_id,
-        milestone_count=count,
-        weighted_completion=None if fraction is None else round(Decimal(fraction), 4),
-        completed_milestones=completed,
-        overdue_milestones=overdue,
-        open_blockers=await repository.count_open_blockers(session, scope, project_id),
-    )
-
-
 # ------------------------------------------------------------------ membership (PROJ-02)
 
 
@@ -503,87 +469,7 @@ async def list_members(
     ]
 
 
-# ------------------------------------------------------------------ milestones and tasks (PROJ-03)
-
-
-async def create_milestone(
-    session: AsyncSession, scope: Scope, project_id: UUID, **fields: object
-) -> MilestoneOut:
-    scope.require_prof()
-    project = await _require_project(session, scope, project_id)
-    milestone = Milestone(workspace_id=scope.workspace_id, project_id=project.id, **fields)
-    session.add(milestone)
-    await session.flush()
-    _record_milestone_revision(session, scope, milestone, reason="created")
-    _audit(
-        session,
-        scope,
-        "milestone.created",
-        "milestones",
-        milestone.id,
-        after={"title": milestone.title},
-    )
-    await session.flush()
-    return MilestoneOut.model_validate(milestone)
-
-
-async def update_milestone(
-    session: AsyncSession,
-    scope: Scope,
-    milestone_id: UUID,
-    *,
-    change_reason: str | None = None,
-    **changes: object,
-) -> MilestoneOut:
-    """PROJ-06: a change to scope, weight, or criteria retains the previous version."""
-    scope.require_prof()
-    milestone = await repository.get_milestone(session, scope, milestone_id)
-    if milestone is None:
-        raise NotFoundError("milestone not found")
-
-    baseline_changed = any(
-        field in BASELINE_FIELDS and getattr(milestone, field) != value
-        for field, value in changes.items()
-    )
-    if baseline_changed and not change_reason:
-        raise ValidationError("changing a milestone baseline requires a reason")
-
-    applied = _apply(milestone, changes, clearable=MILESTONE_CLEARABLE)
-    if not applied:
-        return MilestoneOut.model_validate(milestone)
-
-    if baseline_changed:
-        milestone.revision_no += 1
-        _record_milestone_revision(session, scope, milestone, reason=change_reason)
-    _audit(
-        session,
-        scope,
-        "milestone.updated",
-        "milestones",
-        milestone.id,
-        before=applied.before,
-        after=applied.after,
-    )
-    await session.flush()
-    return MilestoneOut.model_validate(milestone)
-
-
-async def list_milestones(
-    session: AsyncSession, scope: Scope, project_id: UUID
-) -> list[MilestoneOut]:
-    await _require_project(session, scope, project_id)
-    rows = await repository.list_milestones(session, scope, project_id)
-    return [MilestoneOut.model_validate(row) for row in rows]
-
-
-async def list_milestone_revisions(
-    session: AsyncSession, scope: Scope, milestone_id: UUID
-) -> list[MilestoneRevisionOut]:
-    milestone = await repository.get_milestone(session, scope, milestone_id)
-    if milestone is None:
-        raise NotFoundError("milestone not found")
-    rows = await repository.list_milestone_revisions(session, milestone_id)
-    return [MilestoneRevisionOut.model_validate(row) for row in rows]
+# ------------------------------------------------------------------ tasks (PROJ-03)
 
 
 async def create_task(
@@ -591,9 +477,6 @@ async def create_task(
 ) -> TaskOut:
     scope.require_prof()
     project = await _require_project(session, scope, project_id)
-    milestone_id = fields.get("milestone_id")
-    if milestone_id is not None:
-        await _require_milestone_in_project(session, scope, project.id, milestone_id)  # type: ignore[arg-type]
 
     task = Task(workspace_id=scope.workspace_id, project_id=project.id, **fields)
     session.add(task)
@@ -632,11 +515,18 @@ async def update_task(
     return TaskOut.model_validate(task)
 
 
-async def list_tasks(
-    session: AsyncSession, scope: Scope, project_id: UUID, *, milestone_id: UUID | None = None
-) -> list[TaskOut]:
+def _require_student_may_update(scope: Scope, task: Task, changes: dict[str, object]) -> None:
+    student_fields = {"status", "completion_fraction", "completion_reason", "blocker"}
+    if task.assignee_id != scope.user_id:
+        raise NotFoundError("task not found")
+    offered = {field for field, value in changes.items() if value is not None}
+    if not offered <= student_fields:
+        raise ValidationError("a student may only report progress on their own task")
+
+
+async def list_tasks(session: AsyncSession, scope: Scope, project_id: UUID) -> list[TaskOut]:
     await _require_project(session, scope, project_id)
-    rows = await repository.list_tasks(session, scope, project_id, milestone_id=milestone_id)
+    rows = await repository.list_tasks(session, scope, project_id)
     return [TaskOut.model_validate(row) for row in rows]
 
 
@@ -1113,41 +1003,3 @@ async def _require_project(session: AsyncSession, scope: Scope, project_id: UUID
     if project is None:
         raise NotFoundError("project not found")
     return project
-
-
-async def _require_milestone_in_project(
-    session: AsyncSession, scope: Scope, project_id: UUID, milestone_id: UUID
-) -> Milestone:
-    milestone = await repository.get_milestone(session, scope, milestone_id)
-    if milestone is None or milestone.project_id != project_id:
-        raise ValidationError("the milestone belongs to a different project")
-    return milestone
-
-
-def _require_student_may_update(scope: Scope, task: Task, changes: dict[str, object]) -> None:
-    student_fields = {"status", "completion_fraction", "completion_reason", "blocker"}
-    if task.assignee_id != scope.user_id:
-        raise NotFoundError("task not found")
-    offered = {field for field, value in changes.items() if value is not None}
-    if not offered <= student_fields:
-        raise ValidationError("a student may only report progress on their own task")
-
-
-def _record_milestone_revision(
-    session: AsyncSession, scope: Scope, milestone: Milestone, *, reason: str | None
-) -> None:
-    session.add(
-        MilestoneRevision(
-            workspace_id=milestone.workspace_id,
-            milestone_id=milestone.id,
-            revision_no=milestone.revision_no,
-            title=milestone.title,
-            success_criteria=milestone.success_criteria,
-            target_on=milestone.target_on,
-            weight=milestone.weight,
-            accepted_completion=milestone.accepted_completion,
-            status=milestone.status or MilestoneStatus.PLANNED,
-            change_reason=reason,
-            changed_by=scope.user_id,
-        )
-    )

@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.15 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.7, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.16 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.8, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -58,7 +58,7 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 94 endpoints, 60 of them called by a screen, and nothing left marked ◻️.**
+**As of this version: 89 endpoints, 59 of them called by a screen, and nothing left marked ◻️.**
 Both numbers are path-and-method pairs over `/api/v1`, counted by the script in §9 — v0.12 gave
 "98 endpoints, 50 of them called by a screen", which counted routes one way and callers another
 and so compared two different things. The units agree now; the pair is not comparable to v0.12's.
@@ -67,10 +67,11 @@ v0.4 removed ten — seven notification routes and three export routes, with `PU
 v0.9 added eight for workspaces and one for moving a student, every one of them behind a screen.
 v0.12 added two, `GET /projects/joinable` and `POST /projects/{id}/join`, and opened three more
 to students: creating a project, patching one they created, and ending their own membership
-(PROJ-07, AUTH-07). This version gives two back: `GET /projects/{id}/decisions` and
-`/{id}/progress` lost their panels (§2.3), so the count fell by two without an endpoint being
-removed — which is the number doing its job, since a read nothing calls is what it is there to
-show.
+(PROJ-07, AUTH-07). Two versions on, that cuts both ways. `GET /projects/{id}/decisions` lost its panel and stayed,
+which is the number doing its job — a read nothing calls is what it is there to show. The five
+milestone and progress endpoints went the other way and were removed outright with the feature
+(requirements 0.8, migration 0026), which is what the mark is *for*: a capability nothing calls is
+either given a screen or given up.
 
 The second number is not the whole answer even so, because reachability is per role:
 `GET /periods/{id}/report` is 🖥️ for the student who writes the report and 🚧 for the professor who
@@ -280,8 +281,6 @@ else is either.
 | --- | --- | --- |
 | Read a project and its members | `GET /projects`, `/projects/{id}`, `/{id}/members` | 🖥️ |
 | Read a project's dated decisions and its weighted progress | `GET /projects/{id}/decisions`, `/{id}/progress` | ⚙️ — both panels were removed from the screen; see below |
-| Read a project's milestones | `GET /projects/{id}/milestones` | 🖥️ |
-| Read a milestone's retained baselines | `GET /milestones/{id}/revisions` | ⚙️ |
 | **Create a project** | `POST /projects` | 🖥️ both roles |
 | **Update a project** — title, research questions, stage, status | `PATCH /projects/{id}` | 🖥️ — a professor sets any field; the creator sets the record but not its standing |
 | **Assign a student to a project** | `POST /projects/{id}/members` | 🖥️ |
@@ -289,7 +288,6 @@ else is either.
 | **List the projects open to joining** | `GET /projects/joinable` | 🖥️ student |
 | **Join a project that is open** | `POST /projects/{id}/join` | 🖥️ student |
 | Record a dated research decision and its rationale | `POST /projects/{id}/decisions` | ⚙️ |
-| Create a milestone; update its scope or weight | `POST /projects/{id}/milestones`, `PATCH /milestones/{id}` | ⚙️ |
 | Create a task | `POST /projects/{id}/tasks` | ⚙️ |
 | **Attach a document to a project, read the project's documents, remove one you attached** | `POST /artifacts/uploads`, `GET /artifacts?project_id=`, `DELETE /artifacts/{id}` | 🖥️ both roles — on the project page, and on the create form |
 | Read tasks | `GET /projects/{id}/tasks` | ⚙️ |
@@ -304,10 +302,9 @@ everyone on it, including the week in progress, which it did not do before. PROJ
 REP-06 were amended to match in requirements v0.7, so the specification and the product agree
 rather than the ADR standing against both.
 
-A student's project view also drops the **stage** and the **milestones**: both are the professor's
-plan for the project rather than the student's account of it, and the student's own screens — the
-week, the editor, the record — carry neither. The stage is still on the project list and on the
-create form, because the API requires one when a project is started.
+A student's project view also drops the **stage**: it is the professor's plan for the project
+rather than the student's account of it. It is still on the project list and on the create form,
+because the API requires one when a project is started.
 
 **A project's related documents are new** ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)).
 PROJ-01 has listed "shared resources" among a project's fields since v0.1 and nothing ever wrote
@@ -320,16 +317,15 @@ once the project exists, since there is nothing to attach them to before that. T
 extracted and not indexed: a project document cannot be cited by an assessment or the assistant,
 which is a separate decision about what the model may read.
 
-**Milestone completion and research decisions are no longer on the project screen.** Both panels
-were removed for the same reason, and it is the one this inventory exists to catch: nothing in the
-product writes what either of them showed. Completion is milestone weights against
-`accepted_completion`, a column only `PATCH /milestones/{id}` sets — which has no screen — so every
-project in the deployment read 0%, and a figure that is always zero is worse than no figure because
-it looks like a finding. Decisions are professor-only to record and `POST /{id}/decisions` has no
-screen either, so the panel reported "No decisions recorded" about projects whose decisions had
-never had anywhere to go. The reads still answer and are marked ⚙️ above; restoring either panel is
-the same day's work as building the authoring side it needs. **This is a divergence from UI-03**,
-which names dated project decisions as part of the project workspace.
+**Milestones are gone from the product, and research decisions are recorded but not shown.** Both
+started the same way, and it is the thing this inventory exists to catch: nothing wrote what either
+of them showed. Milestone completion was weights against `accepted_completion`, a column only an
+endpoint no screen called ever set, so every project read 0% — a figure that is always zero is
+worse than no figure, because it looks like a finding. That one went the whole way: requirements
+0.8 withdraws PROJ-06 and amends PROJ-03, and migration 0026 drops the tables. Decisions stopped at
+the screen: `POST /{id}/decisions` still has no caller, so the panel reported "No decisions
+recorded" about projects whose decisions had never had anywhere to go, and the read is marked ⚙️
+above until something writes them.
 
 The reads moved from 🚧 to 🖥️ without changing: `/projects` is a list screen, and a route nothing
 linked to is a route nobody could open. Project titles on `/me` link to it too, so the student who
@@ -345,7 +341,7 @@ Since PROJ-07 the first half of that chain is no longer only the professor's. A 
 project and is on it at once, and the project is `active` rather than `proposed` — there is no
 second party whose assent activation would record, and a proposed project would owe nothing. A
 student may also join a project the professor has marked open to joining, which is a flag that
-defaults closed: membership is the whole grant of access to a project's plan, milestones, tasks,
+defaults closed: membership is the whole grant of access to a project's plan, tasks,
 decisions and member list, so opening one is a disclosure decision rather than a convenience
 ([ADR 0017](adr/0017-students-own-their-projects.md)).
 
@@ -353,7 +349,7 @@ Joining part-way through a week owes from the *next* week, which is the one plac
 acquiring a membership behave differently: a professor assigning someone on a Saturday means that
 Saturday's week is owed, and a student joining then does not.
 
-What is left ⚙️ is deliberate for now: milestones, decisions and a professor ending someone else's
+What is left ⚙️ is deliberate for now: decisions and a professor ending someone else's
 membership are the rest of the workbench rather than the chain that makes a report due, and tasks
 (PROJ-03) are a feature rather than a seam.
 
@@ -527,7 +523,7 @@ reported **$0 spent** in exactly the case where nothing was capping the bill.
 | **Remove a file they attached** | `DELETE /artifacts/{id}` | 🖥️ |
 | Submit the weekly package | `POST /periods/{id}/report/submit` | 🖥️ |
 | **Read the week they submitted, every version of it, and any revision asked for** | `GET /periods/{id}/report`, `/reports/{id}/versions`, `/report-versions/{id}`, `/reports/{id}/revisions` | 🖥️ |
-| Read their own projects, milestones, decisions and progress | `GET /projects/...` | 🖥️ |
+| Read their own projects and the documents on them | `GET /projects/...`, `GET /artifacts?project_id=` | 🖥️ |
 | **Start their own project, active from the moment it exists** | `POST /projects` | 🖥️ |
 | **Edit the record of a project they started** | `PATCH /projects/{id}` | 🖥️ |
 | **See which projects are open to joining, and join one** | `GET /projects/joinable`, `POST /projects/{id}/join` | 🖥️ |
@@ -816,7 +812,7 @@ it moves is not, and the reason is that **a membership is the entire grant of ac
 status test, so inserting the row is the whole decision.
 
 A student who joins an open project can therefore read, for that project: the record, its
-milestones with their retained baselines and the professor's reasons for moving a target, its tasks
+its tasks
 — including the free-text `blocker` and `completion_reason` another student wrote about their own
 work — its dated decisions and rationales, its repositories and their sync errors, its shared
 evidence, **the documents anyone on it has attached** ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)),

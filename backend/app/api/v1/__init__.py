@@ -11,12 +11,12 @@ from app.api.v1 import (
     assistant,
     auth,
     health,
-    milestones,
     notifications,
     overview,
     projects,
     reports,
     repositories,
+    tasks,
     users,
     workspaces,
 )
@@ -33,7 +33,7 @@ def include_routers(app: FastAPI) -> None:
     v1.include_router(users.router)
     v1.include_router(workspaces.router)
     v1.include_router(projects.router)
-    v1.include_router(milestones.router)
+    v1.include_router(tasks.router)
     v1.include_router(reports.router)
     v1.include_router(artifacts.router)
     v1.include_router(repositories.router)

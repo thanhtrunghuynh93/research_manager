@@ -668,40 +668,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/milestones/{milestone_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update a milestone */
-        patch: operations["update_milestone_api_v1_milestones__milestone_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/milestones/{milestone_id}/revisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The retained baselines of a milestone */
-        get: operations["list_milestone_revisions_api_v1_milestones__milestone_id__revisions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/notifications/reminder-offsets": {
         parameters: {
             query?: never;
@@ -1017,41 +983,6 @@ export interface paths {
         put?: never;
         /** End a membership, keeping its history */
         post: operations["end_membership_api_v1_projects__project_id__members__membership_id__end_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{project_id}/milestones": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List milestones */
-        get: operations["list_milestones_api_v1_projects__project_id__milestones_get"];
-        put?: never;
-        /** Create a milestone */
-        post: operations["create_milestone_api_v1_projects__project_id__milestones_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{project_id}/progress": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Milestone-weighted project progress */
-        get: operations["project_progress_api_v1_projects__project_id__progress_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2095,8 +2026,6 @@ export interface components {
             experiments?: unknown[];
             /** Hours */
             hours?: number | string | null;
-            /** Milestone Ids */
-            milestone_ids?: string[];
             /** Next Plan */
             next_plan?: {
                 [key: string]: unknown;
@@ -2148,8 +2077,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Milestone Ids */
-            milestone_ids: string[];
             /** Next Plan */
             next_plan: {
                 [key: string]: unknown;
@@ -2597,132 +2524,6 @@ export interface components {
          * @enum {string}
          */
         MessageRole: "user" | "assistant";
-        /** MilestoneIn */
-        MilestoneIn: {
-            /** Contributor Ids */
-            contributor_ids?: string[];
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Owner Id */
-            owner_id?: string | null;
-            /**
-             * Success Criteria
-             * @default
-             */
-            success_criteria: string;
-            /** Target On */
-            target_on?: string | null;
-            /** Title */
-            title: string;
-            /**
-             * Weight
-             * @default 1
-             */
-            weight: number | string;
-        };
-        /** MilestoneOut */
-        MilestoneOut: {
-            /** Accepted Completion */
-            accepted_completion: string;
-            /** Contributor Ids */
-            contributor_ids: string[];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Owner Id */
-            owner_id?: string | null;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            /** Revision No */
-            revision_no: number;
-            status: components["schemas"]["MilestoneStatus"];
-            /** Success Criteria */
-            success_criteria: string;
-            /** Target On */
-            target_on?: string | null;
-            /** Title */
-            title: string;
-            /** Weight */
-            weight: string;
-        };
-        /**
-         * MilestonePatch
-         * @description A change that alters scope, weight, or criteria keeps the previous revision (PROJ-06).
-         */
-        MilestonePatch: {
-            /** Accepted Completion */
-            accepted_completion?: number | string | null;
-            /** Change Reason */
-            change_reason?: string | null;
-            /** Contributor Ids */
-            contributor_ids?: string[] | null;
-            /** Description */
-            description?: string | null;
-            /** Owner Id */
-            owner_id?: string | null;
-            status?: components["schemas"]["MilestoneStatus"] | null;
-            /** Success Criteria */
-            success_criteria?: string | null;
-            /** Target On */
-            target_on?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Weight */
-            weight?: number | string | null;
-        };
-        /** MilestoneRevisionOut */
-        MilestoneRevisionOut: {
-            /** Accepted Completion */
-            accepted_completion: string;
-            /** Change Reason */
-            change_reason?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Milestone Id
-             * Format: uuid
-             */
-            milestone_id: string;
-            /** Revision No */
-            revision_no: number;
-            status: components["schemas"]["MilestoneStatus"];
-            /** Success Criteria */
-            success_criteria: string;
-            /** Target On */
-            target_on?: string | null;
-            /** Title */
-            title: string;
-            /** Weight */
-            weight: string;
-        };
-        /**
-         * MilestoneStatus
-         * @enum {string}
-         */
-        MilestoneStatus: "planned" | "in_progress" | "at_risk" | "completed" | "cancelled";
         /**
          * MoveStudentIn
          * @description Where to move a student to. Only a student who has not started work can be moved.
@@ -3037,27 +2838,6 @@ export interface components {
             title?: string | null;
             /** Venue Target */
             venue_target?: string | null;
-        };
-        /**
-         * ProjectProgressOut
-         * @description PROJ-06: completion from professor-defined weights, never from student scores.
-         */
-        ProjectProgressOut: {
-            /** Completed Milestones */
-            completed_milestones: number;
-            /** Milestone Count */
-            milestone_count: number;
-            /** Open Blockers */
-            open_blockers: number;
-            /** Overdue Milestones */
-            overdue_milestones: number;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            /** Weighted Completion */
-            weighted_completion: string | null;
         };
         /**
          * ProjectStatus
@@ -3399,8 +3179,6 @@ export interface components {
              * @default 1
              */
             effort_weight: number | string;
-            /** Milestone Id */
-            milestone_id?: string | null;
             /**
              * Planned Outcome
              * @default
@@ -3433,8 +3211,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Milestone Id */
-            milestone_id?: string | null;
             /** Planned Outcome */
             planned_outcome: string;
             /**
@@ -3460,8 +3236,6 @@ export interface components {
             completion_reason?: string | null;
             /** Effort Weight */
             effort_weight?: number | string | null;
-            /** Milestone Id */
-            milestone_id?: string | null;
             /** Planned Outcome */
             planned_outcome?: string | null;
             status?: components["schemas"]["TaskStatus"] | null;
@@ -4895,72 +4669,6 @@ export interface operations {
             };
         };
     };
-    update_milestone_api_v1_milestones__milestone_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                milestone_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MilestonePatch"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MilestoneOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_milestone_revisions_api_v1_milestones__milestone_id__revisions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                milestone_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MilestoneRevisionOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     set_reminder_offsets_api_v1_notifications_reminder_offsets_put: {
         parameters: {
             query?: never;
@@ -5675,108 +5383,9 @@ export interface operations {
             };
         };
     };
-    list_milestones_api_v1_projects__project_id__milestones_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MilestoneOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_milestone_api_v1_projects__project_id__milestones_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MilestoneIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MilestoneOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    project_progress_api_v1_projects__project_id__progress_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectProgressOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_tasks_api_v1_projects__project_id__tasks_get: {
         parameters: {
-            query?: {
-                milestone_id?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project_id: string;

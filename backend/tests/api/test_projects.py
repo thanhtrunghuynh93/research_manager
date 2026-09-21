@@ -184,48 +184,6 @@ async def test_the_professor_manages_membership(
     assert ended.json()["left_on"] is not None
 
 
-async def test_milestones_tasks_and_progress_are_reachable(
-    client: AsyncClient, db: AsyncSession, prof: identity_models.User, prof_scope: Scope
-) -> None:
-    project = await service.create_project(db, prof_scope, title="Baseline", stage="implementation")
-    await _sign_in(client, prof)
-
-    milestone = await client.post(
-        f"/api/v1/projects/{project.id}/milestones",
-        json={"title": "Reproduce the baseline", "weight": "3", "success_criteria": "Within 1pt"},
-    )
-    assert milestone.status_code == 201
-
-    task = await client.post(
-        f"/api/v1/projects/{project.id}/tasks",
-        json={"title": "Run the sweep", "milestone_id": milestone.json()["id"]},
-    )
-    assert task.status_code == 201
-
-    progress = await client.get(f"/api/v1/projects/{project.id}/progress")
-    assert progress.json()["milestone_count"] == 1
-
-
-async def test_a_milestone_baseline_change_needs_a_reason_over_http(
-    client: AsyncClient, db: AsyncSession, prof: identity_models.User, prof_scope: Scope
-) -> None:
-    project = await service.create_project(db, prof_scope, title="Baseline", stage="implementation")
-    milestone = await service.create_milestone(db, prof_scope, project.id, title="Reproduce")
-    await _sign_in(client, prof)
-
-    refused = await client.patch(f"/api/v1/milestones/{milestone.id}", json={"weight": "5"})
-    assert refused.status_code == 422
-
-    accepted = await client.patch(
-        f"/api/v1/milestones/{milestone.id}",
-        json={"weight": "5", "change_reason": "Scope grew to cover the ablation"},
-    )
-    assert accepted.status_code == 200
-
-    revisions = await client.get(f"/api/v1/milestones/{milestone.id}/revisions")
-    assert [r["revision_no"] for r in revisions.json()] == [1, 2]
-
-
 async def test_the_project_workspace_lists_decisions(
     client: AsyncClient, db: AsyncSession, prof: identity_models.User, prof_scope: Scope
 ) -> None:
@@ -318,3 +276,26 @@ async def test_a_repository_link_longer_than_the_column_is_refused(
 
     assert response.status_code == 422
     assert response.json()["detail"].startswith("repo_url:")
+
+
+async def test_tasks_are_reachable_over_http(
+    client: AsyncClient, prof: identity_models.User
+) -> None:
+    """Tasks outlived the milestones they used to hang from (migration 0026).
+
+    They are what a plan baseline freezes (PROJ-04), so the routes moved to a router of their own
+    rather than going with `milestones.py`.
+    """
+    await _sign_in(client, prof)
+    project = await client.post(
+        "/api/v1/projects", json={"title": "Retrieval baselines", "stage": "implementation"}
+    )
+    project_id = project.json()["id"]
+
+    created = await client.post(
+        f"/api/v1/projects/{project_id}/tasks", json={"title": "Run the sweep"}
+    )
+    assert created.status_code == 201, created.text
+
+    listed = await client.get(f"/api/v1/projects/{project_id}/tasks")
+    assert [task["title"] for task in listed.json()] == ["Run the sweep"]

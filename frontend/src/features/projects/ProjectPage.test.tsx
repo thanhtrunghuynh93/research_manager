@@ -58,7 +58,6 @@ function renderPage(
     http.get("/api/v1/auth/me", () => HttpResponse.json(me)),
     http.get("/api/v1/projects/p1", () => HttpResponse.json(project)),
     http.get("/api/v1/projects/p1/members", () => HttpResponse.json(members)),
-    http.get("/api/v1/projects/p1/milestones", () => HttpResponse.json([])),
     http.get("/api/v1/artifacts", () => HttpResponse.json(documents)),
     http.get("/api/v1/users", () =>
       HttpResponse.json({ items: [HERE, ELSEWHERE], next_cursor: null, limit: 100 }),
@@ -189,7 +188,7 @@ test("a student is offered no way out, and the professor ends the membership ins
   confirm.mockRestore();
 });
 
-test("a student's project view carries no stage and no milestones", async () => {
+test("a student's project view carries no stage", async () => {
   const members = [
     {
       id: "m1",
@@ -207,20 +206,19 @@ test("a student's project view carries no stage and no milestones", async () => 
   renderPage(STUDENT, { ...PROJECT, status: "active" }, members);
 
   await screen.findByRole("heading", { name: /members/i });
-  expect(screen.queryByText(/^Milestones$/)).not.toBeInTheDocument();
-  expect(screen.queryByText(/implementation/i)).not.toBeInTheDocument();
+  expect(screen.queryAllByText(/implementation/i), "no badge, and no stage field").toHaveLength(0);
 
-  // The professor keeps both.
+  // The professor keeps it — as the badge beside the title, and as the field on their form.
   cleanup();
   renderPage(PROF, { ...PROJECT, status: "active" }, members);
   await screen.findByRole("heading", { name: /members/i });
-  expect(screen.getByText(/^Milestones$/)).toBeInTheDocument();
+  expect(screen.getAllByText(/implementation/i).length).toBeGreaterThan(0);
 });
 
 test("a student who has left sees the record, and is told what is not shown", async () => {
   // Leaving revokes the ongoing work, not the name: their reports and assessments still point at
   // this project. The sections a past member cannot read answer empty rather than forbidden, so
-  // rendering them would assert "no milestones yet" to the one reader who cannot know that.
+  // rendering them would assert "nothing attached yet" to the one reader who cannot know that.
   renderPage(
     STUDENT,
     {
@@ -251,7 +249,6 @@ test("a student who has left sees the record, and is told what is not shown", as
   expect(screen.getByTestId("left-notice")).toHaveTextContent(/You left this project/);
 
   // And the working detail is absent rather than shown as empty.
-  expect(screen.queryByText(/No milestones yet/i)).not.toBeInTheDocument();
   // Nothing to leave any more.
   expect(screen.queryByTestId("leave-project")).not.toBeInTheDocument();
 });
@@ -318,7 +315,7 @@ test("the project's related documents are on the page, and a departed member get
   expect(screen.getByLabelText(/attach a document/i)).toBeInTheDocument();
 });
 
-test("neither milestone completion nor research decisions is on the page", async () => {
+test("research decisions are not on the page, and milestones no longer exist", async () => {
   // Both were removed because nothing in the product writes what they showed: `accepted_completion`
   // has no screen that sets it, so completion read 0% as though it were a finding, and decisions
   // are professor-only to record with no screen to record them. The endpoints still answer.

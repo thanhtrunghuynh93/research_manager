@@ -66,7 +66,6 @@ DEFAULT_HORIZON = timedelta(weeks=8)
 # optional, self-reported, and must not trigger a new assessment (REP-03, ASSESS-09).
 CONTENT_FIELDS = (
     "stage",
-    "milestone_ids",
     "planned_work_ref",
     "work_performed",
     "results",
@@ -499,7 +498,6 @@ async def submit_report(
                 report_version_id=version.id,
                 project_id=UUID(str(payload["project_id"])),
                 stage=str(payload.get("stage", "")),
-                milestone_ids=payload.get("milestone_ids") or [],
                 planned_work_ref=payload.get("planned_work_ref") or {},
                 work_performed=str(payload.get("work_performed", "")),
                 results=str(payload.get("results", "")),
@@ -1069,7 +1067,6 @@ def _carried_entry(previous: ProjectReportEntry, version_id: UUID) -> ProjectRep
         report_version_id=version_id,
         project_id=previous.project_id,
         stage=previous.stage,
-        milestone_ids=list(previous.milestone_ids or []),
         planned_work_ref=dict(previous.planned_work_ref or {}),
         work_performed=previous.work_performed,
         results=previous.results,

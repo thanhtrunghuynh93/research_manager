@@ -106,7 +106,7 @@ def artifact_visible_to(scope: Scope) -> ColumnElement[bool]:
     alone would have shared every unsubmitted file with the whole project.
 
     The widening is bounded by the same membership that already grants the project's plan,
-    milestones, tasks, decisions and member list, so it adds a kind of record to that set rather
+    tasks, decisions and member list, so it adds a kind of record to that set rather
     than a new way in. What follows from it is what follows from all of them: a professor who marks
     a project open to joining is opening its documents too (ADR 0017).
     """
