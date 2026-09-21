@@ -6,7 +6,7 @@
  * has done everything that *looks* like the job and produced nothing.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -142,9 +142,11 @@ test("the student who started the project may edit its record but not its standi
   expect(screen.queryByTestId("open-to-join")).not.toBeInTheDocument();
 });
 
-test("a student member is offered the way out, posting to their own membership", async () => {
+test("a student is offered no way out, and the professor ends the membership instead", async () => {
+  // ADR 0019: a student joins a project and does not leave it. The button they had is gone, and
+  // the API refuses them anyway — so the control lives on the professor's member row.
   const ended: string[] = [];
-  renderPage(STUDENT, PROJECT, [
+  const members = [
     {
       id: "m1",
       project_id: "p1",
@@ -157,19 +159,16 @@ test("a student member is offered the way out, posting to their own membership",
       planned_allocation: null,
       created_at: "2026-09-14T00:00:00Z",
     },
-    {
-      id: "m2",
-      project_id: "p1",
-      student_id: "someone-else",
-      student_name: "Bao",
-      responsibility: "",
-      origin: "assigned",
-      joined_on: "2026-09-14",
-      left_on: null,
-      planned_allocation: null,
-      created_at: "2026-09-14T00:00:00Z",
-    },
-  ]);
+  ];
+  renderPage(STUDENT, PROJECT, members);
+
+  await screen.findByRole("heading", { name: /members/i });
+  expect(screen.queryByTestId("leave-project")).not.toBeInTheDocument();
+  expect(screen.queryByText(/done this project/i)).not.toBeInTheDocument();
+  expect(screen.queryByTestId("end-membership")).not.toBeInTheDocument();
+
+  cleanup();
+  renderPage(PROF, PROJECT, members);
   server.use(
     http.post("/api/v1/projects/p1/members/:membershipId/end", ({ params }) => {
       ended.push(String(params.membershipId));
@@ -177,23 +176,45 @@ test("a student member is offered the way out, posting to their own membership",
     }),
   );
 
-  const done = await screen.findByTestId("leave-project");
-  // The copy is the student's: finishing their part, not abandoning something.
-  expect(done).toHaveTextContent(/done this project/i);
-
-  // A student cannot rejoin unless the professor opens the project again, so it asks first.
+  const end = await screen.findByTestId("end-membership");
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-  await userEvent.click(done);
+  await userEvent.click(end);
   await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(ended).toEqual([]);
+  expect(ended, "it asks first: returning needs a fresh assignment").toEqual([]);
 
   confirm.mockReturnValue(true);
-  await userEvent.click(done);
+  await userEvent.click(end);
   await new Promise((resolve) => setTimeout(resolve, 50));
-
-  // Their own membership, not the co-member's, which the page also lists.
   expect(ended).toEqual(["m1"]);
   confirm.mockRestore();
+});
+
+test("a student's project view carries no stage and no milestones", async () => {
+  const members = [
+    {
+      id: "m1",
+      project_id: "p1",
+      student_id: STUDENT.id,
+      student_name: "An",
+      responsibility: "",
+      origin: "assigned",
+      joined_on: "2026-09-14",
+      left_on: null,
+      planned_allocation: null,
+      created_at: "2026-09-14T00:00:00Z",
+    },
+  ];
+  renderPage(STUDENT, { ...PROJECT, status: "active" }, members);
+
+  await screen.findByRole("heading", { name: /members/i });
+  expect(screen.queryByText(/^Milestones$/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/implementation/i)).not.toBeInTheDocument();
+
+  // The professor keeps both.
+  cleanup();
+  renderPage(PROF, { ...PROJECT, status: "active" }, members);
+  await screen.findByRole("heading", { name: /members/i });
+  expect(screen.getByText(/^Milestones$/)).toBeInTheDocument();
 });
 
 test("a student who has left sees the record, and is told what is not shown", async () => {

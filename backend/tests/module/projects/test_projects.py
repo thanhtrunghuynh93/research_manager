@@ -413,22 +413,31 @@ async def test_joining_grants_the_projects_shared_records(
     ]
 
 
-async def test_a_student_leaves_a_project_they_joined(
+async def test_a_student_may_not_end_their_own_membership(
     db: AsyncSession,
     workspace: identity_models.Workspace,
     prof_scope: Scope,
     student_a: identity_models.User,
     student_a_scope: Scope,
 ) -> None:
+    """ADR 0019: a student joins a project and does not leave it.
+
+    The right came in with PROJ-07 and this is the half taken back: whether the work is finished
+    is a supervision judgement. The professor's own path still works, and still keeps the row.
+    """
     project = await _open_project(db, prof_scope)
     membership = await service.join_project(db, student_a_scope, project.id)
 
-    epoch = await _epoch(db, workspace.id)
     scope = await identity_service.scope_for(db, student_a)
-    ended = await service.end_membership(db, scope, membership.id)
+    with pytest.raises(ForbiddenError):
+        await service.end_membership(db, scope, membership.id)
+    assert project.id in (await identity_service.scope_for(db, student_a)).project_ids
+
+    epoch = await _epoch(db, workspace.id)
+    ended = await service.end_membership(db, prof_scope, membership.id)
 
     assert ended.left_on == _workspace_today(), "PROJ-02 keeps the row rather than deleting it"
-    assert await _epoch(db, workspace.id) > epoch, "AUTH-03: leaving revokes cached reads too"
+    assert await _epoch(db, workspace.id) > epoch, "AUTH-03: ending revokes cached reads too"
     assert project.id not in (await identity_service.scope_for(db, student_a)).project_ids
 
 
@@ -465,18 +474,18 @@ async def test_a_student_cannot_end_a_co_members_membership(
         await service.end_membership(db, joiner, theirs.id)
 
 
-async def test_a_student_cannot_back_date_their_own_leave(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, student_a_scope: Scope
+async def test_the_professor_may_back_date_an_ending(
+    db: AsyncSession, prof_scope: Scope, student_a_scope: Scope
 ) -> None:
-    # A back-dated leave would rewrite which weeks were owed. Only the professor may do that.
+    # A back-dated ending rewrites which weeks were owed, which is why it is the professor's:
+    # it is the same judgement as excusing a week, written on the membership instead.
     project = await _open_project(db, prof_scope)
     membership = await service.join_project(db, student_a_scope, project.id)
 
-    scope = await identity_service.scope_for(db, student_a)
-    with pytest.raises(ValidationError):
-        await service.end_membership(
-            db, scope, membership.id, left_on=_workspace_today() - timedelta(days=7)
-        )
+    last_week = _workspace_today() - timedelta(days=7)
+    ended = await service.end_membership(db, prof_scope, membership.id, left_on=last_week)
+
+    assert ended.left_on == last_week
 
 
 async def test_the_creator_edits_the_record_but_not_its_standing(
@@ -508,12 +517,13 @@ async def test_a_member_who_did_not_create_the_project_cannot_edit_it(
 
 
 async def test_the_creator_keeps_the_record_after_leaving_it(
-    db: AsyncSession, student_a: identity_models.User, student_a_scope: Scope
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, student_a_scope: Scope
 ) -> None:
     # AUTH-07 outlives the membership, so `project_visible_to` has to grant the creator the row.
     project = await _project(db, student_a_scope, title="Mine")
     members = await service.list_members(db, student_a_scope, project.id)
-    await service.end_membership(db, student_a_scope, members[0].id)
+    # The professor ends it now (ADR 0019); what is being tested is what survives it.
+    await service.end_membership(db, prof_scope, members[0].id)
 
     scope = await identity_service.scope_for(db, student_a)
     assert project.id not in scope.project_ids
@@ -605,21 +615,20 @@ async def test_a_membership_created_after_local_midnight_grants_access_at_once(
     scope.require_project(project.id)  # what an upload does, and what used to raise
 
 
-async def test_a_student_may_leave_on_the_workspaces_today(
+async def test_an_ending_is_dated_by_the_workspaces_today(
     db: AsyncSession,
     prof_scope: Scope,
     student_a: identity_models.User,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The date a student is offered to leave on is the one the refusal is checked against."""
+    """An ending is dated on the workspace's calendar, not the host's (REP-01)."""
     just_after_local_midnight = datetime(2026, 9, 19, 17, 30, tzinfo=UTC)
     monkeypatch.setattr("app.identity.service.now", lambda: just_after_local_midnight, raising=True)
 
     project = await _project(db, prof_scope, title="Left just after midnight")
     await service.update_project(db, prof_scope, project.id, status="active")
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
-    scope = await identity_service.scope_for(db, student_a)
 
-    ended = await service.end_membership(db, scope, membership.id, left_on=date(2026, 9, 20))
+    ended = await service.end_membership(db, prof_scope, membership.id, left_on=date(2026, 9, 20))
 
     assert ended.left_on == date(2026, 9, 20)

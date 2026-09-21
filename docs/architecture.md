@@ -120,7 +120,7 @@ A module reads another module's data only through that module's `service.py`; it
 | --- | --- | --- |
 | `/overview` | Professor overview: current week, missing/late, review queue, attention list, sync issues | UI-01 |
 | `/me` | Student overview: obligations, draft state, next deadline, released feedback, timeline | UI-02 |
-| `/projects/:id` | Project workspace: goals, members, milestones, related documents, repositories. Milestone completion and decisions are not shown — neither has a screen that writes it (use_cases.md §2.3) | UI-03 |
+| `/projects/:id` | Project workspace: goals, members, related documents, repositories; stage and milestones are the professor's view only. Milestone completion and decisions are not shown — neither has a screen that writes it (use_cases.md §2.3) | UI-03 |
 | `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
 | `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left, and the professor's revision request | REP-02, REP-05, UI-04 |
 | `/people` | The roll across every workspace the professor belongs to, grouped by workspace: invite, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
@@ -342,7 +342,7 @@ proposed default the week of Mon 14 to Sun 20 September is discussed on Mon 21 a
 23:59 local. Deriving `meeting_date` from `local_start` instead would put the deadline on the day
 before the period opens.
 
-Changing the meeting day inserts a new `calendar_configs` version with an `effective_from`; periods already materialised keep their `deadline_utc` (requirements REP-01). Obligations are derived per period from memberships whose `joined_on ≤ local_end`, `left_on` is null or `≥ local_start`, the project is `active`, and `first/last_required_period_id` bounds are satisfied; exemptions and extensions edit the obligation row, never the period.
+Changing the meeting day inserts a new `calendar_configs` version with an `effective_from`; periods already materialised keep their `deadline_utc` (requirements REP-01). Obligations are derived per period from memberships whose `joined_on ≤ local_end`, `left_on` is null or `≥ local_start`, the project is `active`, and `first/last_required_period_id` bounds are satisfied; exemptions and extensions edit the obligation row, never the period. The same two tests — the membership open through the week, the project still `active` — are applied again when an already-derived obligation is read, so taking a project out of `active` takes the week off everyone on it without touching a row ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 
 ### 7.2 Missed-deadline email (REP-08, AC-19)
 

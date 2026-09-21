@@ -307,9 +307,6 @@
     "noStudents": "No students in this workspace yet — invite one on",
     "openToJoin": "Open to joining",
     "openToJoinNote": "A student can put themselves on an open project without being assigned. Being on a project shows them its plan, milestones, tasks and decisions, and who else works on it.",
-    "leave": "Done this project",
-    "leaveNote": "This ends your part in it. The project stops appearing in your week, including this one, what you have already submitted stays on the record, and the project itself carries on for whoever else is on it.",
-    "leaveConfirm": "Leave {{title}}? You cannot rejoin unless your professor opens the project again.",
     "leftOn": "Left {{when}}",
     "backToProjects": "Your projects →",
     "leftNotice": "You left this project on {{when}}. The record stays readable because your reports and assessments refer to it; its milestones, decisions and members are no longer shown.",
@@ -330,7 +327,9 @@
       "onCreate": "Attach supporting documents (optional)",
       "onCreateNote": "They are attached once the project exists, and everyone on the project can read them.",
       "attaching": "Attaching {{done}} of {{total}}…"
-    }
+    },
+    "endMembership": "End membership",
+    "endMembershipConfirm": "End {{name}}'s part in {{title}}? They stop owing a weekly report for it from this week, what they have already submitted stays on the record, and returning needs a fresh assignment."
   },
   "student": {
     "title": "Student",

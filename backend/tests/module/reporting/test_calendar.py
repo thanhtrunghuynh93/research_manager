@@ -18,7 +18,7 @@ from app.core.errors import ForbiddenError, NotFoundError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
-from app.reporting import models, service
+from app.reporting import models, repository, service
 
 pytestmark = pytest.mark.module
 
@@ -192,6 +192,60 @@ async def test_leaving_mid_week_takes_the_week_with_it(
     # And the professor's outstanding list, which must not say they owe a project they cannot open.
     outstanding = await service.unfulfilled_entries(db, week.id)
     assert [e.project_id for e in outstanding] == []
+
+
+async def test_completing_a_project_takes_the_week_off_everyone_on_it(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """A project the professor has called done owes no report, including the week in progress.
+
+    Completing one already stopped obligations *deriving*; the ones derived before it stayed on
+    the student's week and in the professor's outstanding list, so a student owed — and was
+    emailed at 00:00 on the meeting day about — work that had just been called finished.
+    """
+    await _calendar(db, prof_scope)
+    project = await projects_service.create_project(
+        db, prof_scope, title="Baseline", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    periods = await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20))
+    week = periods[0]
+    derived = await service.ensure_obligations(db, prof_scope, week.id)
+    assert [o.project_id for o in derived] == [project.id], "owed while the project is active"
+
+    await projects_service.update_project(db, prof_scope, project.id, status="completed")
+
+    student_scope = await identity_service.scope_for(db, student_a)
+    assert await service.list_obligations(db, student_scope, week.id) == [], "not the student's"
+    outstanding = await service.unfulfilled_entries(db, week.id)
+    assert [e.project_id for e in outstanding] == [], "and not the professor's outstanding list"
+
+    # The row itself is kept: it is how the week was derived, and the history reads it (PROJ-02).
+    assert await repository.list_obligations(db, prof_scope, week.id) != []
+
+
+async def test_pausing_a_project_takes_the_week_off_too(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    # REP-06 names a paused project beside leave and holidays: none of them owe a week.
+    await _calendar(db, prof_scope)
+    project = await projects_service.create_project(
+        db, prof_scope, title="On hold", stage="experimentation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
+    )
+    week = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
+    await service.ensure_obligations(db, prof_scope, week.id)
+
+    await projects_service.update_project(db, prof_scope, project.id, status="paused")
+
+    student_scope = await identity_service.scope_for(db, student_a)
+    assert await service.list_obligations(db, student_scope, week.id) == []
 
 
 async def test_an_exemption_records_its_reason_and_no_report_is_owed(

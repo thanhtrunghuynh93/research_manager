@@ -216,7 +216,13 @@ test("documents chosen on the form are attached once the project exists", async 
         calls.push("POST /artifacts/uploads");
         uploads.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json(
-          { artifact_id: "a1", version_no: 1, url: "http://store/put", expires_in: 60, headers: {} },
+          {
+            artifact_id: "a1",
+            version_no: 1,
+            url: "http://store/put",
+            expires_in: 60,
+            headers: {},
+          },
           { status: 201 },
         );
       }),

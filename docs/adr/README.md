@@ -26,3 +26,4 @@ that silently stops is worse than no index — a reader takes the last row for t
 | [0016](0016-reads-span-membership.md) | Reads span every workspace you belong to; writes go to one |
 | [0017](0017-students-own-their-projects.md) | A student starts and joins their own projects; the professor keeps the gate |
 | [0018](0018-project-documents-are-shared-with-the-project.md) | A project's documents belong to the project, not to whoever uploaded them |
+| [0019](0019-ending-a-membership-is-the-professors.md) | Ending a membership is the professor's, and a finished project owes no week (amends 0017) |

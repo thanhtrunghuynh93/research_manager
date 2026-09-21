@@ -194,13 +194,30 @@ async def active_memberships_for_student(
 async def memberships_open_through(
     session: AsyncSession, membership_ids: Collection[UUID], *, through: date
 ) -> set[UUID]:
-    """Of these memberships, the ones not already ended by `through`. `left_on` is exclusive."""
+    """Of these memberships, the ones that still owe a week ending on `through`.
+
+    Two tests, and they are the two `memberships_active_in_range` derives by: the membership was
+    not already ended (`left_on` is exclusive), and the project is still `ACTIVE`.
+
+    The project status half was missing, and its absence was visible from the professor's side of
+    the product: completing a project stopped *new* obligations deriving and left the ones already
+    derived sitting on the current week, so the student still owed a report for work the professor
+    had just called done — and was emailed about it at 00:00 on the meeting day (REP-08). An
+    obligation already derived has to be judged by the rule that would derive it today, which is
+    what the docstring on `memberships_still_owing` already claimed.
+
+    It covers pausing and archiving for the same reason. A paused project is the case REP-06 names
+    outright — leave, holidays, a project on hold — and none of them owe a week.
+    """
     if not membership_ids:
         return set()
     rows = await session.execute(
-        select(ProjectMembership.id).where(
+        select(ProjectMembership.id)
+        .join(Project, Project.id == ProjectMembership.project_id)
+        .where(
             ProjectMembership.id.in_(list(membership_ids)),
             or_(ProjectMembership.left_on.is_(None), ProjectMembership.left_on > through),
+            Project.status == ProjectStatus.ACTIVE,
         )
     )
     return set(rows.scalars().all())

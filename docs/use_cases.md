@@ -285,7 +285,7 @@ else is either.
 | **Create a project** | `POST /projects` | 🖥️ both roles |
 | **Update a project** — title, research questions, stage, status | `PATCH /projects/{id}` | 🖥️ — a professor sets any field; the creator sets the record but not its standing |
 | **Assign a student to a project** | `POST /projects/{id}/members` | 🖥️ |
-| End a membership, keeping its history | `POST /projects/{id}/members/{membership_id}/end` | 🖥️ for the student leaving their own; ⚙️ for the professor ending anyone's |
+| End a membership, keeping its history | `POST /projects/{id}/members/{membership_id}/end` | 🖥️ professor only, on the member row ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)) |
 | **List the projects open to joining** | `GET /projects/joinable` | 🖥️ student |
 | **Join a project that is open** | `POST /projects/{id}/join` | 🖥️ student |
 | Record a dated research decision and its rationale | `POST /projects/{id}/decisions` | ⚙️ |
@@ -293,6 +293,20 @@ else is either.
 | Create a task | `POST /projects/{id}/tasks` | ⚙️ |
 | **Attach a document to a project, read the project's documents, remove one you attached** | `POST /artifacts/uploads`, `GET /artifacts?project_id=`, `DELETE /artifacts/{id}` | 🖥️ both roles — on the project page, and on the create form |
 | Read tasks | `GET /projects/{id}/tasks` | ⚙️ |
+
+**A student no longer leaves a project, and a finished project owes no week**
+([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)). The "Done this project" button is
+gone and `end_membership` refuses a student outright: whether research is finished is the judgement
+the weekly meeting exists to make, and a student who has stopped owing a report is a student the
+professor is no longer told about. The professor gains the control on the member row, and the
+usual way to end a project is its status — setting it out of `active` now takes the week off
+everyone on it, including the week in progress, which it did not do before. **PROJ-07 and AUTH-01
+still say a student may end their own membership; they no longer describe the product.**
+
+A student's project view also drops the **stage** and the **milestones**: both are the professor's
+plan for the project rather than the student's account of it, and the student's own screens — the
+week, the editor, the record — carry neither. The stage is still on the project list and on the
+create form, because the API requires one when a project is started.
 
 **A project's related documents are new** ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)).
 PROJ-01 has listed "shared resources" among a project's fields since v0.1 and nothing ever wrote
@@ -516,7 +530,6 @@ reported **$0 spent** in exactly the case where nothing was capping the bill.
 | **Start their own project, active from the moment it exists** | `POST /projects` | 🖥️ |
 | **Edit the record of a project they started** | `PATCH /projects/{id}` | 🖥️ |
 | **See which projects are open to joining, and join one** | `GET /projects/joinable`, `POST /projects/{id}/join` | 🖥️ |
-| **Leave a project, keeping the history** | `POST /projects/{id}/members/{membership_id}/end` | 🖥️ |
 | Read every week they have been in, not only the current one | `GET /periods` | 🖥️ |
 | **Read an approved assessment** | `GET /assessments`, `/assessments/{id}` | 🖥️ |
 | **Read the feedback on it** | `GET /assessments/{id}/feedback` | 🖥️ |

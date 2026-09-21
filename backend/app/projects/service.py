@@ -411,9 +411,15 @@ async def end_membership(
 ) -> MembershipOut:
     """PROJ-02 keeps the row; AUTH-03 revokes the access it granted.
 
-    A student may end their own membership and no one else's (PROJ-07), and only as of today:
-    a back-dated leave would rewrite which weeks were owed, and a forward-dated one would let them
-    schedule an exit. The professor keeps both, which is what excusing a week properly looks like.
+    **Ending a membership is the professor's, including a student's own** (ADR 0019, amending
+    PROJ-07 and ADR 0017). A student could end theirs and no one else's until this; the right came
+    with starting and joining projects, and it is the half that was taken back. Leaving a project
+    is not the same kind of act as joining one: the work was agreed with a supervisor, and whether
+    it is finished is a supervision judgement rather than a student's to record.
+
+    A professor ends a membership either directly — here — or by taking the project out of
+    `ACTIVE`, which stops every membership on it owing a week (`memberships_open_through`). The
+    second is usually what "this project is done" means, and it needs no row per student.
     """
     membership = await repository.get_membership(session, scope, membership_id)
     if membership is None:
@@ -422,10 +428,7 @@ async def end_membership(
     # access check reads it against.
     today = await identity_service.workspace_today(session, scope.workspace_id)
     if not scope.is_prof:
-        if membership.student_id != scope.user_id:
-            raise ForbiddenError("only the professor or the student on it may end this membership")
-        if left_on is not None and left_on != today:
-            raise ValidationError("a student may only leave as of today")
+        raise ForbiddenError("only the professor may end a membership on a project")
     if membership.left_on is not None:
         return MembershipOut.model_validate(membership)
 

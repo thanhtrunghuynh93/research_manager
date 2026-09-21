@@ -69,7 +69,10 @@ test("a week's evidence is not a project document, however the API answers", asy
 });
 
 test("remove is offered only for the file you attached", async () => {
-  renderPanel([document(), document({ artifact_id: "a2", owner_student_id: "s2", filename: "theirs.pdf" })]);
+  renderPanel([
+    document(),
+    document({ artifact_id: "a2", owner_student_id: "s2", filename: "theirs.pdf" }),
+  ]);
 
   await screen.findByText("protocol.md");
   const rows = screen.getAllByRole("listitem");
@@ -110,11 +113,19 @@ test("attaching sends no period, which is what keeps it the project's", async ()
       http.post("/api/v1/artifacts/uploads", async ({ request }) => {
         posted.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json(
-          { artifact_id: "a9", version_no: 1, url: "http://store/put", expires_in: 60, headers: {} },
+          {
+            artifact_id: "a9",
+            version_no: 1,
+            url: "http://store/put",
+            expires_in: 60,
+            headers: {},
+          },
           { status: 201 },
         );
       }),
-      http.post("/api/v1/artifacts/a9/confirm", () => HttpResponse.json(document({ artifact_id: "a9" }))),
+      http.post("/api/v1/artifacts/a9/confirm", () =>
+        HttpResponse.json(document({ artifact_id: "a9" })),
+      ),
     );
     renderPanel([]);
     await screen.findByText(/nothing attached yet/i);

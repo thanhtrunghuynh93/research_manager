@@ -21,7 +21,6 @@ import { usePeople } from "@/features/people/queries";
 import {
   useAddMember,
   useLeaveProject,
-  useMembers,
   useUpdateProject,
 } from "@/features/projects/queries";
 import {
@@ -89,70 +88,26 @@ export function StatusControls({ project }: { project: Project }) {
 }
 
 /**
- * What a student may do to their own standing on a project (PROJ-07).
- *
- * Leaving is the counterpart of joining and is deliberately not dressed up as an undo: it takes
- * the project off every week still open, including the one in progress (REP-01 — a membership that
- * ended inside a week owes nothing for it), and it keeps the history. The copy has to say both
- * halves, because a student who reads only the first will expect their submitted work to go too.
- */
-export function MembershipControls({ project }: { project: Project }) {
-  const { t } = useTranslation();
-  const session = useSession();
-  const leave = useLeaveProject(project.id);
-  // The record answers this itself now, so a reader who has left needs no member list — which is
-  // just as well, because the route withholds it from them.
-  const left = Boolean(project.viewer_left_on);
-  const members = useMembers(project.id, !left);
-
-  // Once they have left there is no control, and no need for one here to say so: the page's own
-  // notice is derived from the same field and carries the date and what is now withheld. Two
-  // messages saying the same thing was the previous answer to "the button just vanished".
-  if (left) return null;
-
-  const mine = (members.data ?? []).find(
-    (member) => member.student_id === session.data?.id && !member.left_on,
-  );
-  // Not a member at all — someone else's project, opened from the list.
-  if (!mine) return null;
-
-  return (
-    <div className="mt-4 border-t border-border pt-4" data-testid="membership-controls">
-      <button
-        type="button"
-        disabled={leave.isPending}
-        // A student cannot undo this — rejoining needs the professor to have opened the project —
-        // so it asks, as removing a single attachment already does.
-        onClick={() => {
-          if (window.confirm(t("project.leaveConfirm", { title: project.title }))) {
-            leave.mutate(mine.id);
-          }
-        }}
-        className="btn-primary"
-        data-testid="leave-project"
-      >
-        {t("project.leave")}
-      </button>
-      <p className="stamp mt-2 max-w-xl">{t("project.leaveNote")}</p>
-      <Failure error={leave.error} />
-    </div>
-  );
-}
-
-/**
  * The project's own description, editable by whoever started it (AUTH-07).
  *
  * The fields here are exactly the ones the API lets a creator change. Status, whether the project
  * is open to joining, and the AI restriction are absent on purpose: those are decisions about the
  * project's standing rather than its description, and they stay with the professor.
  */
-export function ProjectFieldsForm({ project }: { project: Project }) {
+export function ProjectFieldsForm({
+  project,
+  canSetStage,
+}: {
+  project: Project;
+  /** The professor's. A student's project view carries no stage at all, so nor does their form. */
+  canSetStage: boolean;
+}) {
   const { t } = useTranslation();
   const update = useUpdateProject(project.id);
 
+  const [stage, setStage] = useState<ResearchStage>(project.stage);
   const [title, setTitle] = useState(project.title);
   const [description, setDescription] = useState(project.description);
-  const [stage, setStage] = useState<ResearchStage>(project.stage);
   const [repoUrl, setRepoUrl] = useState(project.repo_url ?? "");
 
   return (
@@ -161,7 +116,12 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
       data-testid="project-fields"
       onSubmit={(event) => {
         event.preventDefault();
-        update.mutate({ title, description, stage, repo_url: repoUrl.trim() || null });
+        update.mutate({
+          title,
+          description,
+          repo_url: repoUrl.trim() || null,
+          ...(canSetStage ? { stage } : {}),
+        });
       }}
     >
       <div className="flex flex-wrap items-end gap-3">
@@ -184,6 +144,23 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
             className="input"
           />
         </label>
+        {canSetStage && (
+          <label className="block">
+            <span className="field-label">{t("projects.stage")}</span>
+            <select
+              aria-label={t("projects.stage")}
+              value={stage}
+              onChange={(event) => setStage(event.target.value as ResearchStage)}
+              className="select"
+            >
+              {STAGES.map((value) => (
+                <option key={value} value={value}>
+                  {t(`project.stage.${value}`, { defaultValue: value })}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="block min-w-[14rem] flex-1">
           <span className="field-label">{t("projects.repoUrl")}</span>
           <input
@@ -193,21 +170,6 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
             placeholder="https://github.com/..."
             className="input"
           />
-        </label>
-        <label className="block">
-          <span className="field-label">{t("projects.stage")}</span>
-          <select
-            aria-label={t("projects.stage")}
-            value={stage}
-            onChange={(event) => setStage(event.target.value as ResearchStage)}
-            className="select"
-          >
-            {STAGES.map((value) => (
-              <option key={value} value={value}>
-                {t(`project.stage.${value}`, { defaultValue: value })}
-              </option>
-            ))}
-          </select>
         </label>
         <button type="submit" disabled={update.isPending} className="btn-ghost">
           {t("project.saveFields")}
@@ -227,6 +189,45 @@ export function ProjectFieldsForm({ project }: { project: Project }) {
  * is written with the anchor's workspace id against a composite foreign key — so assigning someone
  * from another workspace would fail in the database rather than be refused in words.
  */
+/**
+ * Ending one student's part in a project (ADR 0019).
+ *
+ * The student's own "Done this project" is gone, so this is the only way one membership ends
+ * short of removing the account — and it sits on the member row, where the person is, rather than
+ * in a control of its own. For a project that is finished altogether the professor sets its
+ * status instead, which takes the week off everyone on it at once.
+ */
+export function EndMembershipButton({
+  project,
+  membershipId,
+  name,
+}: {
+  project: Project;
+  membershipId: string;
+  name: string;
+}) {
+  const { t } = useTranslation();
+  const end = useLeaveProject(project.id);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={end.isPending}
+        onClick={() => {
+          if (window.confirm(t("project.endMembershipConfirm", { name, title: project.title }))) {
+            end.mutate(membershipId);
+          }
+        }}
+        className="btn-quiet"
+        data-testid="end-membership"
+      >
+        {t("project.endMembership")}
+      </button>
+      <Failure error={end.error} />
+    </>
+  );
+}
+
 export function AddMemberForm({ project }: { project: Project }) {
   const { t } = useTranslation();
   const session = useSession();

@@ -21,7 +21,7 @@ import { ProjectDocuments } from "@/features/projects/components/ProjectDocument
 import { useSession } from "@/features/auth/queries";
 import {
   AddMemberForm,
-  MembershipControls,
+  EndMembershipButton,
   ProjectFieldsForm,
   StatusControls,
 } from "@/features/projects/components/ProjectControls";
@@ -55,7 +55,7 @@ export function ProjectPage() {
   // `viewer_left_on` is the field that decides.
   const wanted = Boolean(project.data) && !left;
   const members = useMembers(id, wanted);
-  const milestones = useMilestones(id, wanted);
+  const milestones = useMilestones(id, wanted && session.data?.role === "prof");
 
   if (project.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (project.isError)
@@ -77,7 +77,9 @@ export function ProjectPage() {
       <header className="border-b border-border pb-5">
         <div className="flex flex-wrap items-center gap-2.5">
           <h1 className="page-title">{data.title}</h1>
-          <Badge>{t(`project.stage.${data.stage}`, { defaultValue: data.stage })}</Badge>
+          {isProf && (
+            <Badge>{t(`project.stage.${data.stage}`, { defaultValue: data.stage })}</Badge>
+          )}
           <Badge tone={data.status === "active" ? "good" : "neutral"}>
             {t(`project.status.${data.status}`, { defaultValue: data.status })}
           </Badge>
@@ -100,8 +102,7 @@ export function ProjectPage() {
           </p>
         )}
         {isProf ? <StatusControls project={data} /> : null}
-        {isProf || isCreator ? <ProjectFieldsForm project={data} /> : null}
-        {!isProf ? <MembershipControls project={data} /> : null}
+        {isProf || isCreator ? <ProjectFieldsForm project={data} canSetStage={isProf} /> : null}
         {left ? (
           <>
             <p className="notice-warn mt-4 max-w-2xl" role="status" data-testid="left-notice">
@@ -141,10 +142,19 @@ export function ProjectPage() {
                   <Link to={`/students/${member.student_id}`} className="text-ui">
                     {member.student_name || member.student_id.slice(0, 8)}
                   </Link>
-                  <span className="text-right font-mono text-meta text-muted-foreground">
-                    {member.responsibility || t("project.noResponsibility")} ·{" "}
-                    {formatLocalDate(member.joined_on)}
-                    {member.left_on ? ` – ${formatLocalDate(member.left_on)}` : ""}
+                  <span className="flex items-center gap-3">
+                    <span className="text-right font-mono text-meta text-muted-foreground">
+                      {member.responsibility || t("project.noResponsibility")} ·{" "}
+                      {formatLocalDate(member.joined_on)}
+                      {member.left_on ? ` – ${formatLocalDate(member.left_on)}` : ""}
+                    </span>
+                    {isProf && !member.left_on && (
+                      <EndMembershipButton
+                        project={data}
+                        membershipId={member.id}
+                        name={member.student_name || member.student_id.slice(0, 8)}
+                      />
+                    )}
                   </span>
                 </li>
               ))}
@@ -157,33 +167,35 @@ export function ProjectPage() {
             {isProf ? <AddMemberForm project={data} /> : null}
           </div>
 
-          <div>
-            <h2 className="section-title mb-2.5">{t("project.milestones")}</h2>
-            <ul className="panel">
-              {milestones.data?.map((milestone) => (
-                <li key={milestone.id} className="row">
-                  <span>
-                    {milestone.title}
-                    {milestone.target_on ? (
-                      <span className="ml-2 font-mono text-meta text-faint">
-                        {formatLocalDate(milestone.target_on)}
-                      </span>
-                    ) : null}
-                  </span>
-                  <Badge tone={milestoneTone(milestone.status)}>
-                    {t(`project.milestoneStatus.${milestone.status}`, {
-                      defaultValue: milestone.status,
-                    })}
-                  </Badge>
-                </li>
-              ))}
-              {milestones.data?.length === 0 && (
-                <li className="px-4 py-2.5 text-sm text-muted-foreground">
-                  {t("project.noMilestones")}
-                </li>
-              )}
-            </ul>
-          </div>
+          {isProf && (
+            <div>
+              <h2 className="section-title mb-2.5">{t("project.milestones")}</h2>
+              <ul className="panel">
+                {milestones.data?.map((milestone) => (
+                  <li key={milestone.id} className="row">
+                    <span>
+                      {milestone.title}
+                      {milestone.target_on ? (
+                        <span className="ml-2 font-mono text-meta text-faint">
+                          {formatLocalDate(milestone.target_on)}
+                        </span>
+                      ) : null}
+                    </span>
+                    <Badge tone={milestoneTone(milestone.status)}>
+                      {t(`project.milestoneStatus.${milestone.status}`, {
+                        defaultValue: milestone.status,
+                      })}
+                    </Badge>
+                  </li>
+                ))}
+                {milestones.data?.length === 0 && (
+                  <li className="px-4 py-2.5 text-sm text-muted-foreground">
+                    {t("project.noMilestones")}
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
 
           {/* A member may attach; a professor may attach and read; a student who has left this
               project never reaches here, because the whole block is withheld from them. */}
