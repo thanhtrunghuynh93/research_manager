@@ -31,10 +31,16 @@ export function AppShell() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-7 py-3.5">
           <Link to="/" className="flex items-center gap-3 text-foreground no-underline">
             {/* The wordmark is the one place the product says its own name, so it is set apart
-                from the page titles below it rather than matching them: Newsreader at its lightest
-                with the letters opened up, which is the name's own idea. The negative tracking the
-                titles use pulls words together, and this one wants the opposite. */}
-            <span className="font-display text-display-sm font-light tracking-[0.06em]">
+                from the page titles below it rather than matching them: the interface face rather
+                than the serif they use, with the letters opened up, which is the name's own idea.
+                The negative tracking the titles use pulls words together; this one wants the
+                opposite.
+
+                Regular rather than light, and a size down from `display-sm`: Be Vietnam Pro is
+                loaded at 400/500/600, so a `font-light` here would be a weight the browser has to
+                invent — and a sans at the serif's size reads heavier than the serif did, which is
+                the opposite of what this mark is for. */}
+            <span className="font-sans text-[1.35rem] font-normal tracking-[0.1em]">
               {t("app.title")}
             </span>
           </Link>
