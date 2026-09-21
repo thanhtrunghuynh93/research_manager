@@ -3,7 +3,8 @@
  *
  * **Join** adds a membership, **Leave** takes it away, and a professor may hold several at once
  * (ADR 0015). What is singular is which one they are *working in* — every other screen shows that
- * one's data — so a workspace they belong to but are not in offers `Work here` as well.
+ * one's data — and moving between them is the switcher in the header, not a button here: it is
+ * the frame the other screens are read in rather than an administrative act.
  *
  * Leaving is refused when it would strand people in a workspace with no professor, and when it is
  * the only membership left, because an account has to be in one. Both refusals come back from the
@@ -72,18 +73,9 @@ function WorkspaceRow({ workspace, here }: { workspace: Workspace; here: boolean
         <span className="font-mono text-meta text-faint">{workspace.timezone}</span>
       </span>
       <span className="flex flex-wrap items-center gap-3">
-        {/* Belonging and working in are different, so a workspace you are a member of but not in
-            offers both: go there, or stop belonging to it. */}
-        {workspace.joined && !here && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => join.mutate(workspace.id)}
-            className="btn-quiet"
-          >
-            {t("workspaces.workHere")}
-          </button>
-        )}
+        {/* Going to a workspace you already belong to is the switcher's job now, and it lives in
+            the header where every screen can reach it. What is left here is what changes the set
+            you can switch between: join one, or stop belonging to one. */}
         <button
           type="button"
           disabled={busy}

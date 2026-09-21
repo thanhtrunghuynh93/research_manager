@@ -33,6 +33,7 @@ research_management/
 │   ├── implementation_status.md  what is built, what is left, decisions taken (section 9)
 │   ├── use_cases.md           what each role can do, and which of it has a screen — compiled
 │   │                          from the routers and the screens that call them, not from the spec
+│   ├── domain_model.md        how professor, student, workspace, project and reports are organized
 │   ├── adr/                   architecture decision records, one file each (section 7)
 │   ├── runbooks/              deploy.md, production-readiness.md, backup-restore.md, rotate-secrets.md, break-glass.md, incident.md
 │   ├── api/                   openapi.json exported by CI for review; changelog of breaking changes

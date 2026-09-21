@@ -381,8 +381,9 @@
     "here": "Working here",
     "join": "Join",
     "leave": "Leave",
-    "note": "You can belong to several workspaces at once. Joining adds one and leaving gives it up; the one marked Working here is what every other screen shows. Archiving ends a workspace nobody belongs to, and it leaves this list.",
-    "workHere": "Work here"
+    "note": "You can belong to several workspaces at once. Joining adds one and leaving gives it up; the one marked Working here is what every other screen shows, and the name in the header is where you change it. Archiving ends a workspace nobody belongs to, and it leaves this list.",
+    "switch": "Switch workspace",
+    "manage": "Workspaces and settings"
   },
   "calendar": {
     "title": "Reporting calendar",

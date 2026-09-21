@@ -74,16 +74,17 @@ test("a workspace you belong to offers leave, one you do not offers join", async
   expect(within(elsewhere!).queryByRole("button", { name: /^leave$/i })).not.toBeInTheDocument();
 });
 
-test("a workspace you belong to but are not in offers both work here and leave", async () => {
+test("a workspace you belong to but are not in offers leave, and no way to go there", async () => {
   // Belonging is plural and working in is singular (ADR 0015), so this row is neither the one you
-  // are in nor one you would join: it is one you could go to, or give up.
+  // are in nor one you would join: it is one you could give up. Going to it is the header's
+  // switcher — see WorkspaceSwitcher.test.tsx — so this screen no longer offers it.
   renderPage([HERE, { ...ELSEWHERE, joined: true }]);
 
   await screen.findByText("Vision Lab");
   const [, other] = within(screen.getByTestId("workspace-list")).getAllByRole("listitem");
 
-  expect(within(other!).getByRole("button", { name: /work here/i })).toBeInTheDocument();
   expect(within(other!).getByRole("button", { name: /^leave$/i })).toBeInTheDocument();
+  expect(within(other!).queryByRole("button", { name: /work here/i })).not.toBeInTheDocument();
   expect(within(other!).queryByText(/working here/i)).not.toBeInTheDocument();
 });
 
