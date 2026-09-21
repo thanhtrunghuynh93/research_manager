@@ -48,21 +48,18 @@ const PROJECT = {
   created_at: "2026-09-01T00:00:00Z",
 };
 
-function renderPage(me: object = PROF, project: object = PROJECT, members: object[] = []) {
+function renderPage(
+  me: object = PROF,
+  project: object = PROJECT,
+  members: object[] = [],
+  documents: object[] = [],
+) {
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json(me)),
     http.get("/api/v1/projects/p1", () => HttpResponse.json(project)),
     http.get("/api/v1/projects/p1/members", () => HttpResponse.json(members)),
     http.get("/api/v1/projects/p1/milestones", () => HttpResponse.json([])),
-    http.get("/api/v1/projects/p1/decisions", () => HttpResponse.json([])),
-    http.get("/api/v1/projects/p1/progress", () =>
-      HttpResponse.json({
-        weighted_completion: null,
-        completed_milestones: 0,
-        milestone_count: 0,
-        overdue_milestones: 0,
-      }),
-    ),
+    http.get("/api/v1/artifacts", () => HttpResponse.json(documents)),
     http.get("/api/v1/users", () =>
       HttpResponse.json({ items: [HERE, ELSEWHERE], next_cursor: null, limit: 100 }),
     ),
@@ -233,8 +230,6 @@ test("a student who has left sees the record, and is told what is not shown", as
   expect(screen.getByTestId("left-notice")).toHaveTextContent(/You left this project/);
 
   // And the working detail is absent rather than shown as empty.
-  expect(screen.queryByTestId("project-progress")).not.toBeInTheDocument();
-  expect(screen.queryByTestId("decisions")).not.toBeInTheDocument();
   expect(screen.queryByText(/No milestones yet/i)).not.toBeInTheDocument();
   // Nothing to leave any more.
   expect(screen.queryByTestId("leave-project")).not.toBeInTheDocument();
@@ -258,8 +253,86 @@ test("a student still on the project sees all of it, and no notice", async () =>
 
   await screen.findByRole("heading", { name: /Retrieval baselines/ });
   expect(screen.queryByTestId("left-notice")).not.toBeInTheDocument();
-  expect(screen.getByTestId("project-progress")).toBeInTheDocument();
-  expect(screen.getByTestId("decisions")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /members/i })).toBeInTheDocument();
+});
+
+test("the project's related documents are on the page, and a departed member gets none of it", async () => {
+  // ADR 0018: documents belong to the project, so everyone on it reads them — and the block they
+  // sit in is the one a student who has left is not shown at all.
+  renderPage(
+    STUDENT,
+    { ...PROJECT, status: "active" },
+    [
+      {
+        id: "m1",
+        project_id: "p1",
+        student_id: STUDENT.id,
+        student_name: "An",
+        responsibility: "",
+        origin: "assigned",
+        joined_on: "2026-08-31",
+        left_on: null,
+        planned_allocation: null,
+        created_at: "2026-08-31T00:00:00Z",
+      },
+    ],
+    [
+      {
+        artifact_id: "a1",
+        owner_student_id: STUDENT.id,
+        project_id: "p1",
+        period_id: null,
+        entry_id: null,
+        filename: "protocol.md",
+        byte_size: 2048,
+        extraction_state: "pending",
+        created_at: "2026-09-20T00:00:00Z",
+      },
+    ],
+  );
+
+  expect(await screen.findByTestId("project-documents")).toBeInTheDocument();
+  expect(await screen.findByText("protocol.md")).toBeInTheDocument();
+  // A member may add one.
+  expect(screen.getByLabelText(/attach a document/i)).toBeInTheDocument();
+});
+
+test("neither milestone completion nor research decisions is on the page", async () => {
+  // Both were removed because nothing in the product writes what they showed: `accepted_completion`
+  // has no screen that sets it, so completion read 0% as though it were a finding, and decisions
+  // are professor-only to record with no screen to record them. The endpoints still answer.
+  const asked: string[] = [];
+  server.use(
+    http.get("/api/v1/projects/p1/progress", ({ request }) => {
+      asked.push(new URL(request.url).pathname);
+      return HttpResponse.json({
+        weighted_completion: "0.5000",
+        completed_milestones: 1,
+        milestone_count: 2,
+        overdue_milestones: 0,
+      });
+    }),
+    http.get("/api/v1/projects/p1/decisions", ({ request }) => {
+      asked.push(new URL(request.url).pathname);
+      return HttpResponse.json([
+        {
+          id: "d1",
+          decision: "Dropped the BM25 baseline",
+          rationale: "Superseded",
+          decided_on: "2026-09-01",
+        },
+      ]);
+    }),
+  );
+  renderPage(PROF, { ...PROJECT, status: "active" });
+
+  await screen.findByRole("heading", { name: /Retrieval baselines/ });
+  expect(screen.queryByTestId("project-progress")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("decisions")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Dropped the BM25 baseline/)).not.toBeInTheDocument();
+  // Not fetched either: a panel that is gone should not still cost two requests a view.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(asked).toEqual([]);
 });
 
 test("a project the student has left is not asked for what it will not show", async () => {
@@ -279,19 +352,6 @@ test("a project the student has left is not asked for what it will not show", as
     http.get("/api/v1/projects/p1/milestones", ({ request }) => {
       asked.push(new URL(request.url).pathname);
       return HttpResponse.json([]);
-    }),
-    http.get("/api/v1/projects/p1/decisions", ({ request }) => {
-      asked.push(new URL(request.url).pathname);
-      return HttpResponse.json([]);
-    }),
-    http.get("/api/v1/projects/p1/progress", ({ request }) => {
-      asked.push(new URL(request.url).pathname);
-      return HttpResponse.json({
-        weighted_completion: null,
-        completed_milestones: 0,
-        milestone_count: 0,
-        overdue_milestones: 0,
-      });
     }),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

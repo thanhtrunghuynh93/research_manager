@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.13 — 19 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.14 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -58,7 +58,7 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 94 endpoints, 62 of them called by a screen, and nothing left marked ◻️.**
+**As of this version: 94 endpoints, 60 of them called by a screen, and nothing left marked ◻️.**
 Both numbers are path-and-method pairs over `/api/v1`, counted by the script in §9 — v0.12 gave
 "98 endpoints, 50 of them called by a screen", which counted routes one way and callers another
 and so compared two different things. The units agree now; the pair is not comparable to v0.12's.
@@ -67,7 +67,10 @@ v0.4 removed ten — seven notification routes and three export routes, with `PU
 v0.9 added eight for workspaces and one for moving a student, every one of them behind a screen.
 v0.12 added two, `GET /projects/joinable` and `POST /projects/{id}/join`, and opened three more
 to students: creating a project, patching one they created, and ending their own membership
-(PROJ-07, AUTH-07).
+(PROJ-07, AUTH-07). This version gives two back: `GET /projects/{id}/decisions` and
+`/{id}/progress` lost their panels (§2.3), so the count fell by two without an endpoint being
+removed — which is the number doing its job, since a read nothing calls is what it is there to
+show.
 
 The second number is not the whole answer even so, because reachability is per role:
 `GET /periods/{id}/report` is 🖥️ for the student who writes the report and 🚧 for the professor who
@@ -275,7 +278,8 @@ else is either.
 
 | Use case | Endpoint | |
 | --- | --- | --- |
-| Read a project, its members, decisions and weighted progress | `GET /projects`, `/projects/{id}`, `/{id}/members`, `/{id}/decisions`, `/{id}/progress` | 🖥️ |
+| Read a project and its members | `GET /projects`, `/projects/{id}`, `/{id}/members` | 🖥️ |
+| Read a project's dated decisions and its weighted progress | `GET /projects/{id}/decisions`, `/{id}/progress` | ⚙️ — both panels were removed from the screen; see below |
 | Read a project's milestones | `GET /projects/{id}/milestones` | 🖥️ |
 | Read a milestone's retained baselines | `GET /milestones/{id}/revisions` | ⚙️ |
 | **Create a project** | `POST /projects` | 🖥️ both roles |
@@ -287,7 +291,30 @@ else is either.
 | Record a dated research decision and its rationale | `POST /projects/{id}/decisions` | ⚙️ |
 | Create a milestone; update its scope or weight | `POST /projects/{id}/milestones`, `PATCH /milestones/{id}` | ⚙️ |
 | Create a task | `POST /projects/{id}/tasks` | ⚙️ |
+| **Attach a document to a project, read the project's documents, remove one you attached** | `POST /artifacts/uploads`, `GET /artifacts?project_id=`, `DELETE /artifacts/{id}` | 🖥️ both roles — on the project page, and on the create form |
 | Read tasks | `GET /projects/{id}/tasks` | ⚙️ |
+
+**A project's related documents are new** ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)).
+PROJ-01 has listed "shared resources" among a project's fields since v0.1 and nothing ever wrote
+one: a student with a protocol or a dataset description had a weekly report, where it became that
+week's private evidence, or a corridor. The artifacts table already carried a nullable
+`period_id`, so the file that has none is the project's, and the visibility predicate gained the
+one branch that says so — everyone on the project reads it, whoever attached it may remove it, and
+a professor reads every one and removes none. The create form takes them too, and attaches them
+once the project exists, since there is nothing to attach them to before that. They are not
+extracted and not indexed: a project document cannot be cited by an assessment or the assistant,
+which is a separate decision about what the model may read.
+
+**Milestone completion and research decisions are no longer on the project screen.** Both panels
+were removed for the same reason, and it is the one this inventory exists to catch: nothing in the
+product writes what either of them showed. Completion is milestone weights against
+`accepted_completion`, a column only `PATCH /milestones/{id}` sets — which has no screen — so every
+project in the deployment read 0%, and a figure that is always zero is worse than no figure because
+it looks like a finding. Decisions are professor-only to record and `POST /{id}/decisions` has no
+screen either, so the panel reported "No decisions recorded" about projects whose decisions had
+never had anywhere to go. The reads still answer and are marked ⚙️ above; restoring either panel is
+the same day's work as building the authoring side it needs. **This is a divergence from UI-03**,
+which names dated project decisions as part of the project workspace.
 
 The reads moved from 🚧 to 🖥️ without changing: `/projects` is a list screen, and a route nothing
 linked to is a route nobody could open. Project titles on `/me` link to it too, so the student who

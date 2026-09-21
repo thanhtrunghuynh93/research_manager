@@ -18,6 +18,7 @@ import { Badge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { useSession } from "@/features/auth/queries";
 import {
+  attachProjectDocument,
   useCreateProject,
   useJoinableProjects,
   useJoinProject,
@@ -171,6 +172,14 @@ function CreateForm({ isProf }: { isProf: boolean }) {
   const [description, setDescription] = useState("");
   const [questions, setQuestions] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  // Chosen before the project exists, attached after it does. A file cannot be uploaded until
+  // there is a project to attach it to — `POST /artifacts/uploads` takes a project id and the
+  // membership check is against that id — so the picker holds them and the upload runs on
+  // success. Anything that fails to attach is reported by name rather than silently dropped:
+  // the project is already created either way, and it is the file the student would look for.
+  const [documents, setDocuments] = useState<File[]>([]);
+  const [attaching, setAttaching] = useState<{ done: number; total: number } | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const create = useCreateProject();
 
   return (
@@ -190,11 +199,28 @@ function CreateForm({ isProf }: { isProf: boolean }) {
             repo_url: repoUrl.trim() || null,
           },
           {
-            onSuccess: () => {
+            onSuccess: async (project) => {
               setTitle("");
               setDescription("");
               setQuestions("");
               setRepoUrl("");
+              if (documents.length === 0) return;
+              setAttachError(null);
+              const failed: string[] = [];
+              for (const [index, file] of documents.entries()) {
+                setAttaching({ done: index, total: documents.length });
+                try {
+                  await attachProjectDocument(project.id, file);
+                } catch {
+                  // Named rather than surfaced one by one: the project exists whatever happened
+                  // here, and a student wants to know which file to attach again.
+                  failed.push(file.name);
+                }
+              }
+              setAttaching(null);
+              setDocuments([]);
+              if (failed.length)
+                setAttachError(t("projects.documentsFailed", { names: failed.join(", ") }));
             },
           },
         );
@@ -262,12 +288,38 @@ function CreateForm({ isProf }: { isProf: boolean }) {
         <span className="stamp mt-1 block">{t("projects.researchQuestionsHint")}</span>
       </label>
 
+      <div className="mt-4">
+        <span className="field-label">{t("project.documents.onCreate")}</span>
+        <input
+          type="file"
+          multiple
+          className="mt-1 block text-ui text-muted-foreground file:mr-3 file:rounded file:border file:border-border file:bg-surface file:px-2.5 file:py-1.5 file:text-ui file:text-muted-foreground"
+          onChange={(event) => setDocuments(Array.from(event.target.files ?? []))}
+          data-testid="project-documents-picker"
+        />
+        <span className="stamp mt-1 block">{t("project.documents.onCreateNote")}</span>
+      </div>
+
       <div className="mt-4 flex items-center gap-4">
-        <button type="submit" disabled={create.isPending} className="btn-primary">
+        <button
+          type="submit"
+          disabled={create.isPending || attaching !== null}
+          className="btn-primary"
+        >
           {t("projects.createAction")}
         </button>
         <Failure error={create.error} />
+        {attaching && (
+          <span className="stamp" role="status" data-testid="attaching">
+            {t("project.documents.attaching", attaching)}
+          </span>
+        )}
       </div>
+      {attachError && (
+        <p className="mt-2 text-sm text-bad" role="alert">
+          {attachError}
+        </p>
+      )}
       <p className="stamp mt-3">
         {isProf ? t("projects.createNote") : t("projects.createNoteStudent")}
       </p>

@@ -34,14 +34,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
 import { Badge } from "@/components/evidence/Badges";
 import { openArtifact } from "@/features/report/queries";
-
-type Grant = {
-  artifact_id: string;
-  version_no: number;
-  url: string;
-  expires_in: number;
-  headers: Record<string, string>;
-};
+import { putWithProgress, sha256, type Sending, type UploadGrant } from "@/lib/upload";
 
 export type Attachment = {
   artifact_id: string;
@@ -56,61 +49,6 @@ export type Attachment = {
   /** What the student said this shows. Recorded on attach, and shown back on the row. */
   supported_claim?: string;
 };
-
-/** The browser's own SHA-256, so the server has something to verify the upload against. */
-async function sha256(file: File): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * What is in flight, and how far along. `fraction` is null whenever nothing is measuring it —
- * hashing and confirming have no progress to report, and a browser may send the bytes without
- * ever firing a progress event. Null means "no number", and the bar is then not drawn at all
- * rather than drawn at a number nobody measured.
- */
-type Sending = {
-  name: string;
-  stage: "checking" | "sending" | "recording";
-  fraction: number | null;
-};
-
-/**
- * PUT the bytes, reporting how many have gone.
- *
- * `fetch` cannot do this: it reports a response arriving and says nothing about a request body
- * leaving, which is the half that takes the time here. XHR still has `upload.onprogress`, so the
- * one request whose duration a student actually waits through is the one request not made with
- * fetch. The rest of the flow stays on the shared client.
- */
-function putWithProgress(
-  url: string,
-  headers: Record<string, string>,
-  file: File,
-  onProgress: (fraction: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("PUT", url);
-    for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
-    request.upload.addEventListener("progress", (event) => {
-      // `lengthComputable` is the browser saying it knows the total. Without it, dividing by
-      // `event.total` yields Infinity or NaN and the bar reads as complete before anything is.
-      if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
-    });
-    request.addEventListener("load", () => {
-      if (request.status >= 200 && request.status < 300) resolve();
-      else reject(new Error(`upload failed with ${request.status}`));
-    });
-    // A refused connection, a DNS failure or a cancelled tab: all three end the upload without a
-    // status, and none of them may leave the panel sitting at "Sending…" for ever.
-    request.addEventListener("error", () => reject(new Error("the upload could not be sent")));
-    request.addEventListener("abort", () => reject(new Error("the upload was interrupted")));
-    request.send(file);
-  });
-}
 
 export function Attachments({
   projectId,
@@ -141,7 +79,7 @@ export function Attachments({
     setError(null);
     try {
       const checksum = await sha256(file);
-      const grant = await api.post<Grant>("/api/v1/artifacts/uploads", {
+      const grant = await api.post<UploadGrant>("/api/v1/artifacts/uploads", {
         project_id: projectId,
         period_id: periodId,
         filename: file.name,

@@ -875,3 +875,88 @@ async def test_another_students_attachments_are_not_read_by_this_submission(
     assert (
         await artifacts.read_attachments_for(db, student_id=student_a.id, period_id=period.id) == 0
     )
+
+
+async def test_a_project_document_is_shared_with_the_project_and_a_week_s_evidence_is_not(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """ADR 0018: what a membership grants now includes the project's own documents.
+
+    Both files below are the same student's, on the same project, in the same table. One carries
+    the period it was attached for and one carries nothing, and that is the whole difference
+    between a week's private evidence and a document the project shares.
+    """
+    period, project = await _project(db, prof_scope, student_a)
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_b.id, joined_on=date(2026, 9, 1)
+    )
+    a_scope = await identity_service.scope_for(db, student_a)
+    b_scope = await identity_service.scope_for(db, student_b)
+
+    paper = b"# The protocol we are replicating"
+    document = await artifacts.request_upload(
+        db,
+        a_scope,
+        project_id=project.id,
+        filename="protocol.md",
+        byte_size=len(paper),
+        sha256=sha256_of(paper),
+        store=store,
+    )
+    await store.put_bytes(document.storage_key, paper, content_type=document.content_type)
+    await artifacts.confirm_upload(db, a_scope, document.artifact_id, store=store)
+
+    week = await artifacts.request_upload(
+        db,
+        a_scope,
+        project_id=project.id,
+        period_id=period.id,
+        filename="my-run-log.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        store=store,
+    )
+    await store.put_bytes(week.storage_key, NOTE, content_type=week.content_type)
+    await artifacts.confirm_upload(db, a_scope, week.artifact_id, store=store)
+
+    seen_by_b = {row.filename for row in await artifacts.list_artifacts(db, b_scope)}
+    assert "protocol.md" in seen_by_b, "a project document is readable by everyone on the project"
+    assert "my-run-log.md" not in seen_by_b, "a week's evidence stays with its author (AC-02)"
+
+    # And the professor still sees both, as they always did.
+    seen_by_prof = {row.filename for row in await artifacts.list_artifacts(db, prof_scope)}
+    assert {"protocol.md", "my-run-log.md"} <= seen_by_prof
+
+
+async def test_a_project_document_is_not_shared_with_a_student_off_the_project(
+    db: AsyncSession,
+    prof_scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    """The grant is the membership, not the workspace: student B is enrolled but not on this."""
+    _period, project = await _project(db, prof_scope, student_a)
+    a_scope = await identity_service.scope_for(db, student_a)
+    b_scope = await identity_service.scope_for(db, student_b)
+
+    paper = b"# Not for the whole workspace"
+    grant = await artifacts.request_upload(
+        db,
+        a_scope,
+        project_id=project.id,
+        filename="protocol.md",
+        byte_size=len(paper),
+        sha256=sha256_of(paper),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, paper, content_type=grant.content_type)
+    await artifacts.confirm_upload(db, a_scope, grant.artifact_id, store=store)
+
+    assert await artifacts.list_artifacts(db, b_scope) == []
+    with pytest.raises((ForbiddenError, NotFoundError)):
+        await artifacts.download_url(db, b_scope, grant.artifact_id, store=store)

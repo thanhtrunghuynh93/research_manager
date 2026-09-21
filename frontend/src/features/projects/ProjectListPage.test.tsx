@@ -3,7 +3,7 @@
  * new project is `proposed`, and nothing becomes due on a proposed project.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
@@ -183,4 +183,68 @@ test("leaving the repository blank sends nothing rather than an empty string", a
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   expect(posted[0]).toMatchObject({ repo_url: null });
+});
+
+test("documents chosen on the form are attached once the project exists", async () => {
+  // A file cannot be uploaded before there is a project to attach it to, so the picker holds
+  // them and the upload runs on success (ADR 0018). The order is the point: create, then attach.
+  const calls: string[] = [];
+  const uploads: Record<string, unknown>[] = [];
+  class SilentXHR {
+    upload = new EventTarget();
+    listeners = new EventTarget();
+    status = 200;
+    open() {}
+    setRequestHeader() {}
+    addEventListener(name: string, handler: EventListener) {
+      this.listeners.addEventListener(name, handler);
+    }
+    send() {
+      calls.push("PUT store");
+      this.listeners.dispatchEvent(new Event("load"));
+    }
+  }
+  vi.stubGlobal("XMLHttpRequest", SilentXHR);
+  try {
+    renderPage(STUDENT);
+    server.use(
+      http.post("/api/v1/projects", async () => {
+        calls.push("POST /projects");
+        return HttpResponse.json(PROJECT, { status: 201 });
+      }),
+      http.post("/api/v1/artifacts/uploads", async ({ request }) => {
+        calls.push("POST /artifacts/uploads");
+        uploads.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(
+          { artifact_id: "a1", version_no: 1, url: "http://store/put", expires_in: 60, headers: {} },
+          { status: 201 },
+        );
+      }),
+      http.post("/api/v1/artifacts/a1/confirm", () => {
+        calls.push("POST confirm");
+        return HttpResponse.json({});
+      }),
+    );
+
+    await screen.findByTestId("project-list");
+    await userEvent.type(screen.getByLabelText(/^title$/i), "With a protocol");
+    await userEvent.upload(
+      screen.getByTestId("project-documents-picker"),
+      new File(["# protocol"], "protocol.md", { type: "text/markdown" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /create project/i }));
+
+    await waitFor(() => expect(calls).toContain("POST confirm"));
+    expect(calls).toEqual([
+      "POST /projects",
+      "POST /artifacts/uploads",
+      "PUT store",
+      "POST confirm",
+    ]);
+    // Attached to the project that was just created, and to no week.
+    expect(uploads[0]).toMatchObject({ project_id: PROJECT.id, filename: "protocol.md" });
+    expect(uploads[0]).not.toHaveProperty("period_id");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

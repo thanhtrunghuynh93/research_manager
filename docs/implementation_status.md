@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.7 — 19 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.13
+Version 0.7 — 19 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.6, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.14
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -29,7 +29,7 @@ Counted from the tree rather than remembered, and checked by `scripts/check_docs
 | --- | --- |
 | Alembic migrations | 25 |
 | `/api/v1` endpoints | 96 (94 in the schema, 2 `include_in_schema=False`) |
-| ADRs | 17 |
+| ADRs | 18 |
 | Acceptance scenarios with a test | 19 of 19 |
 | Import-linter contracts holding | 5 of 5 |
 

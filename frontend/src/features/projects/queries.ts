@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
+import { putWithProgress, sha256, type Sending, type UploadGrant } from "@/lib/upload";
 import type {
-  Decision,
   JoinableProject,
   MembershipIn,
   Milestone,
@@ -11,7 +11,6 @@ import type {
   ProjectMember,
   ProjectPage,
   ProjectPatch,
-  ProjectProgress,
 } from "@/features/projects/types";
 
 export const projectKey = (id: string) => ["project", id] as const;
@@ -47,20 +46,75 @@ export function useMilestones(id: string | undefined, wanted = true) {
   });
 }
 
-export function useDecisions(id: string | undefined, wanted = true) {
+/** One attachment as the artifacts API returns it. */
+export type ProjectDocument = {
+  artifact_id: string;
+  owner_student_id: string;
+  project_id: string | null;
+  period_id: string | null;
+  entry_id: string | null;
+  filename: string;
+  byte_size: number;
+  extraction_state: string;
+  created_at: string;
+};
+
+export const projectDocumentsKey = (id: string) => [...projectKey(id), "documents"] as const;
+
+/**
+ * The documents that belong to the project rather than to a week (ADR 0018).
+ *
+ * `GET /artifacts?project_id=` answers with everything the caller may see for that project, which
+ * for a student includes their own report evidence on it. The two are told apart by what they are
+ * not attached to, so the filter is here as well as in the policy: a week's file carries a period,
+ * a project document carries none.
+ */
+export function useProjectDocuments(id: string | undefined, wanted = true) {
   return useQuery({
-    queryKey: [...projectKey(id ?? ""), "decisions"],
-    queryFn: () => api.get<Decision[]>(`/api/v1/projects/${id}/decisions`),
+    queryKey: projectDocumentsKey(id ?? ""),
+    queryFn: async () => {
+      const rows = await api.get<ProjectDocument[]>(`/api/v1/artifacts?project_id=${id}`);
+      return rows.filter((row) => !row.period_id && !row.entry_id);
+    },
     enabled: Boolean(id) && wanted,
   });
 }
 
-export function useProgress(id: string | undefined, wanted = true) {
-  return useQuery({
-    queryKey: [...projectKey(id ?? ""), "progress"],
-    queryFn: () => api.get<ProjectProgress>(`/api/v1/projects/${id}/progress`),
-    enabled: Boolean(id) && wanted,
+/**
+ * Attach one file to a project: hash, PUT straight to the store, confirm (ADR 0018).
+ *
+ * A function rather than a mutation because both callers are outside React Query's idea of a
+ * mutation — the panel drives its own progress state, and the create form runs it in a loop after
+ * the project exists, since a file cannot be uploaded before there is a project to attach it to.
+ * `period_id` is deliberately absent: sending one would file this under a week and make it
+ * private to its uploader.
+ */
+export async function attachProjectDocument(
+  projectId: string,
+  file: File,
+  onSending?: (sending: Sending) => void,
+): Promise<void> {
+  onSending?.({ name: file.name, stage: "checking", fraction: null });
+  const checksum = await sha256(file);
+  const grant = await api.post<UploadGrant>("/api/v1/artifacts/uploads", {
+    project_id: projectId,
+    filename: file.name,
+    byte_size: file.size,
+    sha256: checksum,
   });
+  onSending?.({ name: file.name, stage: "sending", fraction: 0 });
+  await putWithProgress(grant.url, grant.headers, file, (fraction) =>
+    onSending?.({ name: file.name, stage: "sending", fraction }),
+  );
+  onSending?.({ name: file.name, stage: "recording", fraction: null });
+  await api.post(`/api/v1/artifacts/${grant.artifact_id}/confirm`);
+}
+
+export function useRefreshProjectDocuments(id: string) {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: projectDocumentsKey(id) });
+  };
 }
 
 export const projectsListKey = (status?: string) => ["projects", "list", status ?? "all"] as const;

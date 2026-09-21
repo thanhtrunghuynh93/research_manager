@@ -267,17 +267,11 @@
   "project": {
     "unavailable": "This project could not be loaded.",
     "researchQuestions": "Research questions",
-    "progress": "Milestone completion",
-    "progressNote": "Computed from milestone weights and accepted completion — never from student scores.",
-    "milestoneCounts": "{{done}} of {{total}} milestones complete, {{overdue}} overdue",
-    "noWeights": "Not available — no milestone weights are set.",
     "members": "Members",
     "noMembers": "Nobody is assigned to this project.",
     "noResponsibility": "No stated responsibility",
     "milestones": "Milestones",
     "noMilestones": "No milestones yet.",
-    "decisions": "Research decisions",
-    "noDecisions": "No decisions recorded.",
     "aiRestricted": "No model processing",
     "stage": {
       "literature_review": "Literature review",
@@ -319,7 +313,24 @@
     "leftOn": "Left {{when}}",
     "backToProjects": "Your projects →",
     "leftNotice": "You left this project on {{when}}. The record stays readable because your reports and assessments refer to it; its milestones, decisions and members are no longer shown.",
-    "saveFields": "Save"
+    "saveFields": "Save",
+    "documents": {
+      "title": "Related documents",
+      "none": "Nothing attached yet.",
+      "attach": "Attach a document",
+      "limit": "Up to 25 MB per file, and everyone on the project can read what you attach. These support the project itself — a protocol, a dataset description, the paper you are replicating — not one week's evidence, which belongs on the weekly report.",
+      "download": "Download",
+      "remove": "Remove",
+      "removeConfirm": "Remove {{name}} from this project? The file and everything stored with it are deleted.",
+      "stage": {
+        "checking": "Checking {{name}}…",
+        "sending": "Sending {{name}}…",
+        "recording": "Recording {{name}}…"
+      },
+      "onCreate": "Attach supporting documents (optional)",
+      "onCreateNote": "They are attached once the project exists, and everyone on the project can read them.",
+      "attaching": "Attaching {{done}} of {{total}}…"
+    }
   },
   "student": {
     "title": "Student",
