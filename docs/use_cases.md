@@ -146,12 +146,22 @@ and archiving stay with ownership alone.
 | List the workspaces this professor can be in | `GET /workspaces` | 🖥️ |
 | Create a workspace, and be moved into it | `POST /workspaces` | 🖥️ |
 | Read one, rename it, set its timezone | `GET`/`PATCH /workspaces/{id}` | 🖥️ |
-| Join a workspace, or switch to one already joined | `POST /workspaces/{id}/join` | 🖥️ |
+| Join a workspace, or switch to one already joined | `POST /workspaces/{id}/join` | 🖥️ — switching is the workspace name in the header, on every screen; joining one not yet belonged to is here |
 | Leave a workspace, keeping the others | `POST /workspaces/{id}/leave` | 🖥️ |
 | See everyone across the workspaces they belong to | `GET /users` | 🖥️ (§2.2) |
 | Archive a workspace nobody is in | `POST /workspaces/{id}/archive` | 🖥️ |
 | Remove a student from a workspace | `POST /users/{id}/remove` | 🖥️ (§2.2) |
 | Move a student to another workspace, before they start | `POST /users/{id}/workspace` | 🖥️ (§2.2) |
+
+**Switching is in the header, not on this screen.** The workspace name every screen carries is a
+menu of the memberships this professor holds, and choosing one moves the anchor and lands on the
+overview — switching is joining a workspace already belonged to (ADR 0015), so it is the same
+call. The overview rather than wherever you were, because a record page names a record of the
+workspace you just left and staying put would turn a switch into a redirect. It moved because it is
+not administration: it is the frame the roll, the overview and the assistant are read in, and
+changing it meant leaving the screen that had prompted the question. What stays here is what
+changes the set you can switch between — join, leave, archive — plus create, rename, the calendar
+and the budget. A professor with one membership sees the name without a menu.
 
 A student belongs to exactly one workspace and the invitation names it (§2.2), so they have one
 from the moment they are enrolled and never have none. `POST /users/invitations` now carries

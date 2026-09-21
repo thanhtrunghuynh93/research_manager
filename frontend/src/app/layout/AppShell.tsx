@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useLogout, useSession } from "@/features/auth/queries";
-import { useCurrentWorkspace } from "@/features/workspaces/queries";
+import { WorkspaceSwitcher } from "@/features/workspaces/components/WorkspaceSwitcher";
 import { useTheme } from "@/hooks/useTheme";
 
 /** The active item carries a rule, not a fill: this is a document, and the reader is on a page. */
@@ -24,7 +24,6 @@ export function AppShell() {
 
   const user = session.data;
   const isProf = user?.role === "prof";
-  const workspace = useCurrentWorkspace();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -45,30 +44,11 @@ export function AppShell() {
                 {t("app.greeting", { name: user.display_name })}
               </span>
             )}
-            {/* Every screen below is one workspace's, and a professor moves between them, so this
-                is the one place that says which — the roll, the overview and the assistant all
-                change underneath it. */}
-            {workspace && (
-              // A name, not a tag: muted 11px on a muted fill disappeared into the chrome, and
-              // this is the one line on the page that says which workspace everything below is
-              // about. The dot marks "working here"; the mask fades a long name at the cap
-              // rather than cutting it against the border, and `overflow-hidden` keeps a long
-              // one from pushing the row onto a second line. Not `truncate`: the ellipsis is
-              // computed from a frozen width and misfires in screenshot/PDF renderers, clipping
-              // names that fit.
-              <span
-                className="inline-flex min-w-0 max-w-48 items-center gap-1.5 overflow-hidden rounded-md border border-border-strong bg-raised py-[5px] pl-2.5 pr-5 text-xs font-semibold text-foreground"
-                style={{
-                  maskImage: "linear-gradient(to right, #000 calc(100% - 14px), transparent)",
-                  WebkitMaskImage: "linear-gradient(to right, #000 calc(100% - 14px), transparent)",
-                }}
-                data-testid="current-workspace"
-                title={workspace.name}
-              >
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                <span className="whitespace-nowrap">{workspace.name}</span>
-              </span>
-            )}
+            {/* Every screen below is one workspace's, and a professor moves between them, so
+                this is the one place that says which — and, since they may belong to several,
+                the place to change it. The roll, the overview and the assistant all change
+                underneath it. */}
+            <WorkspaceSwitcher />
             <button
               type="button"
               onClick={toggle}
