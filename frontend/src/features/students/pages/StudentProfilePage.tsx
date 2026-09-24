@@ -81,10 +81,20 @@ export function StudentProfilePage() {
           of time — eight weeks out by default, and the nightly job keeps them there — so the
           newest eight periods were the eight that had not happened yet. The list read as a
           column of empty weeks stretching into November, each offering to open a report that
-          could not exist, while every week the student had actually reported sat below the cut. */}
+          could not exist, while every week the student had actually reported sat below the cut.
+
+          And only this student's workspace. `useAllPeriods` asks for every workspace the
+          professor belongs to (ADR 0016), which is right for naming the week a record belongs
+          to and wrong for a list of weeks to open: a professor in two workspaces got both
+          calendars interleaved, so half the eight rows named a period the student has no report
+          under — each opening on "nothing was started" over a week they had filed — and their
+          own older weeks were pushed past the cut by the other workspace's. The periods carry
+          `workspace_id` and `UserOut` carries the student's, so the list is narrowed to the
+          weeks that are theirs to have reported. */}
       <h2 className="section-title mt-8">{t("report.reader.weekly")}</h2>
       <ul className="panel mt-2.5" data-testid="weekly-reports">
         {(periods.data ?? [])
+          .filter((period) => period.workspace_id === student.data?.workspace_id)
           .filter((period) => period.local_start <= today)
           .slice()
           .reverse()
