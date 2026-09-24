@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.9 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.8, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.16
+Version 0.9 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.16
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository

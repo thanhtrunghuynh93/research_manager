@@ -1,7 +1,7 @@
 # The Research Management Framework — Problem, Innovation, Impact
 
 Version 0.3 — 21 September 2026 — an overview of what this framework is for and what is new in it.
-It summarises [research_management_requirements.md](research_management_requirements.md) v0.8,
+It summarises [research_management_requirements.md](research_management_requirements.md) v0.9,
 [architecture.md](architecture.md) v0.5, the [ADRs](adr/), and
 [implementation_status.md](implementation_status.md); those documents remain authoritative where
 this one abbreviates them.
@@ -166,10 +166,10 @@ misattribution challengeable rather than merely regrettable.
 
 Two further design commitments are worth naming because they shape day-to-day use rather than the
 assessment contract. Professors are co-equal, and a professor may belong to several workspaces at
-once, reading across all of them and writing into the one they are working in — a student belongs
+once, reading and writing in the one they are working in and switching between them — a student belongs
 to exactly one, and a project belongs to the workspace it was created in, so a student's projects
 are the projects of their workspace and a membership cannot straddle two
-([ADR 0011](adr/0011-co-equal-professors.md), [ADR 0016](adr/0016-reads-span-membership.md)); and
+([ADR 0011](adr/0011-co-equal-professors.md), [ADR 0020](adr/0020-reads-follow-the-workspace-you-are-in.md)); and
 students own the projects they report on — a student may start a project, join one a professor has
 opened to joining, and edit the record of what they started, while ending a membership is the
 professor's, because whether research is finished is a supervision judgement rather than a

@@ -1,6 +1,6 @@
 # How professor, student, workspace, project and reports are organized
 
-Version 0.3 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.8, [architecture.md](architecture.md) v0.5, [use_cases.md](use_cases.md) v0.16, and the [ADRs](adr/)
+Version 0.3 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md) v0.5, [use_cases.md](use_cases.md) v0.16, and the [ADRs](adr/)
 
 This document is an orientation to the central relations: what belongs to what, which of those
 relations are plural, and where each one is enforced. It is derived from the documents above and

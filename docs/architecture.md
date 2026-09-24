@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.5 — 21 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.8
+Version 0.5 — 21 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.9
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 

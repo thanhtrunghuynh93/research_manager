@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.16 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.8, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.16 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
