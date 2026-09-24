@@ -47,16 +47,23 @@ test("W3 a professor creates a second workspace and is taken there", async ({ pa
   save({ workspaceTwoId: two.id });
 });
 
-test("W4 reads span both workspaces; the roll says so", async ({ page }) => {
+test("W4 reads follow the workspace being worked in (ADR 0020)", async ({ page }) => {
   await signIn(page, PROF);
-  const { workspaceId, studentId } = read();
+  const { workspaceId, workspaceTwoId } = read();
   const users = await api(page, "GET", "/users");
   const emails = asList(users).map((u) => u.email);
-  expect(emails, "the student anchored in the other workspace is still read").toContain(STUDENT.email);
-  const student = asList(users).find((u) => u.id === studentId);
-  expect(student.workspace_id, "and is still anchored where they were enrolled").toBe(workspaceId);
+  expect(emails, "the student enrolled in the other workspace is not on this roll").not.toContain(
+    STUDENT.email,
+  );
+  const projects = await api(page, "GET", "/projects");
+  expect(
+    asList(projects).every((p) => p.workspace_id === workspaceTwoId),
+    "and no project from the other workspace is listed",
+  ).toBe(true);
+  expect(asList(projects).some((p) => p.workspace_id === workspaceId)).toBe(false);
   await page.goto("/people");
-  await expect(page.getByText(/across 2 workspaces/i)).toBeVisible();
+  await expect(page.locator(`[data-testid="students-${workspaceTwoId}"]`)).toBeVisible();
+  await expect(page.locator(`[data-testid="students-${workspaceId}"]`)).toHaveCount(0);
 });
 
 test("W5 a write lands in the workspace being worked in, not the one read from", async ({ page }) => {
@@ -81,8 +88,9 @@ test("W6 a student who has written nothing can be moved; the move is by the prof
 
   const back = await api(page, "POST", `/users/${studentId}/workspace`, { workspace_id: workspaceId });
   expect(back.status).toBe(200);
-  const restored = await api(page, "GET", `/users/${studentId}`);
-  expect(restored.body.workspace_id, "returned to the workspace they were enrolled into").toBe(workspaceId);
+  // Read from the move itself: the professor is working in Lab Two, and since ADR 0020 a student
+  // anchored in the first workspace is not readable from here.
+  expect(back.body.workspace_id, "returned to the workspace they were enrolled into").toBe(workspaceId);
 });
 
 test("W7 a workspace somebody belongs to cannot be archived", async ({ page }) => {

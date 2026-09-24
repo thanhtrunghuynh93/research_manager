@@ -16,9 +16,10 @@ as user-facing features, workspace management added as a professor capability. v
 first, v0.5 built the second. v0.6 added entering and leaving, which answered the refusal §2.1 hit
 in v0.5 from the other side: an account could not change workspace, so the session did instead
 (ADR 0013). v0.7 paid the schema cost instead and made the account movable (ADR 0014), and v0.8
-made belonging plural (ADR 0015). **v0.10 is the one that changes what a professor sees**: reads
-span every workspace they belong to (ADR 0016), writes still land in one, and the screens group by
-workspace. §2.1 has the split that made all of it possible.
+made belonging plural (ADR 0015). **v0.10 changed what a professor sees**: reads spanned every
+workspace they belong to (ADR 0016). That was reversed by ADR 0020: a professor now sees the
+workspace the header switcher names, and switching changes every screen. §2.1 has the split that
+made all of it possible.
 
 **v0.11 is the one that changes what can happen at all.** It closes the two findings this document
 has been carrying: §8.1, that no report could ever become due because no project could be created
@@ -94,7 +95,7 @@ dead end rather than about security.
 | `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: ratings, rationales, feedback, and a correction request |
 | `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments, which are files (REP-04); submit |
 | `/overview` | professor | nav, and the professor's home | Budget and mail warnings, this week's reports by workspace, project and student, outstanding reports, review queue, sync issues, stalled analyses |
-| `/people` | professor | nav | Everyone in every workspace they belong to, grouped by workspace; invite, move, suspend / restore / remove |
+| `/people` | professor | nav | Everyone in the workspace they are working in (ADR 0020); invite, move, suspend / restore / remove |
 | `/workspaces` | professor | nav | The workspaces they belong to or own; join, leave, create, archive. The reporting calendar, and the weeks it opens. *Switching* between them is the workspace name in the header, on every screen (§2.1) |
 | `/projects` | signed in | nav (both roles since PROJ-07; a student's bar is their week, then this); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
 | `/students/:id` | professor | a name on `/people`, or on the overview's outstanding list | Approved assessments, trajectory per project, downloadable materials |
@@ -178,15 +179,16 @@ to one; it is **archived, never deleted**, because every foreign key into a work
 a delete would take the history with it; and archiving **refuses while any account is still
 active**, so the flag never has to be enforced further down.
 
-**Reads span every workspace you belong to; writes go to one** (ADR 0016). `Scope` carries both:
-`workspace_ids` is what a read may see, `workspace_id` is where a write lands. The comparison lives
-in `Scope.within`, one function that all thirty-three visibility predicates call — widening what a
+**Reads and writes both follow the workspace you are working in** (ADR 0020, superseding ADR 0016's
+spanning read). `Scope` carries both: `workspace_ids` is what a read may see, `workspace_id` is
+where a write lands, and today they are the same one workspace. The comparison lives in
+`Scope.within`, one function that all thirty-three visibility predicates call — widening what a
 read may see is the most consequential change anyone can make here, and it should be visible in one
-diff rather than spread across seven `policies.py` files. A student belongs to one workspace, so
-their set has one element and nothing about their access changed.
+diff rather than spread across seven `policies.py` files.
 
-That is why "working here" still exists and is now a smaller idea than it was: it decides where new
-things land, not what you can see.
+That is why "working here" is the frame every screen is read in: switching workspace in the header
+changes which projects, students, reports and evidence a professor sees, as well as where new
+things land.
 
 **Belonging is plural; working in one is singular** (ADR 0015). `workspace_members` records the
 first and `users.workspace_id` the second — the workspace a Scope is compiled from and the anchor
@@ -405,8 +407,9 @@ where everyone has, so the screen said nothing about the week that was actually 
 board carries all three states — submitted, owed, excused — one row per obligation, grouped by
 workspace and then by project, with names rather than the first eight characters of a uuid.
 
-It is grouped by workspace because a professor's reads span every workspace they belong to
-(ADR 0016) and each keeps its own reporting calendar. There is therefore no single "this week" for
+It is grouped by workspace because a professor's reads were built to span every workspace they
+belong to (ADR 0016) and each keeps its own reporting calendar; since ADR 0020 a read covers the
+one being worked in, so the board shows a single group. There is therefore no single "this week" for
 them: `GET /overview` still carries one `current_period` for the header, and the board computes one
 period per workspace. `PeriodOut` gained `workspace_id` for exactly this — without it the periods
 came back in one list with nothing to group them by.

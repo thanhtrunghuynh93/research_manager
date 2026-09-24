@@ -82,12 +82,11 @@ async def scope_for(session: AsyncSession, user: User) -> Scope:
     A professor sees every project in the workspace, so no membership lookup is needed; the
     predicates in each module's policies.py branch on the role.
 
-    Two workspace fields, and the difference is the point (ADR 0016). `workspace_id` is where a
-    write goes: the workspace this request is in, taken from the account. `workspace_ids` is what a
-    read may see: every workspace the account belongs to.
-
-    A student has one membership, so the two agree and nothing about their access changed. A
-    professor belonging to several sees all of them and still writes into one.
+    The workspace the account is working in is both where a write goes and what a read may see
+    (ADR 0020, superseding ADR 0016's spanning read). A professor belonging to several sees the one
+    the header switcher names, and switching changes what every screen shows — which is what the
+    switcher has claimed all along. `workspace_ids` stays on `Scope` as the one seam a wider read
+    would go through, but nothing here widens it.
 
     `project_ids` stays keyed to the single workspace. A student's project memberships live where
     their account does, and a professor does not use it — the predicates branch on the role.
@@ -98,13 +97,6 @@ async def scope_for(session: AsyncSession, user: User) -> Scope:
         else await load_project_ids(session, user.workspace_id, user.id)
     )
     workspace_ids = frozenset({user.workspace_id})
-    if user.role is Role.PROF:
-        joined = await repository.workspaces_joined_by(session, user.id)
-        workspace_ids = frozenset({w.id for w in joined}) | workspace_ids
-
-    # One query for every epoch the read-set spans, not one per workspace. `access_epoch` stays the
-    # anchor's — a snapshot is built for one workspace — while `access_epochs` carries the rest, so
-    # anything cached from a read that spanned can be validated against everything it spanned.
     epochs = await repository.access_epochs(session, workspace_ids)
 
     return Scope(

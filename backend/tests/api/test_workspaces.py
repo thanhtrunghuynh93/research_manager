@@ -119,10 +119,10 @@ async def test_leaving_moves_the_account_and_the_roll_changes_with_it(
     assert "new@example.edu" not in {row["email"] for row in home}
 
 
-async def test_the_roll_spans_every_workspace_the_professor_belongs_to(
+async def test_the_roll_is_the_workspace_the_professor_switched_to(
     client: AsyncClient, db: AsyncSession, prof: models.User, student_a: models.User
 ) -> None:
-    """ADR 0016: reads span membership, so the roll is not the workspace you happen to be in."""
+    """ADR 0020: switching is the frame, so the roll is the workspace the professor is in."""
     await _own(db, prof)
     source = str(prof.workspace_id)
     await _sign_in(client, prof)
@@ -134,10 +134,16 @@ async def test_the_roll_spans_every_workspace_the_professor_belongs_to(
     assert (await client.post(f"/api/v1/workspaces/{source}/join")).status_code == 200
 
     listed = (await client.get("/api/v1/users")).json()["items"]
+    emails = {row["email"] for row in listed}
+    assert student_a.email in emails
+    assert "theirs@example.edu" not in emails, "the other workspace's people stay there"
+    assert {row["workspace_id"] for row in listed} == {source}
 
-    # Both workspaces' people, whichever one the professor is working in.
-    assert {student_a.email, "theirs@example.edu"} <= {row["email"] for row in listed}
-    assert {row["workspace_id"] for row in listed} == {source, elsewhere["id"]}
+    # Switching back the other way shows the other roll, and only it.
+    assert (await client.post(f"/api/v1/workspaces/{elsewhere['id']}/join")).status_code == 200
+    emails = {row["email"] for row in (await client.get("/api/v1/users")).json()["items"]}
+    assert "theirs@example.edu" in emails
+    assert student_a.email not in emails
 
 
 async def test_leaving_a_workspace_takes_its_people_off_the_roll(

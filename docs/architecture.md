@@ -150,7 +150,7 @@ A module reads another module's data only through that module's `service.py`; it
 
 Every table carries `workspace_id`; composite foreign keys `(workspace_id, x_id)` enforce the same-workspace invariant from requirements section 9.
 
-`workspace_members` records which workspaces an account belongs to, which is plural for a professor; `users.workspace_id` records the one it is *working in*. A read spans the first and a write lands in the second: `Scope` carries `workspace_ids` and `workspace_id`, and every visibility predicate is built on `Scope.within` (ADR 0015, ADR 0016). Archiving and the roll read the first; every per-user row is anchored to the second.
+`workspace_members` records which workspaces an account belongs to, which is plural for a professor; `users.workspace_id` records the one it is *working in*. The first is which workspaces a professor may switch into; the second is where both reads and writes go. `Scope` carries `workspace_ids` and `workspace_id`, which today are the same single workspace, and every visibility predicate is built on `Scope.within` (ADR 0015, ADR 0020). Archiving and the roll read the first; every per-user row is anchored to the second.
 
 Eight of those point at `users(workspace_id, id)`, split in two by ADR 0014. The four holding identity records — `invitations`, `sessions`, `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account when it joins another workspace. The four holding research history — `project_memberships`, `weekly_reports`, `developer_identities`, `contributions` — do not, so Postgres refuses to move an account that has written anything. That split is what makes "history stays in the workspace it was written in" a property of the schema, and why moving a student is only half-built: `POST /api/v1/users/{user_id}/workspace` moves an account that has written nothing, and the database refuses one that has (AUTH-06); see use_cases.md §2.1.
 
@@ -261,7 +261,7 @@ class Scope:
     project_ids: frozenset[UUID]              # active memberships for a student; empty for a prof,
                                               # whose predicates branch on the role instead
     access_epoch: int                         # the anchor workspace's counter, see 6.3
-    workspace_ids: frozenset[UUID]            # what a read may see: every workspace belonged to
+    workspace_ids: frozenset[UUID]            # what a read may see: the workspace worked in
     access_epochs: frozenset[tuple[UUID,int]] # the counter of each, for validating a spanning read
     is_system: bool                           # a job borrowing an identity, not an author
 ```
@@ -269,9 +269,9 @@ class Scope:
 `Scope.within(column)` is the workspace half of every visibility predicate — `column.in_(workspace_ids)` —
 and the only place the read-set is compared, so widening what a read may see is one diff rather than
 thirty-three (ADR 0016). `workspace_id` is where a write lands; `workspace_ids` is what a read may
-see. A student has one membership, so for them the two agree. A professor is not confined to one
-workspace: they belong to as many as they have joined, and `workspace_id` says only which one the
-next write goes to. The invariant that keeps the two apart from each other's records is not in this
+see, and for every account it is `{workspace_id}` (ADR 0020). A professor belongs to as many
+workspaces as they have joined, but sees the one the header switcher names; switching changes what
+every screen shows. The invariant that keeps the two apart from each other's records is not in this
 Scope at all — it is the composite foreign keys, which refuse a membership, report or assessment
 whose workspace does not match both the project and the account it names. Both `workspace_ids` and
 `access_epochs` default to the anchor alone, which keeps a hand-built Scope — a job's, a test's —
@@ -304,7 +304,7 @@ Downloads reuse the same predicates: a presigned GET is issued only after `visib
 
 ### 6.3 Access changes and cached answers (AUTH-03, AC-11)
 
-`workspaces.access_epoch` increments inside the same transaction as any membership end, deactivation, or visibility change. `answer_cache` rows and `evidence_snapshots` store the epoch at creation. A cached answer is served only when it was written in the workspace the caller is working in, when the digest of every `(workspace, epoch)` pair its read spanned still matches, and when the citation set still passes `visible_to` for the caller. The digest rather than the single epoch because a professor's read spans every workspace they belong to (ADR 0016): validating the anchor alone would leave an answer resting on another workspace's records servable after the access that produced it had ended. Snapshots are not invalidated (they are historical records), but a student's view of an assessment re-checks each citation at render time and shows "source no longer available to you" for anything failing the check.
+`workspaces.access_epoch` increments inside the same transaction as any membership end, deactivation, or visibility change. `answer_cache` rows and `evidence_snapshots` store the epoch at creation. A cached answer is served only when it was written in the workspace the caller is working in, when the digest of every `(workspace, epoch)` pair its read spanned still matches, and when the citation set still passes `visible_to` for the caller. The digest rather than the single epoch because `Scope.within` is built to span several workspaces (ADR 0016); since ADR 0020 a read covers one, so the digest has one entry, and it stays correct if a read is ever widened again. Snapshots are not invalidated (they are historical records), but a student's view of an assessment re-checks each citation at render time and shows "source no longer available to you" for anything failing the check.
 
 ### 6.4 Confidentiality of professor material (QA-06)
 
@@ -319,7 +319,7 @@ A workspace is the tenant boundary, and two different relations describe an acco
 
 The two differ in practice, which is why neither alone is the right gate. A professor invited as a colleague belongs to a workspace they do not own; one who created a workspace and later left owns one they do not belong to. `GET /workspaces` returns the union, and entering or reading one is gated on that union, while renaming and archiving stay with ownership.
 
-Reads span the set, writes land in one (ADR 0016). `Scope.workspace_ids` is what a read may see and `Scope.workspace_id` is where a write goes; the comparison lives in `Scope.within(column)` so widening it is a single diff. Archiving counts memberships rather than the column, the roll is keyed by membership, and leaving an account's only membership is refused because `users.workspace_id` is not nullable.
+Reads and writes both follow the workspace being worked in (ADR 0020, superseding ADR 0016's spanning read). `Scope.workspace_ids` is what a read may see and `Scope.workspace_id` is where a write goes; today they agree, and the comparison lives in `Scope.within(column)` so widening it is a single diff. Archiving counts memberships rather than the column, the roll is keyed by membership, and leaving an account's only membership is refused because `users.workspace_id` is not nullable.
 
 Moving a student between workspaces is decided by the schema, not by a check: section 5.1's four-and-four foreign-key split refuses any account that has written history (AUTH-06).
 

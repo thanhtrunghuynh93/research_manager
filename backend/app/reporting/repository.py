@@ -85,11 +85,11 @@ async def list_periods(
 ) -> list[ReportingPeriod]:
     """The weeks the caller may see, in the workspace they are working in.
 
-    `visible_to` spans every workspace a professor belongs to (ADR 0016), which is right for a
-    question asked about all of them and wrong for a panel that describes one. The calendar screen
-    read the wide list and reported another workspace's nine open weeks under a workspace whose
-    own calendar it had just said was not configured. So the narrow read is the default and the
-    wide one is asked for by name.
+    `across_workspaces` drops the pin to `scope.workspace_id` and leaves `visible_to` as the only
+    bound. Since ADR 0020 that bound is the same one workspace, so the two reads agree; the flag is
+    kept because it names the callers that would want a wider read if `Scope.within` ever spans
+    again (ADR 0016 did, and the calendar screen then reported another workspace's open weeks under
+    one whose own calendar it had just said was not configured).
 
     Ordered by workspace as well as by week, because `local_start` alone does not order this list:
     two workspaces keeping the same calendar have a period each for the same Monday, and which of

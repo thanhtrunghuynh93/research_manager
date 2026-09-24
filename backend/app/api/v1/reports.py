@@ -60,12 +60,12 @@ async def list_periods(
     through: date | None = None,
     across_workspaces: bool = False,
 ) -> list[PeriodOut]:
-    """The weeks of the workspace being worked in, or of all of them when asked.
+    """The weeks of the workspace being worked in.
 
-    The default is the one workspace, because a screen that describes a workspace has to describe
-    the one it is on. A professor's reads may span the workspaces they belong to (ADR 0016), and
-    a screen that labels records from any of them — a review, a student's history — asks for the
-    wide list by name. Each period carries its `workspace_id` either way.
+    `across_workspaces` asks for everything `visible_to` allows rather than pinning to the
+    workspace worked in. Since ADR 0020 a read covers only that workspace, so the answers agree;
+    screens that label records — a review, a student's history — still ask for the wide list by
+    name so they stay correct if reads span again. Each period carries its `workspace_id`.
     """
     return await service.list_periods(
         session, scope, through=through, across_workspaces=across_workspaces

@@ -7,6 +7,7 @@ period covering Mon 14 to Sun 20 September is discussed on Mon 21 and is due Sun
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -604,24 +605,28 @@ async def test_periods_are_listed_for_the_workspace_being_worked_in(
 
     # Creating a workspace moves the professor there and keeps the one they were in.
     second = await identity_service.create_workspace(db, prof_scope, name="QA Lab")
-    spanning = await identity_service.scope_for(db, prof)
-    assert spanning.workspace_id == second.id
-    assert home in spanning.workspace_ids, "still a member of the first"
+    working = await identity_service.scope_for(db, prof)
+    assert working.workspace_id == second.id
+    assert working.workspace_ids == {second.id} and home not in working.workspace_ids, (
+        "a member of the first, but not reading it"
+    )
 
-    assert await service.list_periods(db, spanning) == [], "the new workspace has no weeks yet"
+    assert await service.list_periods(db, working) == [], "the new workspace has no weeks yet"
 
-    wide = await service.list_periods(db, spanning, across_workspaces=True)
-    assert wide, "and the widened read still reaches the other workspace's"
-    assert {period.workspace_id for period in wide} == {home}
+    # ADR 0020: the widened read is bounded by `visible_to`, which is the workspace worked in, so
+    # it no longer reaches the one just left.
+    assert await service.list_periods(db, working, across_workspaces=True) == []
 
 
 async def test_the_widened_list_is_ordered_by_workspace_as_well_as_by_week(
     db: AsyncSession, prof: identity_models.User, prof_scope: Scope
 ) -> None:
-    """Two workspaces on the same calendar have a period each for the same Monday (ADR 0016).
+    """Two workspaces on the same calendar have a period each for the same Monday.
 
     `local_start` alone does not order that list, so which of the two came back first was
     postgres's choice — and a caller taking the newest eight got a different eight between loads.
+    A session no longer spans (ADR 0020), so the Scope is widened by hand through the seam a
+    spanning read would use.
     """
     await _calendar(db, prof_scope)
     await service.ensure_periods(db, prof_scope, through=date(2026, 10, 12))
@@ -631,6 +636,7 @@ async def test_the_widened_list_is_ordered_by_workspace_as_well_as_by_week(
     spanning = await identity_service.scope_for(db, prof)
     await _calendar(db, spanning)
     await service.ensure_periods(db, spanning, through=date(2026, 10, 12))
+    spanning = replace(spanning, workspace_ids=frozenset({home, second.id}))
 
     wide = await service.list_periods(db, spanning, across_workspaces=True)
     assert {period.workspace_id for period in wide} == {home, second.id}, "both workspaces"

@@ -367,7 +367,6 @@
       "deactivated": "Closed"
     },
     "workspace": "Workspace",
-    "acrossWorkspaces": "Across {{count}} workspaces",
     "elsewhere": "Join its workspace to act on this account",
     "moveTo": "Move to…",
     "resend": "Resend invitation",

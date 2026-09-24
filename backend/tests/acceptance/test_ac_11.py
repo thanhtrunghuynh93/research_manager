@@ -197,18 +197,20 @@ async def test_ac_11_the_cache_is_keyed_by_the_asker_not_only_the_question(
     assert rows == 2
 
 
-# ---------------------------------------------------- the read-set, once it spans (ADR 0016)
+# ------------------------------------- the read-set is the workspace worked in (ADR 0020)
 
 
-async def test_ac_11_an_epoch_bump_in_the_other_workspace_discards_the_answer(
+async def test_ac_11_an_epoch_bump_in_a_workspace_not_read_keeps_the_answer(
     db: AsyncSession,
     prof: identity_models.User,
     prof_scope: Scope,
     student_a: identity_models.User,
 ) -> None:
-    """ADR 0016 widened reads to every workspace a professor belongs to, and predicted this:
-    validating against the anchor alone leaves an answer resting on the *other* workspace's
-    records servable after the access that produced it has ended."""
+    """ADR 0020: a professor in two workspaces reads only the one they are in, so an answer rests
+    on that workspace's records alone and access changing elsewhere does not touch it.
+
+    The digest over `access_epochs` that ADR 0016 needed is still in place; this pins that it now
+    covers exactly the anchor, rather than quietly invalidating on every workspace belonged to."""
     home = prof_scope.workspace_id
     await _project_with_a_report(db, prof_scope, student_a)
     owned = await repository.get_workspace(db, home)
@@ -216,16 +218,16 @@ async def test_ac_11_an_epoch_bump_in_the_other_workspace_discards_the_answer(
     owned.owner_id = prof.id
     await db.flush()
 
-    # Creating takes the professor there, so join back: the anchor is `home` again and the read-set
-    # now spans both. That is the shape ADR 0016 describes and the one the anchor-only check missed.
+    # Creating takes the professor there, so join back: the anchor is `home` again, and the
+    # professor belongs to both but reads one.
     second = await identity_service.create_workspace(db, prof_scope, name="Second Lab")
     await identity_service.join_workspace(db, await identity_service.scope_for(db, prof), home)
 
-    spanning = await identity_service.scope_for(db, prof)
-    assert spanning.workspace_id == home
-    assert spanning.workspace_ids == frozenset({home, second.id})
+    working = await identity_service.scope_for(db, prof)
+    assert working.workspace_id == home
+    assert working.workspace_ids == frozenset({home})
 
-    await assistant_service.ask(db, spanning, question=QUESTION, as_of=AS_OF, gateway=_gateway())
+    await assistant_service.ask(db, working, question=QUESTION, as_of=AS_OF, gateway=_gateway())
     again = await assistant_service.ask(
         db,
         await identity_service.scope_for(db, prof),
@@ -235,10 +237,10 @@ async def test_ac_11_an_epoch_bump_in_the_other_workspace_discards_the_answer(
     )
     assert again.cached is True, "the cache is doing something, or this proves nothing"
 
-    # The anchor is untouched; only the other workspace this read may see moves.
+    # The anchor is untouched; only a workspace this read cannot see moves.
     await repository.bump_access_epoch(db, second.id)
     await db.flush()
-    assert (await identity_service.scope_for(db, prof)).access_epoch == spanning.access_epoch, (
+    assert (await identity_service.scope_for(db, prof)).access_epoch == working.access_epoch, (
         "the anchor's epoch must be unchanged, or this passes for the wrong reason"
     )
 
@@ -249,9 +251,7 @@ async def test_ac_11_an_epoch_bump_in_the_other_workspace_discards_the_answer(
         as_of=AS_OF,
         gateway=_gateway(),
     )
-    assert after.cached is False, (
-        "a read that spans workspaces has to be invalidated by any of them moving, not the anchor"
-    )
+    assert after.cached is True, "the answer rests on nothing in the workspace that moved"
 
 
 async def test_ac_11_an_answer_cached_in_one_workspace_is_not_served_in_another(

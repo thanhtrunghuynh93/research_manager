@@ -46,7 +46,7 @@ failure the ADRs keep circling, so they are named separately here.
 | --- | --- | --- | --- |
 | **Ownership** | `workspaces.owner_id` | a professor owns 0..n | create, rename, set timezone, archive; the break-glass contact ([ADR 0012](adr/0012-workspace-ownership.md)) |
 | **Belonging** | `workspace_members` | professor 1..n, student exactly 1 | what a read may see; occupancy for archiving; who is on the roll ([ADR 0015](adr/0015-plural-workspace-membership.md)) |
-| **Working in** | `users.workspace_id`, not nullable | exactly one | where the next write lands; the parent of every composite foreign key ([ADR 0016](adr/0016-reads-span-membership.md)) |
+| **Working in** | `users.workspace_id`, not nullable | exactly one | what every read shows and where the next write lands; the parent of every composite foreign key ([ADR 0020](adr/0020-reads-follow-the-workspace-you-are-in.md)) |
 
 Owning and belonging genuinely differ — a colleague belongs to a workspace they do not own, and
 someone who created a workspace and later left owns one they do not belong to — so `GET /workspaces`
@@ -75,11 +75,12 @@ Four rules follow from the boundary rather than from taste:
 
 ## 3 Professor
 
-- **Belonging is plural, writing is singular.** Reads span `Scope.workspace_ids`, every workspace
-  the account belongs to; writes land in `Scope.workspace_id`. The comparison lives in
-  `Scope.within` ([`backend/app/core/authz.py`](../backend/app/core/authz.py)), which all
-  thirty-three visibility predicates call, so widening what a read may see is one diff. Screens
-  group by workspace rather than labelling every row.
+- **Belonging is plural, working in one is singular.** A professor may switch into any workspace
+  they belong to, and both reads and writes follow the one they are working in
+  ([ADR 0020](adr/0020-reads-follow-the-workspace-you-are-in.md)): `Scope.workspace_ids` is
+  `{Scope.workspace_id}`. The comparison lives in `Scope.within`
+  ([`backend/app/core/authz.py`](../backend/app/core/authz.py)), which all thirty-three visibility
+  predicates call, so widening what a read may see is one diff.
 - **Co-equal inside a workspace** ([ADR 0011](adr/0011-co-equal-professors.md)): every professor
   there sees every student, report, assessment and supervision note, and any professor may invite a
   student, invite a colleague as a professor, and remove a student.

@@ -193,8 +193,8 @@ async def list_periods(
 ) -> list[PeriodOut]:
     """The reporting weeks of the workspace being worked in (REP-01).
 
-    `across_workspaces` widens it to every workspace the caller belongs to, which only a caller
-    that then groups its results by workspace has any business asking for.
+    `across_workspaces` widens it to whatever `visible_to` allows, which since ADR 0020 is the
+    same workspace; only a caller that groups its results by workspace has any business asking.
     """
     rows = await repository.list_periods(
         session, scope, through=through, across_workspaces=across_workspaces

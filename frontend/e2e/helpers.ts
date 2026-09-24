@@ -85,8 +85,8 @@ export async function signOut(page: Page) {
 /**
  * The student roll on `/people`, whichever workspace section holds it.
  *
- * Since ADR 0016 the roll is grouped by workspace and each list is keyed `students-{workspace.id}`,
- * so a fixed test id no longer names anything. The prefix selector keeps the spec ignorant of ids
+ * Each list is keyed `students-{workspace.id}` (since ADR 0016; since ADR 0020 only the workspace
+ * being worked in is shown), so a fixed test id names nothing. The prefix selector keeps the spec ignorant of ids
  * it has no way to know. The demo professor belongs to one workspace; if that ever changes this
  * resolves to several elements and fails loudly rather than silently reading the wrong one.
  */

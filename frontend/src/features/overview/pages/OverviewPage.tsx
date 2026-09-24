@@ -260,8 +260,9 @@ function DeriveObligations({ periodId }: { periodId?: string }) {
  * which is also why the rows carry names rather than the eight characters of a uuid that the
  * outstanding list still shows.
  *
- * Grouped by workspace because a professor's reads span every workspace they belong to (ADR 0016)
- * and each keeps its own calendar, so the weeks do not line up and must not be run together.
+ * Grouped by workspace because each keeps its own calendar, so weeks from two must not be run
+ * together. Since ADR 0020 a professor reads only the workspace they are in, so there is one group;
+ * the grouping stays for the day a read spans again (ADR 0016).
  */
 function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string }) {
   const { t } = useTranslation();

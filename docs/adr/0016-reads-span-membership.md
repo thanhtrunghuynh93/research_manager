@@ -1,6 +1,6 @@
 # ADR 0016 — Reads span every workspace you belong to; writes go to one
 
-Status: accepted — 2026-09-16
+Status: superseded by [ADR 0020](0020-reads-follow-the-workspace-you-are-in.md) — accepted 2026-09-16
 Extends: [ADR 0015](0015-plural-workspace-membership.md), [ADR 0004](0004-application-level-authorization.md)
 
 ## Context

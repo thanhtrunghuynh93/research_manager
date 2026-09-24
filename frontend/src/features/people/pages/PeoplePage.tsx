@@ -1,10 +1,11 @@
 /**
- * AUTH-01: the roll — everyone in every workspace this professor belongs to, grouped by workspace,
- * and the three acts they have over a student.
+ * AUTH-01: the roll — everyone in the workspace this professor is working in, and the three acts
+ * they have over a student.
  *
- * Reads span membership (ADR 0016) and writes do not: suspend, restore and remove act through
- * `/users/{id}/…`, which is scoped to the workspace the caller is working in. So a section for a
- * workspace they are not in lists its people and offers no buttons, and says why.
+ * Reads follow the workspace named in the header (ADR 0020), so switching workspace switches the
+ * roll. It is keyed by membership, so a colleague who belongs here but is working elsewhere is on
+ * it; `Roll` still handles a section for a workspace the caller is not in, which a wider read would
+ * bring back.
  *
  * The page is shaped by ADR 0011. Professors are equal over students and have no authority over
  * each other, so a colleague's row carries no buttons at all and says why rather than offering
@@ -52,21 +53,16 @@ export function PeoplePage() {
   const users = people.data?.users ?? [];
   const all = workspaces.data ?? [];
 
-  // Grouped rather than labelled row by row: the roll spans every workspace this professor belongs
-  // to (ADR 0016), and a flat list of two cohorts reads as one. Workspaces come from the list
-  // endpoint so the order is stable and an empty one still gets a heading — "nobody here yet" is
-  // an answer, and a missing section is not.
-  const groups = all.map((workspace) => ({
-    workspace,
-    people: users.filter((user) => user.workspace_id === workspace.id),
-  }));
-  const single = all.length <= 1;
+  // One roll, the workspace being worked in (ADR 0020). Not filtered by `user.workspace_id`: that
+  // is where a person is working, not where they belong, and a colleague belonging here while
+  // working in another of theirs is on this roll. `all` is still passed down for the move picker.
+  const groups = current ? [{ workspace: current, people: users }] : [];
 
   return (
     <section className="animate-rise-in">
       <header>
         <p className="eyebrow mb-1.5" data-testid="people-workspace">
-          {single ? t("people.label") : t("people.acrossWorkspaces", { count: all.length })}
+          {t("people.label")}
         </p>
         <h1 className="page-title">{t("people.title")}</h1>
         <p className="mt-2 max-w-2xl text-prose text-muted-foreground">{t("people.intro")}</p>
@@ -76,19 +72,13 @@ export function PeoplePage() {
 
       {groups.map(({ workspace, people: members }) => (
         <section key={workspace.id} className="mt-8" data-testid={`workspace-${workspace.id}`}>
-          {!single && (
-            <h2 className="section-title flex items-baseline gap-2.5">
-              {workspace.name}
-              {workspace.id === current?.id && <Badge>{t("workspaces.here")}</Badge>}
-            </h2>
-          )}
           <Roll
             members={members}
             workspace={workspace}
             isCurrent={workspace.id === current?.id}
             meId={session.data?.id}
             workspaces={all}
-            headings={single}
+            headings
           />
         </section>
       ))}

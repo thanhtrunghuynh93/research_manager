@@ -29,7 +29,7 @@ Counted from the tree rather than remembered, and checked by `scripts/check_docs
 | --- | --- |
 | Alembic migrations | 26 |
 | `/api/v1` endpoints | 91 (89 in the schema, 2 `include_in_schema=False`) |
-| ADRs | 19 |
+| ADRs | 20 |
 | Acceptance scenarios with a test | 19 of 19 |
 | Import-linter contracts holding | 5 of 5 |
 
