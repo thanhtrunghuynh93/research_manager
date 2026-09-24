@@ -90,11 +90,17 @@ async def list_periods(
     read the wide list and reported another workspace's nine open weeks under a workspace whose
     own calendar it had just said was not configured. So the narrow read is the default and the
     wide one is asked for by name.
+
+    Ordered by workspace as well as by week, because `local_start` alone does not order this list:
+    two workspaces keeping the same calendar have a period each for the same Monday, and which of
+    the two came back first was whatever postgres chose. A caller taking the newest eight got a
+    different eight between loads. `local_start` is unique per workspace, so the pair is a total
+    order and the answer is the same every time it is asked.
     """
     statement = (
         select(ReportingPeriod)
         .where(visible_to(scope, ReportingPeriod))
-        .order_by(ReportingPeriod.local_start)
+        .order_by(ReportingPeriod.local_start, ReportingPeriod.workspace_id)
     )
     if not across_workspaces:
         statement = statement.where(ReportingPeriod.workspace_id == scope.workspace_id)

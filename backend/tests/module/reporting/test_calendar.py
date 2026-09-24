@@ -613,3 +613,32 @@ async def test_periods_are_listed_for_the_workspace_being_worked_in(
     wide = await service.list_periods(db, spanning, across_workspaces=True)
     assert wide, "and the widened read still reaches the other workspace's"
     assert {period.workspace_id for period in wide} == {home}
+
+
+async def test_the_widened_list_is_ordered_by_workspace_as_well_as_by_week(
+    db: AsyncSession, prof: identity_models.User, prof_scope: Scope
+) -> None:
+    """Two workspaces on the same calendar have a period each for the same Monday (ADR 0016).
+
+    `local_start` alone does not order that list, so which of the two came back first was
+    postgres's choice — and a caller taking the newest eight got a different eight between loads.
+    """
+    await _calendar(db, prof_scope)
+    await service.ensure_periods(db, prof_scope, through=date(2026, 10, 12))
+    home = prof_scope.workspace_id
+
+    second = await identity_service.create_workspace(db, prof_scope, name="QA Lab")
+    spanning = await identity_service.scope_for(db, prof)
+    await _calendar(db, spanning)
+    await service.ensure_periods(db, spanning, through=date(2026, 10, 12))
+
+    wide = await service.list_periods(db, spanning, across_workspaces=True)
+    assert {period.workspace_id for period in wide} == {home, second.id}, "both workspaces"
+
+    # Weeks still ascend, and the two rows sharing a Monday are always in the same order.
+    keys = [(period.local_start, period.workspace_id) for period in wide]
+    assert keys == sorted(keys), "a total order, not a week with two rows in postgres's order"
+
+    # Asked again, the same answer — the property the eight-row lists on top of this depend on.
+    again = await service.list_periods(db, spanning, across_workspaces=True)
+    assert [period.id for period in again] == [period.id for period in wide]
