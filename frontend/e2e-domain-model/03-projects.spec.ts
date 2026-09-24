@@ -25,7 +25,7 @@ test("P1 a project a professor starts is proposed", async ({ page }) => {
   await expect(page.getByText(/a new project is proposed/i)).toBeVisible();
 
   const list = await api(page, "GET", "/projects");
-  const mine = asList(list).find((p: any) => p.title === "QA — the professor's project");
+  const mine = asList(list).find((p) => p.title === "QA — the professor's project");
   expect(mine.status, "activation records a second party's assent").toBe("proposed");
   expect(mine.open_to_join, "closed by default — opening one is a disclosure decision").toBe(false);
   save({ profProjectId: mine.id });
@@ -43,12 +43,12 @@ test("P2 a project a student starts is active, and they are on it", async ({ pag
   await expect(page.getByText(/your project is active as soon as you create it/i)).toBeVisible();
 
   const list = await api(page, "GET", "/projects");
-  const mine = asList(list).find((p: any) => p.title === "QA — the student's own project");
+  const mine = asList(list).find((p) => p.title === "QA — the student's own project");
   expect(mine.status, "no second party, so nothing to assent to").toBe("active");
   const members = await api(page, "GET", `/projects/${mine.id}/members`);
-  const ids = asList(members).map((m: any) => m.student_id);
+  const ids = asList(members).map((m) => m.student_id);
   expect(ids, "the creator is enrolled in the same transaction").toContain(read().studentId);
-  const origin = asList(members).find((m: any) => m.student_id === read().studentId).origin;
+  const origin = asList(members).find((m) => m.student_id === read().studentId).origin;
   expect(origin, "created with the project, which owes the week it lands in").toBe("created");
   save({ studentProjectId: mine.id });
 });
@@ -84,7 +84,7 @@ test("P5 a membership is the whole grant: a closed project is unreadable", async
   const direct = await api(page, "GET", `/projects/${profProjectId}`);
   expect(direct.status, "not a member, so not visible").toBeGreaterThanOrEqual(400);
   const joinable = await api(page, "GET", "/projects/joinable");
-  const titles = asList(joinable).map((p: any) => p.title);
+  const titles = asList(joinable).map((p) => p.title);
   expect(titles, "closed to joining by default").not.toContain("QA — the professor's project");
   const join = await api(page, "POST", `/projects/${profProjectId}/join`, {});
   expect(join.status, "and cannot be joined while closed").toBeGreaterThanOrEqual(400);
@@ -103,7 +103,7 @@ test("P6 the professor opens it; discovery is a narrower read than membership", 
 
   await signIn(page, STUDENT);
   const joinable = await api(page, "GET", "/projects/joinable");
-  const row = asList(joinable).find((p: any) => p.id === profProjectId);
+  const row = asList(joinable).find((p) => p.id === profProjectId);
   expect(row, "now discoverable").toBeTruthy();
   expect(Object.keys(row).sort(), "title, stage, status and a member count — not the research").toEqual(
     expect.not.arrayContaining(["research_questions", "intended_contributions", "venue_target", "shared_resources"]),
@@ -127,6 +127,6 @@ test("P7 the student joins, and the project opens up", async ({ page }) => {
   expect(full.status, "membership is the grant").toBe(200);
   expect(full.body.research_questions, "now the research reads too").toContain("Is the joinable read narrow?");
   const members = await api(page, "GET", `/projects/${profProjectId}/members`);
-  const mine = asList(members).find((m: any) => m.student_id === read().studentId);
+  const mine = asList(members).find((m) => m.student_id === read().studentId);
   expect(mine.origin, "joining is its own origin, and it owes from next week").toBe("self_joined");
 });

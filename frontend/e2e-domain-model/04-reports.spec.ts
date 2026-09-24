@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { PROF, STUDENT, signIn, api, API, asList } from "./qa-helpers";
+import { PROF, STUDENT, signIn, api, asList, type Json } from "./qa-helpers";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -26,9 +26,9 @@ test("R1 the calendar fixes the deadline by rule: 23:59 the day before the meeti
   expect(ensured.status).toBeLessThan(300);
 
   const periods = await api(page, "GET", "/periods");
-  const items = periods.body.items ?? periods.body;
+  const items = asList(periods);
   const today = new Date().toISOString().slice(0, 10);
-  const current = items.find((p: any) => p.local_start <= today && today <= p.local_end);
+  const current = items.find((p) => p.local_start <= today && today <= p.local_end);
   expect(current, "a period contains today").toBeTruthy();
 
   // The meeting follows the week it discusses, so the deadline falls inside the period.
@@ -42,7 +42,7 @@ test("R1 the calendar fixes the deadline by rule: 23:59 the day before the meeti
   expect(deadline.toISOString(), "23:59 local on the day before the meeting").toBe(
     `${current.local_end}T16:59:00.000Z`,
   );
-  const next = items.find((p: any) => p.local_start > current.local_end);
+  const next = items.find((p) => p.local_start > current.local_end);
   save({ periodId: current.id, periodLocalEnd: current.local_end, nextPeriodId: next?.id });
 });
 
@@ -53,8 +53,8 @@ test("R2 obligations derive from an active project and a membership, and from no
   if (nextPeriodId) await api(page, "POST", `/periods/${nextPeriodId}/obligations/ensure`);
 
   const thisWeek = await api(page, "GET", `/periods/${periodId}/obligations`);
-  const rows = asList(thisWeek).filter((o: any) => o.student_id === studentId);
-  const projects = rows.map((o: any) => o.project_id);
+  const rows = asList(thisWeek).filter((o) => o.student_id === studentId);
+  const projects = rows.map((o) => o.project_id);
 
   expect(projects, "a project started this week owes this week").toContain(studentProjectId);
   // The self-joined half of this rule is pinned in 06-boundary.spec.ts: joining on the first day
@@ -64,8 +64,8 @@ test("R2 obligations derive from an active project and a membership, and from no
   if (nextPeriodId) {
     const nextWeek = await api(page, "GET", `/periods/${nextPeriodId}/obligations`);
     const nextProjects = asList(nextWeek)
-      .filter((o: any) => o.student_id === studentId)
-      .map((o: any) => o.project_id);
+      .filter((o) => o.student_id === studentId)
+      .map((o) => o.project_id);
     expect(nextProjects, "and owes it from then on").toContain(profProjectId);
   }
 });
@@ -83,7 +83,7 @@ test("R3 a proposed project owes nothing even with a student on it", async ({ pa
 
   await api(page, "POST", `/periods/${periodId}/obligations/ensure`);
   const obligations = await api(page, "GET", `/periods/${periodId}/obligations`);
-  const projects = asList(obligations).map((o: any) => o.project_id);
+  const projects = asList(obligations).map((o) => o.project_id);
   expect(projects, "nothing is owed on a proposed project").not.toContain(created.body.id);
   save({ proposedProjectId: created.body.id });
 });
@@ -119,8 +119,8 @@ test("R5 one package a week, one entry a project, and a version that cannot be r
 
   // A package covers every project owed this week (REP-02), so it is built from the obligations.
   const owed = asList(await api(page, "GET", `/periods/${periodId}/obligations`))
-    .filter((o: any) => o.student_id === read().studentId && o.state === "required")
-    .map((o: any) => o.project_id);
+    .filter((o) => o.student_id === read().studentId && o.state === "required")
+    .map((o) => o.project_id);
   expect(owed.length, "at least the student's own project is owed").toBeGreaterThan(0);
   const entryFor = (projectId: string, work: string) => ({
     project_id: projectId,
@@ -156,19 +156,19 @@ test("R5 one package a week, one entry a project, and a version that cannot be r
   expect(second.body.version_no ?? second.body.version, "and adds a version").toBe(2);
 
   const versions = await api(page, "GET", `/reports/${reportId}/versions`);
-  const all = versions.body.items ?? versions.body;
+  const all = asList(versions);
   expect(all.length, "every earlier version is kept").toBeGreaterThanOrEqual(2);
 
   const after = await api(page, "GET", `/periods/${periodId}/report`);
   expect(after.body.first_submitted_at ?? after.body.report?.first_submitted_at,
     "the first submission time is frozen").toBe(firstSubmittedAt);
 
-  const v1id = all.find((v: any) => (v.version_no ?? v.version) === 1).id;
+  const v1id = all.find((v) => (v.version_no ?? v.version) === 1).id;
   const v1body = await api(page, "GET", `/report-versions/${v1id}`);
   expect(v1body.status, "and version 1 still reads back").toBe(200);
   const entries = v1body.body.entries ?? [];
   expect(entries.length, "one entry per project owed in that version").toBe(owed.length);
-  expect(entries.find((e: any) => e.project_id === studentProjectId).work_performed).toMatch(/took notes/);
+  expect(entries.find((e: Json) => e.project_id === studentProjectId).work_performed).toMatch(/took notes/);
   save({ reportId, v1id });
 });
 
@@ -210,7 +210,7 @@ test("R8 leaving a project keeps the week that was already filed", async ({ page
   await signIn(page, STUDENT);
   const { studentProjectId, v1id, studentId } = read();
   const members = await api(page, "GET", `/projects/${studentProjectId}/members`);
-  const mine = asList(members).find((m: any) => m.student_id === studentId);
+  const mine = asList(members).find((m) => m.student_id === studentId);
   const left = await api(page, "POST", `/projects/${studentProjectId}/members/${mine.id}/end`, {});
   expect(left.status, "a student may end their own membership").toBeLessThan(300);
 

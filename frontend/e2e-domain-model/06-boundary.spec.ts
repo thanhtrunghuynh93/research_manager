@@ -20,16 +20,16 @@ const read = () => JSON.parse(fs.readFileSync(`${HERE}state.json`, "utf8"));
 test("B1 joining on the first day of the week owes that week, though the rule says the next one", async ({ page }) => {
   await signIn(page, PROF);
   const { periodId, profProjectId, studentId } = read();
-  const period = asList(await api(page, "GET", "/periods")).find((p: any) => p.id === periodId);
+  const period = asList(await api(page, "GET", "/periods")).find((p) => p.id === periodId);
   const members = asList(await api(page, "GET", `/projects/${profProjectId}/members`));
-  const mine = members.find((m: any) => m.student_id === studentId);
+  const mine = members.find((m) => m.student_id === studentId);
 
   expect(mine.origin).toBe("self_joined");
   expect(mine.joined_on, "the student joined on the first day of this week").toBe(period.local_start);
 
   const owed = asList(await api(page, "GET", `/periods/${periodId}/obligations`))
-    .filter((o: any) => o.student_id === studentId)
-    .map((o: any) => o.project_id);
+    .filter((o) => o.student_id === studentId)
+    .map((o) => o.project_id);
   expect(owed, "a week that began on the day of the join is not a week that began after it").not.toContain(
     profProjectId,
   );

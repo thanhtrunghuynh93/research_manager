@@ -10,5 +10,16 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "eslint.config.js", "e2e"]
+  // Everything outside `src` that eslint lints, so the two agree on what exists. They used to
+  // disagree: `e2e-domain-model` was linted and never type-checked, and forty-three `any`
+  // annotations and two dead imports landed in it without a gate noticing.
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts",
+    "tailwind.config.ts",
+    "tailwind.product.config.ts",
+    "eslint.config.js",
+    "e2e",
+    "e2e-domain-model"
+  ]
 }

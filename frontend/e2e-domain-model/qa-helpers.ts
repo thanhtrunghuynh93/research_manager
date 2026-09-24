@@ -1,5 +1,18 @@
 import { expect, type Page, type APIRequestContext } from "@playwright/test";
 
+/**
+ * A decoded JSON body from the API, read field by field.
+ *
+ * These specs are black box: what they assert against is the shape the server actually put on the
+ * wire, which is the thing under test. Typing them from `src/api/generated` would check each
+ * response against the same definitions that produced it, so a field that drifted would agree
+ * with itself and the test would still pass. So the bodies stay untyped on purpose — and that
+ * decision is stated once, here, rather than as the forty-three separate `any` annotations it
+ * used to be spread across.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Json = any;
+
 export const API = "http://localhost:8021";
 export const MAILPIT = "http://localhost:8025";
 export const PASSWORD = "QaTester-2026-pw";
@@ -41,7 +54,7 @@ export async function tokenPath(
   for (let i = 0; i < attempts; i += 1) {
     const list = await (await request.get(`${MAILPIT}/api/v1/messages?limit=100`)).json();
     for (const m of list.messages ?? []) {
-      if (!(m.To ?? []).some((t: any) => t.Address === email)) continue;
+      if (!(m.To ?? []).some((t: Json) => t.Address === email)) continue;
       const body = await (await request.get(`${MAILPIT}/api/v1/message/${m.ID}`)).text();
       const match = body.match(new RegExp(`/${kind}\\?token=[A-Za-z0-9._~%-]+`));
       if (match) return match[0].replace(/%3D/g, "=");
@@ -63,13 +76,13 @@ export async function api(page: Page, method: string, path: string, data?: unkno
     data: data === undefined ? undefined : JSON.stringify(data),
     failOnStatusCode: false,
   });
-  let body: any = null;
+  let body: Json = null;
   try { body = await res.json(); } catch { body = await res.text(); }
   return { status: res.status(), body };
 }
 
 /** A list response, whichever shape it takes — and a legible error when it is neither. */
-export function asList(res: { status: number; body: any }, what = "list"): any[] {
+export function asList(res: { status: number; body: Json }, what = "list"): Json[] {
   if (Array.isArray(res.body)) return res.body;
   if (Array.isArray(res.body?.items)) return res.body.items;
   throw new Error(`${what}: expected a list, got ${res.status} ${JSON.stringify(res.body).slice(0, 300)}`);

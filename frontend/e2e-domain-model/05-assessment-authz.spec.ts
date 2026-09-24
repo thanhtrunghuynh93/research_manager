@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { PROF, STUDENT, signIn, api, asList } from "./qa-helpers";
+import { PROF, STUDENT, signIn, api, asList, type Json } from "./qa-helpers";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -19,12 +19,12 @@ test("S1 a submitted week produces a draft assessment for the professor", async 
   // Wait for the pipeline to settle, not merely to start: a resubmission supersedes the version
   // it replaced, so a draft read too early is one that is about to be replaced (and approving it
   // then fails with 409 — correctly).
-  let drafts: any[] = [];
+  let drafts: Json[] = [];
   let signature = "";
   for (let i = 0; i < 45; i += 1) {
     const listed = await api(page, "GET", `/assessments?student_id=${studentId}`);
     const now = asList(listed);
-    const nowSignature = now.map((a: any) => `${a.id}:${a.review_state}`).sort().join("|");
+    const nowSignature = now.map((a) => `${a.id}:${a.review_state}`).sort().join("|");
     if (now.length && nowSignature === signature) {
       drafts = now;
       break;
@@ -36,12 +36,12 @@ test("S1 a submitted week produces a draft assessment for the professor", async 
   expect(drafts.length, "the pipeline ran on submission").toBeGreaterThan(0);
   // A resubmission supersedes the version it replaced, so take the one still in review — and
   // check that the superseded one is labelled as such rather than quietly dropped (ASSESS-09).
-  const superseded = drafts.filter((a: any) => a.review_state === "superseded");
-  const draft = drafts.find((a: any) => a.review_state === "draft");
+  const superseded = drafts.filter((a) => a.review_state === "superseded");
+  const draft = drafts.find((a) => a.review_state === "draft");
   expect(draft, "a generated assessment starts as a draft").toBeTruthy();
   if (superseded.length) {
     expect(superseded[0].version_no, "the superseded one is an earlier version of the same entry").toBeLessThan(
-      Math.max(...drafts.filter((a: any) => a.project_id === superseded[0].project_id).map((a: any) => a.version_no)),
+      Math.max(...drafts.filter((a) => a.project_id === superseded[0].project_id).map((a) => a.version_no)),
     );
   }
   save({ assessmentId: draft.id, supersededId: superseded[0]?.id ?? null });
@@ -51,7 +51,7 @@ test("S2 a draft is the professor's alone until it is approved", async ({ page }
   await signIn(page, STUDENT);
   const { assessmentId } = read();
   const mine = await api(page, "GET", "/assessments");
-  const visible = asList(mine).map((a: any) => a.id);
+  const visible = asList(mine).map((a) => a.id);
   expect(visible, "nothing unapproved reaches the student").not.toContain(assessmentId);
   const direct = await api(page, "GET", `/assessments/${assessmentId}`);
   expect(direct.status, "not by id either").toBeGreaterThanOrEqual(400);
@@ -67,7 +67,7 @@ test("S3 approval publishes it, and only then", async ({ page }) => {
 
   await signIn(page, STUDENT);
   const mine = await api(page, "GET", "/assessments");
-  const visible = asList(mine).map((a: any) => a.id);
+  const visible = asList(mine).map((a) => a.id);
   expect(visible, "now the student reads it").toContain(assessmentId);
   const direct = await api(page, "GET", `/assessments/${assessmentId}`);
   expect(direct.status).toBe(200);
@@ -80,7 +80,7 @@ test("S4 the index is withheld rather than computed over what happens to be pres
   const body = full.body;
   const ratings = body.ratings ?? {};
   const dims = Array.isArray(ratings) ? ratings : Object.values(ratings);
-  const anyUnknown = dims.some((d: any) => String(d?.rating ?? d).toLowerCase() === "unknown");
+  const anyUnknown = dims.some((d) => String(d?.rating ?? d).toLowerCase() === "unknown");
   if (anyUnknown) {
     expect(body.progress_index, "an unknown dimension withholds the index (ASSESS-04)").toBeNull();
   } else {
@@ -131,8 +131,8 @@ test("S5c the assistant answers a student, and answers only about them", async (
   // use_cases.md §3 says the student has no assistant; the endpoint answers one. It is scoped —
   // which is the part that matters — so this pins the scoping rather than the absence.
   expect(asked.status, "recorded: the professor-only surface answers a student too").toBe(200);
-  const rows = (asked.body.facts ?? []).flatMap((f: any) => f.rows ?? []);
-  const others = rows.filter((r: any) => r.student_id && r.student_id !== studentId);
+  const rows = (asked.body.facts ?? []).flatMap((f: Json) => f.rows ?? []);
+  const others = rows.filter((r: Json) => r.student_id && r.student_id !== studentId);
   expect(others, "and every fact row it returned is the caller's own").toEqual([]);
   expect(asked.body.scope?.role).toBe("student");
 });

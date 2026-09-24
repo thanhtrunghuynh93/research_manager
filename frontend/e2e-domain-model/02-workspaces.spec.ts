@@ -40,7 +40,7 @@ test("W3 a professor creates a second workspace and is taken there", async ({ pa
 
   const list = await api(page, "GET", "/workspaces");
   expect(list.body.length, "belonging is plural for a professor").toBe(2);
-  const two = list.body.find((w: any) => w.name === "QA Lab Two");
+  const two = asList(list).find((w) => w.name === "QA Lab Two");
   expect(two.joined, "creating joins it").toBe(true);
   const me = await api(page, "GET", "/auth/me");
   expect(me.body.workspace_id, "and takes you there — the anchor moved").toBe(two.id);
@@ -51,9 +51,9 @@ test("W4 reads span both workspaces; the roll says so", async ({ page }) => {
   await signIn(page, PROF);
   const { workspaceId, studentId } = read();
   const users = await api(page, "GET", "/users");
-  const emails = users.body.items.map((u: any) => u.email);
+  const emails = asList(users).map((u) => u.email);
   expect(emails, "the student anchored in the other workspace is still read").toContain(STUDENT.email);
-  const student = users.body.items.find((u: any) => u.id === studentId);
+  const student = asList(users).find((u) => u.id === studentId);
   expect(student.workspace_id, "and is still anchored where they were enrolled").toBe(workspaceId);
   await page.goto("/people");
   await expect(page.getByText(/across 2 workspaces/i)).toBeVisible();
@@ -103,6 +103,6 @@ test("W8 leaving empties a workspace, and an empty one archives", async ({ page 
   const archived = await api(page, "POST", `/workspaces/${workspaceTwoId}/archive`);
   expect(archived.status, "nobody belongs to it now").toBe(200);
   const list = await api(page, "GET", "/workspaces");
-  const names = list.body.map((w: any) => w.name);
+  const names = asList(list).map((w) => w.name);
   expect(names, "and it leaves the list").not.toContain("QA Lab Two");
 });

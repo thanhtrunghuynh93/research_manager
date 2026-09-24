@@ -56,7 +56,7 @@ test("A3 the professor invites a student, and the invitation names a workspace",
   // ADR 0015: the membership is written at invitation, not at acceptance — so an invited
   // account is already on the roll and already occupies the workspace.
   const users = await api(page, "GET", "/users");
-  const invited = asList(users).find((u: any) => u.email === STUDENT.email);
+  const invited = asList(users).find((u) => u.email === STUDENT.email);
   expect(invited, "the invited student is on the roll before accepting").toBeTruthy();
   expect(invited.state).toBe("invited");
   const state = JSON.parse(fs.readFileSync(STATE, "utf8"));
