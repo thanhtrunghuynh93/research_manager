@@ -179,6 +179,8 @@
     "week": "This week's reports",
     "weekCount": "{{submitted}} of {{total}} in",
     "weekEmpty": "No reports are owed this week. Derive the obligations below once projects are active and students are on them.",
+    "weekNoCalendar": "This workspace has no reporting calendar, so no week has started and no report is owed, however many projects are active.",
+    "setCalendar": "Set the calendar and create its weeks on Workspaces.",
     "weekNote": "One row per reporting obligation, so an excused or extended one is listed and marked rather than counted as owed. Submission is read from the report's current version, which is the same place the student's own screen reads it.",
     "extendedUntil": "extended to {{when}}",
     "deriveObligations": "Derive this week's obligations",

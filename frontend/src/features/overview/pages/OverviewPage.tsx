@@ -82,7 +82,7 @@ export function OverviewPage() {
         </p>
       )}
 
-      <WeekBoard week={data.week} timezone={timezone} />
+      <WeekBoard week={data.week} timezone={timezone} hasPeriod={Boolean(period)} />
 
       <div className="mt-8 grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
         <Section
@@ -264,7 +264,15 @@ function DeriveObligations({ periodId }: { periodId?: string }) {
  * together. Since ADR 0020 a professor reads only the workspace they are in, so there is one group;
  * the grouping stays for the day a read spans again (ADR 0016).
  */
-function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string }) {
+function WeekBoard({
+  week,
+  timezone,
+  hasPeriod,
+}: {
+  week: WeekWorkspace[];
+  timezone: string;
+  hasPeriod: boolean;
+}) {
   const { t } = useTranslation();
 
   return (
@@ -281,7 +289,20 @@ function WeekBoard({ week, timezone }: { week: WeekWorkspace[]; timezone: string
         ) : null}
       </h2>
 
-      {week.length === 0 ? (
+      {/* No week at all is a different answer from a week that owes nothing. Without a calendar
+          no period exists, the derive button below has nothing to derive for, and telling the
+          professor to press it left a workspace full of active projects looking empty. */}
+      {week.length === 0 && !hasPeriod ? (
+        <p
+          className="panel mt-2.5 px-4 py-2.5 text-sm text-muted-foreground"
+          data-testid="week-no-calendar"
+        >
+          {t("overview.weekNoCalendar")}{" "}
+          <Link to="/workspaces" className="link">
+            {t("overview.setCalendar")}
+          </Link>
+        </p>
+      ) : week.length === 0 ? (
         <p className="panel mt-2.5 px-4 py-2.5 text-sm text-muted-foreground">
           {t("overview.weekEmpty")}
         </p>

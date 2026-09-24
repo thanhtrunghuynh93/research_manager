@@ -246,6 +246,20 @@ test("a week nobody owes a report for is an empty board, not a missing one", asy
   expect(await screen.findByTestId("week-board")).toHaveTextContent(/No reports are owed/i);
 });
 
+test("a workspace with no calendar says so, rather than telling the professor to derive", async () => {
+  // AI-Environment Lab had five active student projects and an empty board: no calendar, so no
+  // week, so nothing owed — and the board said to press a button that was not on screen.
+  renderPage({ ...EMPTY, current_period: null, week: [] });
+
+  const board = await screen.findByTestId("week-board");
+  expect(board).toHaveTextContent(/no reporting calendar/i);
+  expect(board).not.toHaveTextContent(/No reports are owed/i);
+  expect(screen.getByRole("link", { name: /set the calendar/i })).toHaveAttribute(
+    "href",
+    "/workspaces",
+  );
+});
+
 test("a payload without the week section does not blank the screen", async () => {
   // A deployment that predates this section is not a broken overview.
   const older: Record<string, unknown> = { ...EMPTY, week: WEEK };
