@@ -9,6 +9,7 @@ a person approves it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -852,7 +853,7 @@ async def list_assessments(
     rows = await repo.list_assessments(
         session, scope, student_id=student_id, project_id=project_id, period_id=period_id
     )
-    return [await _assessment_out(session, row) for row in rows]
+    return await _assessment_outs(session, rows)
 
 
 async def list_versions(
@@ -864,7 +865,7 @@ async def list_versions(
     period_id: UUID,
 ) -> list[AssessmentOut]:
     rows = await repo.versions_for_subject(session, scope, student_id, project_id, period_id)
-    return [await _assessment_out(session, row) for row in rows]
+    return await _assessment_outs(session, rows)
 
 
 async def current_review(
@@ -917,7 +918,7 @@ async def review_queue(
 ) -> list[AssessmentOut]:
     """UI-01: the drafts waiting on the professor, oldest first."""
     rows = await repo.review_queue(session, scope, as_of=as_of)
-    return [await _assessment_out(session, row) for row in rows]
+    return await _assessment_outs(session, rows)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1008,7 +1009,28 @@ def _index_of(ratings: dict[str, Any], rubric: RubricVersion | None) -> int | No
 
 async def _assessment_out(session: AsyncSession, assessment: AssessmentVersion) -> AssessmentOut:
     """The stored version, plus what stands after any professor override (ASSESS-08)."""
-    review = await repo.review_for(session, assessment.id)
+    return await _out_with_review(
+        session, assessment, await repo.review_for(session, assessment.id)
+    )
+
+
+async def _assessment_outs(
+    session: AsyncSession, rows: Sequence[AssessmentVersion]
+) -> list[AssessmentOut]:
+    """`_assessment_out` over a list, with the reviews read in one query rather than one per row.
+
+    The review is the only per-row round trip: `rubric_by_id` is a `session.get`, so the identity
+    map answers every call after the first and a list under one rubric costs one query for all of
+    it. The reviews are a select on a foreign key, which has no such escape — so the professor's
+    review queue (UI-01) was issuing one of them for every draft on the screen.
+    """
+    reviews = await repo.reviews_for(session, [row.id for row in rows])
+    return [await _out_with_review(session, row, reviews.get(row.id)) for row in rows]
+
+
+async def _out_with_review(
+    session: AsyncSession, assessment: AssessmentVersion, review: AssessmentReview | None
+) -> AssessmentOut:
     effective = _apply_override(assessment.ratings, review)
     rubric = await repo.rubric_by_id(session, assessment.rubric_version_id)
 

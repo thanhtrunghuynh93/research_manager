@@ -269,6 +269,12 @@ async def memberships_active_in_range(
     )
 
 
+async def get_task(session: AsyncSession, scope: Scope, task_id: UUID) -> Task | None:
+    return (
+        await session.execute(select(Task).where(Task.id == task_id, visible_to(scope, Task)))
+    ).scalar_one_or_none()
+
+
 async def list_tasks(session: AsyncSession, scope: Scope, project_id: UUID) -> list[Task]:
     statement = (
         select(Task).where(Task.project_id == project_id, visible_to(scope, Task)).order_by(Task.id)
