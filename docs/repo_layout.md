@@ -1,6 +1,6 @@
 # Research Management System — Repository Layout
 
-Version 0.4 — 21 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.9, and [use_cases.md](use_cases.md) v0.16
+Version 0.4 — 21 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.9, and [use_cases.md](use_cases.md) v0.17
 
 This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 

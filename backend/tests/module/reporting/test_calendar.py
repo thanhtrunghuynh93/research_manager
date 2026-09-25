@@ -75,9 +75,14 @@ async def test_generating_periods_twice_creates_nothing_new(
 
 
 async def test_changing_the_meeting_day_applies_to_future_periods_only(
-    db: AsyncSession, prof_scope: Scope
+    db: AsyncSession, prof_scope: Scope, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # REP-01: periods already open keep their original deadline.
+    # REP-01: a week under way keeps its original deadline; weeks opened ahead but not yet begun
+    # take the new one, or a changed meeting day would reach nothing for the eight weeks the
+    # nightly job keeps open.
+    monkeypatch.setattr(
+        "app.reporting.service.now", lambda: datetime(2026, 9, 24, 3, 0, tzinfo=UTC), raising=True
+    )
     await _calendar(db, prof_scope)
     existing = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 27)))[0]
     original_deadline = existing.deadline_utc
@@ -648,3 +653,51 @@ async def test_the_widened_list_is_ordered_by_workspace_as_well_as_by_week(
     # Asked again, the same answer — the property the eight-row lists on top of this depend on.
     again = await service.list_periods(db, spanning, across_workspaces=True)
     assert [period.id for period in again] == [period.id for period in wide]
+
+
+async def test_saving_a_calendar_opens_its_weeks_and_derives_the_current_one(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """A workspace with active projects is on the overview the moment its calendar is saved.
+
+    AI-Environment Lab had five active projects and an empty week board, because saving the
+    calendar opened nothing and derived nothing: those were two more buttons, on two screens.
+    """
+    today = now().date()
+    project = await projects_service.create_project(
+        db, prof_scope, title="Adsorption", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=today - timedelta(days=14)
+    )
+
+    await _calendar(db, prof_scope, effective_from=today - timedelta(days=7))
+
+    periods = await service.list_periods(db, prof_scope)
+    assert periods, "the weeks are open without a second step"
+    assert periods[-1].local_start > today + timedelta(weeks=7), "and the usual horizon ahead"
+    current = max((p for p in periods if p.start_utc <= now()), key=lambda p: p.start_utc)
+    owed = await service.list_obligations(db, prof_scope, current.id)
+    assert [o.student_id for o in owed] == [student_a.id], "this week's report is already due"
+
+
+async def test_a_calendar_starting_later_makes_nothing_due_yet(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """The first week is the one the professor chose; saving never back-dates an obligation."""
+    today = now().date()
+    project = await projects_service.create_project(
+        db, prof_scope, title="Adsorption", stage="implementation"
+    )
+    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    await projects_service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=today - timedelta(days=14)
+    )
+
+    await _calendar(db, prof_scope, effective_from=today + timedelta(days=7))
+
+    periods = await service.list_periods(db, prof_scope)
+    assert periods and all(p.start_utc > now() for p in periods), "weeks open, none begun"
+    for period in periods:
+        assert await service.list_obligations(db, prof_scope, period.id) == []

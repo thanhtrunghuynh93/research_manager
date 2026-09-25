@@ -71,6 +71,7 @@ Trigger: a change on `main` is to go out, or a hotfix must. Nothing here is driv
    ```
 7. First deploy only: set the monthly AI budget, or accept that there is none. No budget means no
    limit, not a limit of zero — assessments will run until the provider bill says otherwise.
+   There is no screen for this (use_cases.md §2.9); the API is the way to set or read it.
    ```bash
    curl -fsS -X PUT https://<domain>/api/v1/admin/ai/budgets \
      -H 'content-type: application/json' --cookie "<professor session>" \

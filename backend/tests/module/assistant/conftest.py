@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -26,7 +26,15 @@ class Workspace:
 
 
 @pytest.fixture
-def build_week():
+def build_week(monkeypatch: pytest.MonkeyPatch):
+    # Saving a calendar opens the weeks ahead of the reporting clock. Pinned inside the week of
+    # 14 September with no horizon, that week is the only one open — the world these helpers
+    # describe. Left to the wall clock, the week of the 21st opened too and became "this week".
+    monkeypatch.setattr(
+        "app.reporting.service.now", lambda: datetime(2026, 9, 15, 3, 0, tzinfo=UTC), raising=True
+    )
+    monkeypatch.setattr("app.reporting.service.DEFAULT_HORIZON", timedelta(0), raising=True)
+
     async def _build(
         db: AsyncSession,
         prof_scope: Scope,

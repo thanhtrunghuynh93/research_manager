@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 import { useSession } from "@/features/auth/queries";
-import type { components } from "@/api/generated/schema";
 import type { Workspace } from "@/features/workspaces/types";
 
 export const workspacesKey = ["workspaces"] as const;
@@ -79,47 +78,5 @@ export function useArchiveWorkspace() {
   return useMutation({
     mutationFn: (id: string) => api.post<Workspace>(`/api/v1/workspaces/${id}/archive`),
     onSuccess: () => queryClient.resetQueries(),
-  });
-}
-
-export const budgetsKey = ["ai-budgets"] as const;
-export const usageKey = ["ai-usage"] as const;
-
-type AiBudgets = components["schemas"]["AiBudgetsOut"];
-type AiUsage = components["schemas"]["AiUsageOut"];
-
-/**
- * The monthly ceiling on model spend (requirements §11).
- *
- * `spent_usd` here is the month's real spend whether or not a ceiling is set. It used to be taken
- * from `check_budget`, which only totals spend when there is a limit to compare it against — so
- * the professor's overview reported $0 precisely when nothing was capping the bill.
- */
-export function useAiBudgets() {
-  return useQuery({
-    queryKey: budgetsKey,
-    queryFn: () => api.get<AiBudgets>("/api/v1/admin/ai/budgets"),
-  });
-}
-
-export function useAiUsage() {
-  return useQuery({
-    queryKey: usageKey,
-    queryFn: () => api.get<AiUsage>("/api/v1/admin/ai/usage"),
-  });
-}
-
-export function useSetAiBudget() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: {
-      monthly_usd: string | null;
-      project_monthly_usd: Record<string, string>;
-    }) => api.put<AiBudgets>("/api/v1/admin/ai/budgets", payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: budgetsKey });
-      // The overview prints the same numbers; a ceiling set here must not leave it stale.
-      void queryClient.invalidateQueries({ queryKey: ["overview"] });
-    },
   });
 }

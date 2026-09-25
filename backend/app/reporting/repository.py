@@ -60,6 +60,28 @@ async def last_period(session: AsyncSession, workspace_id: UUID) -> ReportingPer
     ).scalar_one_or_none()
 
 
+async def unstarted_periods(
+    session: AsyncSession, workspace_id: UUID, *, after: datetime, from_local: date
+) -> list[ReportingPeriod]:
+    """Opened weeks that have not begun yet, from `from_local` on — the ones a new calendar may
+    still re-date, because no report can have been written against a week that has not started."""
+    return list(
+        (
+            await session.execute(
+                select(ReportingPeriod)
+                .where(
+                    ReportingPeriod.workspace_id == workspace_id,
+                    ReportingPeriod.start_utc > after,
+                    ReportingPeriod.local_start >= from_local,
+                )
+                .order_by(ReportingPeriod.local_start)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def period_before(
     session: AsyncSession, workspace_id: UUID, local_start: date
 ) -> ReportingPeriod | None:

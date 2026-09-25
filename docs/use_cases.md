@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.16 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.17 — 24 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -26,6 +26,11 @@ has been carrying: §8.1, that no report could ever become due because no projec
 from the app, and the last row of §8.2, that an assessment approved for a student had no screen on
 which that student could read it. Neither needed a new capability — every endpoint involved already
 worked and was already tested. What both needed was a caller.
+
+**v0.17 takes things off the Workspaces screen.** Saving the weekly schedule now opens the weeks and
+makes this week's reports due, so the "open weeks" step is gone (§2.4); the screen leads with the
+workspace being worked in, its name and its schedule; and model spend has no screen, though its
+endpoints and the gateway's ceiling are unchanged (§2.9).
 
 ## How to read the tables
 
@@ -59,7 +64,7 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 89 endpoints, 59 of them called by a screen, and nothing left marked ◻️.**
+**As of this version: 89 endpoints, 55 of them called by a screen, and nothing left marked ◻️.**
 Both numbers are path-and-method pairs over `/api/v1`, counted by the script in §9 — v0.12 gave
 "98 endpoints, 50 of them called by a screen", which counted routes one way and callers another
 and so compared two different things. The units agree now; the pair is not comparable to v0.12's.
@@ -96,7 +101,7 @@ dead end rather than about security.
 | `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments, which are files (REP-04); submit |
 | `/overview` | professor | nav, and the professor's home | Budget and mail warnings, this week's reports by workspace, project and student, outstanding reports, review queue, sync issues, stalled analyses |
 | `/people` | professor | nav | Everyone in the workspace they are working in (ADR 0020); invite, move, suspend / restore / remove |
-| `/workspaces` | professor | nav | The workspaces they belong to or own; join, leave, create, archive. The reporting calendar, and the weeks it opens. *Switching* between them is the workspace name in the header, on every screen (§2.1) |
+| `/workspaces` | professor | nav | The workspace being worked in first — its name (rename, for its owner) and its weekly schedule, shown as a sentence and the coming weeks' deadlines. Then the other workspaces they belong to (join, leave, archive with a confirmation), and creating one, folded. *Switching* between them is the workspace name in the header, on every screen (§2.1) |
 | `/projects` | signed in | nav (both roles since PROJ-07; a student's bar is their week, then this); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
 | `/students/:id` | professor | a name on `/people`, or on the overview's outstanding list | Approved assessments, trajectory per project, downloadable materials |
 | `/review/:assessmentId` | professor | the overview's review queue, or a student's profile | Ratings per dimension, confidence, the evidence snapshot, approve with a rationale |
@@ -376,7 +381,7 @@ membership are the rest of the workbench rather than the chain that makes a repo
 | **Read the calendar in force** | `GET /calendar` | 🖥️ |
 | **See who owes a report this period, and who has reported** | `GET /periods/{id}/obligations` | 🖥️ — via the week's board on `GET /overview` |
 | **Configure the reporting calendar** — timezone, week start, meeting day, grace | `PUT /calendar` | 🖥️ |
-| Materialise periods up to a date | `POST /periods/ensure` | 🖥️ |
+| Materialise periods up to a date | `POST /periods/ensure` | ⚙️ — saving the calendar does it, and so does the nightly job |
 | Derive obligations for a period | `POST /periods/{id}/obligations/ensure` | 🖥️ |
 | Excuse one student's obligation | `POST /obligations/{id}/excuse` | ⚙️ |
 | Extend one student's deadline | `POST /obligations/{id}/extend` | ⚙️ |
@@ -390,10 +395,14 @@ professor ends up with six places to look.
 the alternative signal — an empty period list — stops being true the moment a calendar is replaced
 after periods already exist.
 
-`POST /periods/ensure` and `.../obligations/ensure` are "do it now" buttons rather than the only
-path: `ensure_periods` runs nightly and derives both for every workspace with a calendar. They are
-there so that a professor setting a workspace up does not have to wait until tomorrow to see the
-first week open.
+**Saving the calendar opens the weeks and makes this week's reports due** (v0.17). It used to be
+followed by two more steps a professor had no reason to know about — "open weeks" on the calendar
+panel, then "derive" on the overview — and a workspace with five active projects stayed empty
+until the nightly job ran. `PUT /calendar` now opens the next eight weeks, re-dates the ones not
+yet begun to the new version (the week under way keeps its deadline, REP-01), and derives the
+current week's obligations. `POST /periods/ensure` stays for the nightly job and scripts; the
+overview's derive button stays as a "do it now". The first week is still the first week start on
+or after `effective_from`, which the screen asks as "this week or next".
 
 `GET /periods/{id}/obligations` was 🚧 and is not any more, though the route itself is still one a
 professor never calls directly: `useObligations` is called from `/me` and `/report/:periodId`, and
@@ -509,8 +518,8 @@ actually retrieved, and an invented one is dropped and the drop is stated.
 | Use case | Endpoint | |
 | --- | --- | --- |
 | The current week at a glance — **this week's reports by workspace, project and student**, outstanding reports, review queue, stale repositories, stalled analyses, AI budget, failed mail | `GET /overview` | 🖥️ |
-| See model spend this month | `GET /admin/ai/usage` | 🖥️ |
-| See and set the monthly AI budgets | `GET`/`PUT /admin/ai/budgets` | 🖥️ |
+| See model spend this month | `GET /admin/ai/usage` | ⚙️ — no screen since v0.17 |
+| See and set the monthly AI budgets | `GET`/`PUT /admin/ai/budgets` | ⚙️ — no screen since v0.17; with none set nothing is capped |
 | See repository sync health | `GET /admin/sync` | ⚙️ |
 
 The week's board is the section a professor opens this screen for, and §2.4 has why it replaced the

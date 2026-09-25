@@ -1,133 +1,235 @@
 /**
- * The reporting calendar, and the weeks it opens (REP-01).
+ * The weekly schedule: when a week runs, when the professor meets, and so when a report is due
+ * (REP-01).
  *
- * This is the first thing a workspace needs and the only genuinely manual step in the chain that
- * makes a report due: periods and obligations derive from it nightly. It lives on `/workspaces`
- * rather than on a route of its own because a calendar is a workspace setting — its timezone
- * default is the workspace's — and because one more screen for one more form is how a professor
- * ends up with six places to look.
+ * It is the one manual step in the chain that makes a report due, and it used to be three: save a
+ * calendar, then "open weeks", then derive who owes on the overview. Nobody could be expected to
+ * know the second and third existed, and a workspace with five active projects stayed empty. Saving
+ * now does all three on the server, so this card asks two questions and shows what they produce —
+ * the next few weeks and their deadlines — rather than describing the mechanism.
  *
- * Configuring writes a *new version*. Periods already open keep the deadline they were created
- * with, which is the one thing about this form that surprises people, so the panel says it rather
- * than leaving it to be discovered.
+ * Saving writes a new calendar version. Weeks that have not begun take it; the week under way
+ * keeps the deadline students are already working towards.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Failure } from "@/components/Failure";
-import { useCalendar, useConfigureCalendar, useEnsurePeriods } from "@/features/calendar/queries";
+import { useCalendar, useConfigureCalendar } from "@/features/calendar/queries";
+import type { CalendarConfig } from "@/features/calendar/types";
 import { usePeriods } from "@/features/report/queries";
 import { useCurrentWorkspace } from "@/features/workspaces/queries";
-import { formatLocalDate, todayLocal } from "@/lib/dates";
+import { DEFAULT_TIMEZONE, formatInstant, formatLocalDate, todayLocal } from "@/lib/dates";
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+
+/** Monday is 0, as the API counts. */
+function weekdayOf(isoDate: string): number {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return (new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay() + 6) % 7;
+}
+
+function addDays(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().slice(0, 10);
+}
+
+/** The most recent `weekStart` on or before `today`: the start of the week `today` is in. */
+function startOfWeek(today: string, weekStart: number): string {
+  return addDays(today, -((weekdayOf(today) - weekStart + 7) % 7));
+}
 
 export function CalendarPanel() {
   const { t } = useTranslation();
   const calendar = useCalendar();
   const workspace = useCurrentWorkspace();
+  const [editing, setEditing] = useState(false);
 
   if (calendar.isPending) return null;
-  if (calendar.isError)
-    return (
-      <section className="panel mt-8 max-w-2xl p-4">
+
+  const timezone = calendar.data?.timezone ?? workspace?.timezone ?? DEFAULT_TIMEZONE;
+  const current = calendar.data ?? null;
+  const day = (n: number) => t(`calendar.weekday.${n}`);
+
+  return (
+    <section className="panel mt-6 p-4" data-testid="calendar-panel">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="section-title">{t("calendar.title")}</h2>
+        {current && !editing && (
+          <button type="button" className="btn-quiet" onClick={() => setEditing(true)}>
+            {t("calendar.edit")}
+          </button>
+        )}
+      </div>
+
+      {calendar.isError ? (
         <p className="mt-2">
           <Failure error={calendar.error} />
         </p>
-      </section>
-    );
+      ) : current ? (
+        <p className="mt-2 text-prose" data-testid="calendar-state">
+          {t("calendar.summary", {
+            start: day(current.week_start_weekday),
+            end: day((current.week_start_weekday + 6) % 7),
+            due: day((current.meeting_weekday + 6) % 7),
+            meeting: day(current.meeting_weekday),
+            timezone,
+          })}
+        </p>
+      ) : (
+        <p className="notice-warn mt-3" data-testid="calendar-state">
+          {t("calendar.none")}
+        </p>
+      )}
 
-  return (
-    <section className="panel mt-8 max-w-2xl p-4" data-testid="calendar-panel">
-      <h2 className="section-title">{t("calendar.title")}</h2>
-      <p className="stamp mt-1">{t("calendar.intro")}</p>
+      {current && !editing && <UpcomingWeeks timezone={timezone} />}
 
-      <p className="mt-3 text-sm" data-testid="calendar-state">
-        {calendar.data
-          ? t("calendar.configured", {
-              timezone: calendar.data.timezone,
-              meeting: t(`calendar.weekday.${calendar.data.meeting_weekday}`),
-              start: t(`calendar.weekday.${calendar.data.week_start_weekday}`),
-              version: calendar.data.version,
-            })
-          : t("calendar.none")}
-      </p>
-
-      <CalendarForm defaultTimezone={workspace?.timezone ?? "Asia/Ho_Chi_Minh"} />
-      <Periods configured={Boolean(calendar.data)} />
+      {(!current || editing) && (
+        <ScheduleForm
+          current={current}
+          timezone={timezone}
+          onDone={() => setEditing(false)}
+          onCancel={current ? () => setEditing(false) : undefined}
+        />
+      )}
     </section>
   );
 }
 
-function CalendarForm({ defaultTimezone }: { defaultTimezone: string }) {
+/** What the schedule produces, which is easier to check than the rule that produces it. */
+function UpcomingWeeks({ timezone }: { timezone: string }) {
   const { t } = useTranslation();
-  const calendar = useCalendar();
-  const configure = useConfigureCalendar();
-  const current = calendar.data;
+  const periods = usePeriods();
+  const today = todayLocal(new Date(), timezone);
+  const upcoming = (periods.data ?? []).filter((period) => period.local_end >= today).slice(0, 3);
 
-  const [timezone, setTimezone] = useState(current?.timezone ?? defaultTimezone);
-  const [meetingWeekday, setMeetingWeekday] = useState(current?.meeting_weekday ?? 0);
+  if (periods.isPending) return null;
+
+  return (
+    <div className="mt-4 border-t border-border pt-3">
+      <p className="eyebrow">{t("calendar.upcoming")}</p>
+      {upcoming.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">{t("calendar.noUpcoming")}</p>
+      ) : (
+        <ul className="mt-2" data-testid="upcoming-weeks">
+          {upcoming.map((period) => (
+            <li
+              key={period.id}
+              className="flex flex-wrap items-baseline justify-between gap-3 py-1 text-ui"
+            >
+              <span className="font-mono">
+                {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
+                {period.local_start <= today && (
+                  <span className="eyebrow ml-2.5">{t("calendar.thisWeek")}</span>
+                )}
+              </span>
+              <span className="text-muted-foreground">
+                {t("calendar.dueAt", { when: formatInstant(period.deadline_utc, timezone) })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ScheduleForm({
+  current,
+  timezone,
+  onDone,
+  onCancel,
+}: {
+  current: CalendarConfig | null;
+  timezone: string;
+  onDone: () => void;
+  onCancel?: () => void;
+}) {
+  const { t } = useTranslation();
+  const configure = useConfigureCalendar();
   const [weekStart, setWeekStart] = useState(current?.week_start_weekday ?? 0);
+  const [meeting, setMeeting] = useState(current?.meeting_weekday ?? 0);
   const [grace, setGrace] = useState(current?.grace_minutes ?? 0);
-  const [effectiveFrom, setEffectiveFrom] = useState(todayLocal());
+  const [firstWeek, setFirstWeek] = useState<"this" | "next">("this");
+
+  const today = todayLocal(new Date(), timezone);
+  const thisWeek = startOfWeek(today, weekStart);
+  const nextWeek = addDays(thisWeek, 7);
+  // A first schedule starts on the week the professor picks. An edit applies from today, which
+  // re-dates every week that has not begun and leaves the one under way alone.
+  const effectiveFrom = current ? today : firstWeek === "this" ? thisWeek : nextWeek;
+
+  const daySelect = (label: string, value: number, onChange: (next: number) => void) => (
+    <label className="block">
+      <span className="field-label">{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="input"
+      >
+        {WEEKDAYS.map((day) => (
+          <option key={day} value={day}>
+            {t(`calendar.weekday.${day}`)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
   return (
     <form
       className="mt-4 border-t border-border pt-4"
       onSubmit={(event) => {
         event.preventDefault();
-        configure.mutate({
-          timezone,
-          meeting_weekday: meetingWeekday,
-          week_start_weekday: weekStart,
-          grace_minutes: grace,
-          effective_from: effectiveFrom,
-        });
+        configure.mutate(
+          {
+            timezone,
+            week_start_weekday: weekStart,
+            meeting_weekday: meeting,
+            grace_minutes: grace,
+            effective_from: effectiveFrom,
+          },
+          { onSuccess: onDone },
+        );
       }}
     >
       <div className="flex flex-wrap items-end gap-4">
-        <label className="block min-w-[12rem] flex-1">
-          <span className="field-label">{t("calendar.timezone")}</span>
-          <input
-            type="text"
-            required
-            value={timezone}
-            onChange={(event) => setTimezone(event.target.value)}
-            className="input"
-          />
-        </label>
-        <label className="block">
-          <span className="field-label">{t("calendar.meetingWeekday")}</span>
-          <select
-            aria-label={t("calendar.meetingWeekday")}
-            value={meetingWeekday}
-            onChange={(event) => setMeetingWeekday(Number(event.target.value))}
-            className="input"
-          >
-            {WEEKDAYS.map((day) => (
-              <option key={day} value={day}>
-                {t(`calendar.weekday.${day}`)}
-              </option>
+        {daySelect(t("calendar.weekStart"), weekStart, setWeekStart)}
+        {daySelect(t("calendar.meetingWeekday"), meeting, setMeeting)}
+      </div>
+
+      {!current && (
+        <fieldset className="mt-4">
+          <legend className="field-label">{t("calendar.firstWeek")}</legend>
+          <div className="mt-1.5 flex flex-wrap gap-5 text-ui">
+            {(
+              [
+                ["this", thisWeek],
+                ["next", nextWeek],
+              ] as const
+            ).map(([choice, start]) => (
+              <label key={choice} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="first-week"
+                  checked={firstWeek === choice}
+                  onChange={() => setFirstWeek(choice)}
+                />
+                {t(choice === "this" ? "calendar.firstThis" : "calendar.firstNext", {
+                  start: formatLocalDate(start),
+                })}
+              </label>
             ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="field-label">{t("calendar.weekStart")}</span>
-          <select
-            aria-label={t("calendar.weekStart")}
-            value={weekStart}
-            onChange={(event) => setWeekStart(Number(event.target.value))}
-            className="input"
-          >
-            {WEEKDAYS.map((day) => (
-              <option key={day} value={day}>
-                {t(`calendar.weekday.${day}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
+          </div>
+        </fieldset>
+      )}
+
+      <details className="mt-4">
+        <summary className="cursor-pointer text-ui text-muted-foreground">
+          {t("calendar.advanced")}
+        </summary>
+        <label className="mt-2 block">
           <span className="field-label">{t("calendar.grace")}</span>
           <input
             type="number"
@@ -138,85 +240,24 @@ function CalendarForm({ defaultTimezone }: { defaultTimezone: string }) {
             className="input w-28"
           />
         </label>
-        <label className="block">
-          <span className="field-label">{t("calendar.effectiveFrom")}</span>
-          <input
-            type="date"
-            required
-            value={effectiveFrom}
-            onChange={(event) => setEffectiveFrom(event.target.value)}
-            className="input"
-          />
-        </label>
+        <p className="stamp mt-1">{t("calendar.graceNote")}</p>
+      </details>
+
+      <p className="stamp mt-4">{current ? t("calendar.editNote") : t("calendar.firstNote")}</p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <button type="submit" disabled={configure.isPending} className="btn-primary">
           {t("calendar.save")}
         </button>
+        {onCancel && (
+          <button type="button" className="btn-quiet" onClick={onCancel}>
+            {t("common.cancel")}
+          </button>
+        )}
       </div>
-
-      <p className="stamp mt-3">{t("calendar.versionNote")}</p>
-      {configure.isSuccess ? (
-        <p className="stamp mt-1" role="status">
-          {t("calendar.saved", { version: configure.data?.version })}
-        </p>
-      ) : null}
       <p className="mt-2">
         <Failure error={configure.error} />
       </p>
     </form>
   );
-}
-
-/** Opening weeks is a "do it now": the nightly job materialises them anyway. */
-function Periods({ configured }: { configured: boolean }) {
-  const { t } = useTranslation();
-  const periods = usePeriods();
-  const ensure = useEnsurePeriods();
-  const [through, setThrough] = useState(todayLocal(addWeeks(new Date(), 8)));
-
-  const opened = periods.data ?? [];
-  const last = opened.at(-1);
-
-  return (
-    <div className="mt-5 border-t border-border pt-4">
-      <p className="text-sm" data-testid="period-state">
-        {opened.length
-          ? t("calendar.periods", {
-              count: opened.length,
-              through: formatLocalDate(last!.local_end),
-            })
-          : t("calendar.noPeriods")}
-      </p>
-
-      <div className="mt-3 flex flex-wrap items-end gap-4">
-        <label className="block">
-          <span className="field-label">{t("calendar.openThrough")}</span>
-          <input
-            type="date"
-            value={through}
-            onChange={(event) => setThrough(event.target.value)}
-            className="input"
-          />
-        </label>
-        <button
-          type="button"
-          disabled={!configured || ensure.isPending}
-          onClick={() => ensure.mutate(through)}
-          className="btn-ghost"
-        >
-          {t("calendar.open")}
-        </button>
-      </div>
-
-      <p className="stamp mt-3">{t("calendar.autoNote")}</p>
-      <p className="mt-2">
-        <Failure error={ensure.error} />
-      </p>
-    </div>
-  );
-}
-
-function addWeeks(from: Date, weeks: number): Date {
-  const to = new Date(from);
-  to.setDate(to.getDate() + weeks * 7);
-  return to;
 }

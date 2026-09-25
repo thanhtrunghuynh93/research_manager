@@ -30,6 +30,17 @@ pytestmark = pytest.mark.module
 AFTER_THE_WEEK = max(datetime(2026, 9, 21, 3, 0, tzinfo=UTC), now() + timedelta(hours=1))
 
 
+@pytest.fixture(autouse=True)
+def _one_week_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Saving a calendar opens the weeks ahead of the reporting clock. Pinned inside the week of
+    # 14 September with no horizon, that week is the only one open — the world these helpers
+    # describe. Left to the wall clock, the week of the 21st opened too and became "this week".
+    monkeypatch.setattr(
+        "app.reporting.service.now", lambda: datetime(2026, 9, 15, 3, 0, tzinfo=UTC), raising=True
+    )
+    monkeypatch.setattr("app.reporting.service.DEFAULT_HORIZON", timedelta(0), raising=True)
+
+
 async def _week(
     db: AsyncSession,
     prof_scope: Scope,

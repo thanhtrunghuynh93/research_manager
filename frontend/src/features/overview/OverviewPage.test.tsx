@@ -252,9 +252,9 @@ test("a workspace with no calendar says so, rather than telling the professor to
   renderPage({ ...EMPTY, current_period: null, week: [] });
 
   const board = await screen.findByTestId("week-board");
-  expect(board).toHaveTextContent(/no reporting calendar/i);
+  expect(board).toHaveTextContent(/no weekly schedule/i);
   expect(board).not.toHaveTextContent(/No reports are owed/i);
-  expect(screen.getByRole("link", { name: /set the calendar/i })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: /set a weekly schedule/i })).toHaveAttribute(
     "href",
     "/workspaces",
   );

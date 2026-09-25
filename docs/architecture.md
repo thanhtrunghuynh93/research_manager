@@ -124,7 +124,7 @@ A module reads another module's data only through that module's `service.py`; it
 | `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
 | `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left, and the professor's revision request | REP-02, REP-05, UI-04 |
 | `/people` | The roll across every workspace the professor belongs to, grouped by workspace: invite, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
-| `/workspaces` | Workspaces this professor belongs to or owns: create, join, leave, rename, archive. Switching between memberships is the header's own control, present on every screen | UI-08, AUTH-04, AUTH-05 |
+| `/workspaces` | The workspace being worked in — rename (owner only) and its weekly schedule, whose save opens the weeks and derives this week's obligations — then the others belonged to or owned: join, leave, archive; create, folded. Switching between memberships is the header's own control, present on every screen | UI-08, AUTH-04, AUTH-05, REP-01 |
 | `/accept-invitation` | Set a password from an invitation link; public, no session | AUTH-01 |
 | `/reset-password` | Set a password from a recovery link; public, no session | AUTH-01 |
 | `/review/:assessmentId` | Review workspace: claims, evidence, draft assessment, freshness, approve/override | UI-05 |

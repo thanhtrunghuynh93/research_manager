@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import type { CalendarConfig, CalendarConfigIn } from "@/features/calendar/types";
 import { periodsKey } from "@/features/report/queries";
-import type { Period } from "@/features/report/types";
 import { DEFAULT_TIMEZONE } from "@/lib/dates";
 
 export const calendarKey = ["calendar"] as const;
@@ -40,8 +39,8 @@ export function useTimezone(): string {
 }
 
 /**
- * Configuring writes a *new version*; periods already open keep the deadline they were created
- * with (REP-01). Both keys are invalidated because the next `ensure` will use the new version.
+ * Saving writes a new version, opens the coming weeks, re-dates the ones not yet begun, and derives
+ * this week's obligations (REP-01) — so the weeks and the overview both change underneath it.
  */
 export function useConfigureCalendar() {
   const queryClient = useQueryClient();
@@ -50,20 +49,7 @@ export function useConfigureCalendar() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: calendarKey });
       void queryClient.invalidateQueries({ queryKey: periodsKey });
+      void queryClient.invalidateQueries({ queryKey: ["overview"] });
     },
-  });
-}
-
-/**
- * Materialise the weeks up to a date. The nightly job does this too, so this is a "do it now"
- * button rather than the only path — a professor setting a workspace up should not have to wait
- * until tomorrow to see the first week open.
- */
-export function useEnsurePeriods() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (through: string) =>
-      api.post<Period[]>(`/api/v1/periods/ensure?through=${through}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: periodsKey }),
   });
 }

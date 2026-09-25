@@ -29,6 +29,22 @@ AFTER_THE_DEADLINE = datetime(2026, 9, 21, 3, 0, tzinfo=UTC)
 QUESTION = "How many reports are missing this week?"
 
 
+@pytest.fixture(autouse=True)
+def _one_week_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The world these tests describe: the week of 14 September is the only one open.
+
+    Saving a calendar opens the weeks ahead of today, as the nightly job always has. Left to the
+    wall clock that opened the week of the 21st too, and `missing_reports` then answered for the
+    week just begun instead of the one whose deadline had passed. What is under test is the
+    arithmetic on one week's obligations, so the clock is pinned inside that week and nothing is
+    opened past it.
+    """
+    monkeypatch.setattr(
+        "app.reporting.service.now", lambda: datetime(2026, 9, 15, 3, 0, tzinfo=UTC), raising=True
+    )
+    monkeypatch.setattr("app.reporting.service.DEFAULT_HORIZON", timedelta(0), raising=True)
+
+
 async def _week(
     db: AsyncSession, prof_scope: Scope, students: list[identity_models.User]
 ) -> tuple[object, object]:

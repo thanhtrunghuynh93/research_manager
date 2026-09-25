@@ -46,16 +46,20 @@ test("a professor creates a project, activates it, and assigns a student", async
   await expect(page.getByText(/no members/i)).toHaveCount(0);
 });
 
-test("the calendar and the weeks it opens live on the workspace screen", async ({ page }) => {
+test("the weekly schedule and the weeks it produces live on the workspace screen", async ({
+  page,
+}) => {
   await signIn(page, PROF);
   await page.goto("/workspaces");
 
   const panel = page.getByTestId("calendar-panel");
   await expect(panel).toBeVisible();
 
-  // The demo dataset configures a calendar, so this reads as configured rather than absent.
-  await expect(page.getByTestId("calendar-state")).toContainText(/weeks start on/i);
-  await expect(panel.getByRole("button", { name: /open weeks/i })).toBeEnabled();
+  // The demo dataset configures a calendar, so this reads as a schedule rather than its absence,
+  // and the weeks it opened are listed with their deadlines.
+  await expect(page.getByTestId("calendar-state")).toContainText(/each week runs/i);
+  await expect(panel.getByTestId("upcoming-weeks")).toBeVisible();
+  await expect(panel.getByRole("button", { name: /edit schedule/i })).toBeEnabled();
 });
 
 test("the overview can derive this week's obligations without waiting for the nightly job", async ({

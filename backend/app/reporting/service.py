@@ -101,7 +101,18 @@ async def configure_calendar(
     effective_from: date,
     grace_minutes: int = 0,
 ) -> CalendarConfigOut:
-    """A new version applies to future periods; periods already materialised keep their deadline."""
+    """A new version applies to weeks that have not begun; a week under way keeps its deadline.
+
+    Saving also opens the coming weeks and derives the current week's obligations. The calendar is
+    the only manual step in the chain that makes a report due, and it used to be followed by two
+    more buttons — open the weeks, then derive who owes — that a professor had no reason to know
+    existed: a workspace with five active projects stayed empty on the overview until the nightly
+    job ran. Both steps are idempotent, and the nightly job still runs them.
+
+    Only a week that has already begun gets obligations here, and the first week is the first
+    `week_start_weekday` on or after `effective_from`, so saving never makes a report due for a
+    week the professor did not choose to include.
+    """
     scope.require_prof()
     previous = await repository.latest_calendar(session, scope.workspace_id)
     config = CalendarConfig(
@@ -124,7 +135,48 @@ async def configure_calendar(
         target_id=config.id,
         after={"version": config.version, "meeting_weekday": meeting_weekday},
     )
+    at = now()
+    await _redate_unstarted(session, scope, config, at=at)
+    periods = await ensure_periods(session, scope)
+    started = [period for period in periods if period.start_utc <= at]
+    if started:
+        await ensure_obligations(session, scope, max(started, key=lambda one: one.start_utc).id)
     return CalendarConfigOut.model_validate(config)
+
+
+async def _redate_unstarted(
+    session: AsyncSession, scope: Scope, config: CalendarConfig, *, at: datetime
+) -> None:
+    """Give weeks that are open but not yet begun the new version's meeting day and deadline.
+
+    Weeks are opened eight ahead, nightly, so without this a changed meeting day reached nothing
+    for two months: every week it could apply to was already open with the old deadline. REP-01's
+    rule is that a deadline does not move under someone working towards it, and nobody is working
+    towards a week that has not started — so those take the new version, and weeks under way keep
+    theirs.
+
+    Only a week that still starts on the new `week_start_weekday` is re-dated. Changing the day
+    weeks start on would move the weeks themselves, and those rows are what obligations, drafts and
+    reminders hang off; that version applies from the first week opened after the last open one.
+    """
+    for period in await repository.unstarted_periods(
+        session, scope.workspace_id, after=at, from_local=config.effective_from
+    ):
+        if period.local_start.weekday() != config.week_start_weekday:
+            continue
+        dates = calendar.period_dates(
+            period.local_start,
+            meeting_weekday=config.meeting_weekday,
+            timezone=config.timezone,
+            grace_minutes=config.grace_minutes,
+        )
+        period.calendar_config_id = config.id
+        period.start_utc = dates.start_utc
+        period.end_utc = dates.end_utc
+        period.meeting_date = dates.meeting_date
+        period.deadline_utc = dates.deadline_utc
+        period.reminder_due_utc = dates.reminder_due_utc
+    await session.flush()
 
 
 async def ensure_periods(
