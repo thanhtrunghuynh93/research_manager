@@ -389,3 +389,27 @@ async def test_withdrawing_clears_the_publication_time(
 
     withdrawn = await service.get_assessment(db, prof_scope, assessment.id)
     assert withdrawn.published_at is None
+
+
+async def test_a_draft_cannot_be_withdrawn(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """Only a published assessment can be taken back; a draft was never published."""
+    _period, _project, assessment = await _assessed(db, prof_scope, student_a)
+
+    with pytest.raises(ConflictError, match="approved"):
+        await service.withdraw(db, prof_scope, assessment.id)
+
+    review = await service.current_review(db, prof_scope, assessment.id)
+    assert review is not None and review.state is models.ReviewState.DRAFT
+
+
+async def test_a_withdrawn_assessment_cannot_be_withdrawn_again(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    _period, _project, assessment = await _assessed(db, prof_scope, student_a)
+    await service.approve(db, prof_scope, assessment.id)
+    await service.withdraw(db, prof_scope, assessment.id)
+
+    with pytest.raises(ConflictError, match="approved"):
+        await service.withdraw(db, prof_scope, assessment.id)

@@ -1084,7 +1084,7 @@
           },
           "provider": {
             "default": "github",
-            "pattern": "^(github|gitlab)$",
+            "pattern": "^github$",
             "title": "Provider",
             "type": "string"
           }
@@ -4314,18 +4314,6 @@
             "title": "Byte Size",
             "type": "integer"
           },
-          "entry_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entry Id"
-          },
           "filename": {
             "maxLength": 255,
             "minLength": 1,
@@ -6689,7 +6677,7 @@
     },
     "/api/v1/periods": {
       "get": {
-        "description": "The weeks of the workspace being worked in, or of all of them when asked.\n\nThe default is the one workspace, because a screen that describes a workspace has to describe\nthe one it is on. A professor's reads may span the workspaces they belong to (ADR 0016), and\na screen that labels records from any of them \u2014 a review, a student's history \u2014 asks for the\nwide list by name. Each period carries its `workspace_id` either way.",
+        "description": "The weeks of the workspace being worked in.\n\n`across_workspaces` asks for everything `visible_to` allows rather than pinning to the\nworkspace worked in. Since ADR 0020 a read covers only that workspace, so the answers agree;\nscreens that label records \u2014 a review, a student's history \u2014 still ask for the wide list by\nname so they stay correct if reads span again. Each period carries its `workspace_id`.",
         "operationId": "list_periods_api_v1_periods_get",
         "parameters": [
           {

@@ -83,6 +83,36 @@ async def test_a_count_is_rendered_from_the_fact_and_never_from_the_model(
     assert "answer" not in gateway.calls, "a fact question never reaches the generation step"
 
 
+async def test_a_facts_only_answer_cites_every_student_not_only_the_first(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    build_week,
+) -> None:
+    """QA-03: two missing reports in one week share the period as their source and differ only in
+    where they point. Keyed on the source alone, the facts-only answer kept one student."""
+    await build_week(db, prof_scope, [student_a, student_b])
+    gateway = FakeGateway(
+        responses={
+            "route_question": RoutePlan(intent="fact", fact_functions=["missing_reports"]),
+        }
+    )
+
+    answer = await service.ask(
+        db,
+        prof_scope,
+        question="Which reports are missing this week?",
+        as_of=AFTER_THE_WEEK,
+        gateway=gateway,
+    )
+
+    assert answer.facts[0].value == 2
+    locators = {citation.locator for citation in answer.citations}
+    assert len(answer.citations) == 2
+    assert len(locators) == 2, "one citation per student, each opening that student's report"
+
+
 async def test_a_citation_the_model_invented_is_dropped_and_the_drop_is_reported(
     db: AsyncSession,
     prof_scope: Scope,

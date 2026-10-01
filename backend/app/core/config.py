@@ -57,8 +57,8 @@ class Settings(BaseSettings):
     mail_from: str = "research-management@example.edu"
 
     # Who may read /metrics. Prometheus scrapes it, people should not: the gauges name every
-    # workspace's queue depth and sync staleness, and `?fresh=1` turns a scrape into database
-    # work. Required in prod; without one there, the endpoint refuses everybody.
+    # workspace's queue depth and sync staleness, and a scrape reads them from the database (at
+    # most every 30 s). Required in prod; without one there, the endpoint refuses everybody.
     metrics_token: SecretStr = SecretStr("")
 
     upload_max_file_mb: int = Field(default=25, ge=1)

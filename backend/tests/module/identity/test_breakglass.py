@@ -206,3 +206,89 @@ async def test_transfer_audits_the_state_the_predecessor_actually_had(
         )
     ).scalar_one()
     assert event.before == {"state": "deactivated"}
+
+
+# ---------------------------------------------------------------- transfer and membership
+
+
+async def _member_workspace_ids(db: AsyncSession, user_id: object) -> set[object]:
+    rows = await db.execute(
+        select(models.WorkspaceMember.workspace_id).where(models.WorkspaceMember.user_id == user_id)
+    )
+    return set(rows.scalars().all())
+
+
+async def test_a_new_successor_belongs_to_the_workspace_they_were_handed(
+    db: AsyncSession, workspace: models.Workspace, prof: models.User
+) -> None:
+    """Belonging is the membership row: without it the successor is missing from the roll."""
+    link = await service.transfer_professor(
+        db, from_email=prof.email, to_email="successor@example.edu"
+    )
+
+    assert workspace.id in await _member_workspace_ids(db, link.user_id)
+    successor = await db.get(models.User, link.user_id)
+    assert successor is not None
+    scope = await service.scope_for(db, successor)
+    listed = await service.list_users(db, scope)
+    assert link.user_id in {user.id for user in listed.items}
+
+
+async def test_the_successor_takes_over_every_workspace_the_predecessor_belonged_to(
+    db: AsyncSession, workspace: models.Workspace, prof: models.User, student_a: models.User
+) -> None:
+    second = await make_workspace(db, name="Second Lab")
+    db.add(models.WorkspaceMember(workspace_id=second.id, user_id=prof.id))
+    await db.flush()
+
+    await service.transfer_professor(db, from_email=prof.email, to_email=student_a.email)
+
+    assert await _member_workspace_ids(db, student_a.id) == {workspace.id, second.id}
+    assert await _member_workspace_ids(db, prof.id) == set()
+
+
+async def test_after_a_transfer_the_successor_is_the_professor_the_guard_counts(
+    db: AsyncSession, prof: models.User
+) -> None:
+    """The predecessor no longer counts, and the successor does: the successor is now the last."""
+    link = await service.transfer_professor(
+        db, from_email=prof.email, to_email="successor@example.edu"
+    )
+    await service.reset_password(db, token=link.token, password=PASSWORD)
+
+    with pytest.raises(ConflictError):
+        await service.deactivate_professor(db, email="successor@example.edu")
+
+
+async def test_transfer_revokes_the_predecessors_open_invitations(
+    db: AsyncSession, workspace: models.Workspace, prof: models.User, student_a: models.User
+) -> None:
+    pending = models.Invitation(
+        workspace_id=workspace.id,
+        user_id=prof.id,
+        email=prof.email,
+        role=Role.PROF,
+        token_hash="pending-invitation-digest",
+        expires_at=now() + timedelta(days=7),
+    )
+    db.add(pending)
+    await db.flush()
+
+    await service.transfer_professor(db, from_email=prof.email, to_email=student_a.email)
+
+    await db.refresh(pending)
+    assert pending.revoked_at is not None
+
+
+async def test_the_last_professor_guard_counts_members_not_the_anchor(
+    db: AsyncSession, workspace: models.Workspace, prof: models.User
+) -> None:
+    """A professor working elsewhere still belongs here, so demoting the other one is allowed."""
+    elsewhere = await make_workspace(db, name="Elsewhere Lab")
+    colleague = await make_user(db, elsewhere, role=Role.PROF, email="colleague@example.edu")
+    db.add(models.WorkspaceMember(workspace_id=workspace.id, user_id=colleague.id))
+    await db.flush()
+
+    demoted = await service.demote_professor(db, email=prof.email)
+
+    assert demoted.role is Role.STUDENT

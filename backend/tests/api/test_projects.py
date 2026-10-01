@@ -184,6 +184,25 @@ async def test_the_professor_manages_membership(
     assert ended.json()["left_on"] is not None
 
 
+async def test_a_membership_cannot_be_ended_under_another_projects_url(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+) -> None:
+    project = await service.create_project(db, prof_scope, title="Baseline", stage="analysis")
+    other = await service.create_project(db, prof_scope, title="Other", stage="analysis")
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    await _sign_in(client, prof)
+
+    ended = await client.post(f"/api/v1/projects/{other.id}/members/{membership.id}/end", json={})
+
+    assert ended.status_code == 404
+    listed = await client.get(f"/api/v1/projects/{project.id}/members")
+    assert [m["left_on"] for m in listed.json()] == [None]
+
+
 async def test_the_project_workspace_lists_decisions(
     client: AsyncClient, db: AsyncSession, prof: identity_models.User, prof_scope: Scope
 ) -> None:

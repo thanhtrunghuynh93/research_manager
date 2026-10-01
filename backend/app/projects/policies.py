@@ -21,6 +21,7 @@ from app.projects.models import (
     ResearchDecision,
     Task,
 )
+from app.projects.repository import in_effect_on
 
 
 def _in_scope(
@@ -133,8 +134,7 @@ async def load_membership_project_ids(
         select(ProjectMembership.project_id).where(
             ProjectMembership.workspace_id == workspace_id,
             ProjectMembership.student_id == user_id,
-            ProjectMembership.joined_on <= today,
-            or_(ProjectMembership.left_on.is_(None), ProjectMembership.left_on > today),
+            in_effect_on(today),
         )
     )
     return frozenset(rows.scalars().all())

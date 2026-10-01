@@ -9,6 +9,8 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.db import get_session
@@ -166,11 +168,51 @@ async def test_production_without_a_token_refuses_everybody(settings: Settings, 
     assert response.status_code == 401
 
 
-async def test_an_on_demand_refresh_is_rate_limited() -> None:
-    """`?fresh=1` runs the full query set; one operator is the use, a scrape loop is not."""
+@pytest.fixture
+def unthrottled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each test starts with no recent refresh; monkeypatch puts the module state back after."""
     from app.api.v1 import health
 
-    health._last_fresh = None
+    monkeypatch.setattr(health, "_last_refresh", None)
+
+
+def _gauge(exposed: str, series: str) -> float:
+    for line in exposed.splitlines():
+        if line.startswith(series + " "):
+            return float(line.rsplit(" ", 1)[1])
+    raise AssertionError(f"{series} not exposed")
+
+
+async def test_a_scrape_reads_the_gauges_from_the_database(
+    settings: Settings, db: AsyncSession, unthrottled: None
+) -> None:
+    """The regression: the gauges were filled by `queue_health` in the worker's memory.
+
+    The api is a different container, so a plain scrape served zeros. The scrape must read the
+    database itself — and, unlike `?fresh=1` was, without the caller having to ask for it.
+    """
+    configured = settings.model_copy(update={"metrics_token": SecretStr("scrape-me")})
+    await db.execute(
+        text(
+            "INSERT INTO procrastinate_jobs (queue_name, task_name, status) "
+            "VALUES ('default', 'tests.waiting', 'todo')"
+        )
+    )
+    expected = (
+        await db.execute(text("SELECT count(*) FROM procrastinate_jobs WHERE status = 'todo'"))
+    ).scalar_one()
+
+    async with await _client_with(configured, db) as http:
+        response = await http.get("/api/metrics", headers={"Authorization": "Bearer scrape-me"})
+
+    assert response.status_code == 200
+    assert _gauge(response.text, 'rm_queue_depth{status="todo"}') == expected >= 1
+
+
+async def test_the_refresh_is_rate_limited(unthrottled: None) -> None:
+    """Every scrape refreshes, so a scrape loop must not become a load on the database."""
+    from app.api.v1 import health
+
     assert health._refresh_allowed() is True
     assert health._refresh_allowed() is False
 

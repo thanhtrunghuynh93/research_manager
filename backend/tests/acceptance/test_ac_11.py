@@ -301,3 +301,67 @@ async def test_ac_11_an_answer_cached_in_one_workspace_is_not_served_in_another(
     assert await cache.get(db, there, cache.key_for(there, QUESTION, "same-scope-key")) is None, (
         "an answer belongs to the workspace it was asked in, whatever the epochs happen to be"
     )
+
+
+# ------------------------------- the per-citation re-check (ADR 0009, the finer of the two gates)
+
+PRIVATE_TEXT = "Private note: the baseline crashes on the September snapshot split."
+
+
+async def test_ac_11_a_cited_record_moved_out_of_reach_without_the_epoch_is_not_served(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """The epoch catches structural change; the citation re-check catches a single record whose
+    label moved without it. Relabelled here straight in the table, so the epoch provably stays put
+    and only the re-check stands between the cached answer and the asker."""
+    from sqlalchemy import update
+
+    from app.evidence.models import EvidenceChunk, EvidenceReference
+
+    _period, project = await _project_with_a_report(db, prof_scope, student_a)
+    entry_id = uuid7()
+    await evidence_service.index_evidence(
+        db,
+        workspace_id=prof_scope.workspace_id,
+        source_kind=EvidenceSourceKind.REPORT_ENTRY,
+        source_id=entry_id,
+        source_version="1",
+        text=PRIVATE_TEXT,
+        visibility=Visibility.STUDENT_PRIVATE,
+        locator=f"/reports/{entry_id}",
+        project_id=project.id,
+        owner_student_id=student_a.id,
+        source_time=datetime(2026, 9, 17, tzinfo=UTC),
+    )
+    scope = await identity_service.scope_for(db, student_a)
+
+    first = await assistant_service.ask(
+        db, scope, question=QUESTION, as_of=AS_OF, gateway=_gateway()
+    )
+    assert any(c.source_id == entry_id for c in first.citations), "the private entry is cited"
+    again = await assistant_service.ask(
+        db,
+        await identity_service.scope_for(db, student_a),
+        question=QUESTION,
+        as_of=AS_OF,
+        gateway=_gateway(),
+    )
+    assert again.cached is True, "the cache is doing something, or this proves nothing"
+
+    for model in (EvidenceReference, EvidenceChunk):
+        await db.execute(
+            update(model)
+            .where(model.workspace_id == prof_scope.workspace_id)
+            .where(model.owner_student_id == student_a.id)
+            .values(visibility=Visibility.PROFESSOR_ONLY)
+        )
+    await db.flush()
+    after_scope = await identity_service.scope_for(db, student_a)
+    assert after_scope.access_epoch == scope.access_epoch, "the epoch did not move"
+
+    after = await assistant_service.ask(
+        db, after_scope, question=QUESTION, as_of=AS_OF, gateway=_gateway()
+    )
+
+    assert after.cached is False, "a citation the asker can no longer open voids the cached answer"
+    assert all(c.source_id != entry_id for c in after.citations)

@@ -169,11 +169,45 @@ async def test_an_entry_with_every_box_empty_is_refused_by_name(
     assert str(week.projects[0].id) not in refused.value.extra["empty_project_ids"]
 
 
-async def test_an_entry_carrying_only_hours_still_counts_as_written(
+@pytest.mark.parametrize(
+    "blank",
+    [
+        pytest.param({"hours": 3}, id="only-hours"),
+        pytest.param({"next_plan": {"items": []}}, id="an-empty-plan"),
+        pytest.param({"next_plan": {"outcomes": ["  "]}}, id="a-plan-of-whitespace"),
+        pytest.param({"next_plan": {"note": "x"}}, id="a-plan-with-no-commitments"),
+        pytest.param({}, id="only-a-stage"),
+    ],
+)
+async def test_an_entry_with_nothing_written_does_not_discharge_its_obligation(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, blank: dict
+) -> None:
+    """Hours are not asked for (REP-03, amended), and a plan with no commitment in it is not a plan.
+
+    This test used to assert that an entry carrying only hours counted as written. The field was
+    removed from the editor, so the only way to send one was a client posting it directly — and
+    it, or an empty plan object, or a bare stage, discharged that project's obligation.
+    """
+    week = await _week(db, prof_scope, student_a)
+
+    with pytest.raises(ValidationError) as refused:
+        await service.submit_report(
+            db,
+            week.scope,
+            period_id=week.period.id,
+            entries=[
+                _entry(week.projects[0].id),
+                {"project_id": week.projects[1].id, "stage": "theory", **blank},
+            ],
+        )
+
+    assert str(week.projects[1].id) in refused.value.extra["empty_project_ids"]
+
+
+async def test_an_entry_with_only_a_plan_counts_as_written(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    # The test is emptiness, not substance. A week that produced nothing but time spent is a
-    # report a professor may want to read, and it is not this function's place to say otherwise.
+    # The test is emptiness, not substance: a week that ends in a plan is a report.
     week = await _week(db, prof_scope, student_a)
 
     version = await service.submit_report(
@@ -182,7 +216,11 @@ async def test_an_entry_carrying_only_hours_still_counts_as_written(
         period_id=week.period.id,
         entries=[
             _entry(week.projects[0].id),
-            {"project_id": week.projects[1].id, "stage": "theory", "hours": 3},
+            {
+                "project_id": week.projects[1].id,
+                "stage": "theory",
+                "next_plan": {"items": [{"planned_outcome": "Read the survey.", "weight": 1}]},
+            },
         ],
     )
 

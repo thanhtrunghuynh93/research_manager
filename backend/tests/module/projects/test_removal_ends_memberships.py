@@ -115,3 +115,21 @@ async def test_suspending_a_student_leaves_their_memberships_open(
     row = await db.get(models.ProjectMembership, membership.id)
     assert row is not None
     assert row.left_on is None
+
+
+async def test_removal_ends_a_membership_that_was_due_to_end_later(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """A future `left_on` is a membership still in force; removal ends it today, not later."""
+    from datetime import timedelta
+
+    project = await _project(db, prof_scope, "Baseline evaluation")
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    today = await identity_service.workspace_today(db, prof_scope.workspace_id)
+    await service.end_membership(db, prof_scope, membership.id, left_on=today + timedelta(days=30))
+
+    await identity_service.remove_student(db, prof_scope, student_a.id)
+
+    row = await db.get(models.ProjectMembership, membership.id)
+    assert row is not None
+    assert row.left_on == today

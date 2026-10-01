@@ -14,6 +14,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from app.api.deps import SessionDep
 from app.core import db
 from app.core.clock import now
 from app.core.config import Settings
@@ -43,18 +44,19 @@ SMTP_TIMEOUT_SECONDS = 10
 
 _smtp_cached: tuple[datetime, CheckState] | None = None
 
-# `?fresh=1` runs the full observability query set. One operator watching a stalled worker is the
-# use; a scrape loop against it is not, so it is rate-limited rather than left to the caller.
-FRESH_MIN_INTERVAL = timedelta(seconds=30)
-_last_fresh: datetime | None = None
+# A scrape runs the full observability query set. The gauges live in this process's memory — the
+# worker is another container, and there is no multiprocess registry — so the api has to read them
+# itself. Prometheus scrapes every 15-60 s; anything faster is served what the last refresh read.
+REFRESH_MIN_INTERVAL = timedelta(seconds=30)
+_last_refresh: datetime | None = None
 
 
 def _refresh_allowed() -> bool:
-    global _last_fresh
+    global _last_refresh
     at = now()
-    if _last_fresh is not None and at - _last_fresh < FRESH_MIN_INTERVAL:
+    if _last_refresh is not None and at - _last_refresh < REFRESH_MIN_INTERVAL:
         return False
-    _last_fresh = at
+    _last_refresh = at
     return True
 
 
@@ -203,7 +205,7 @@ def _may_scrape(request: Request, settings: Settings) -> bool:
 
     `/metrics` sits under `/api`, which the reverse proxy publishes wholesale, so "only Prometheus
     can reach it" was never true. The gauges describe every workspace's queue and sync health, and
-    `?fresh=1` lets an anonymous caller turn each request into the full query set.
+    a scrape runs the full query set (at most every `REFRESH_MIN_INTERVAL`).
 
     A deployment without a token configured is a development or pilot one, and is left open so
     nobody has to invent a secret to run the stack locally — except in prod, where a missing token
@@ -224,24 +226,27 @@ def _may_scrape(request: Request, settings: Settings) -> bool:
 
 
 @router.get("/metrics", summary="Prometheus metrics", include_in_schema=False)
-async def metrics(request: Request, fresh: bool = False) -> Response:
+async def metrics(request: Request, session: SessionDep) -> Response:
     """Architecture §12: queue depth, sync staleness, model errors, citation and access failures.
 
-    The gauges are refreshed by the worker's `queue_health` task every five minutes, so a scrape
-    is a read of memory and cannot become load on the database. `?fresh=1` reads them now, for the
-    case where an operator is looking at a system whose worker is the thing that has stopped.
+    The gauges are read from the database here, in the api process that serves them, at most once
+    per `REFRESH_MIN_INTERVAL`; a scrape inside that window is served the previous reading, so a
+    scrape loop cannot become load on the database. Reading them here rather than in the worker
+    also keeps them current when the worker is the thing that has stopped.
     """
     settings: Settings = request.app.state.settings
     if not _may_scrape(request, settings):
         raise UnauthenticatedError("this endpoint requires a metrics token")
 
-    if fresh and _refresh_allowed():
+    if _refresh_allowed():
         from app import observability
 
         try:
-            async with db.session_factory()() as session:
-                await observability.refresh(session)
+            await observability.refresh(session)
+            # Read-only, and a section that failed may have left the transaction aborted; ending
+            # it here keeps the request's commit from turning that into a failed scrape.
+            await session.rollback()
         except Exception:  # noqa: BLE001 - a scrape must never fail on the thing it is measuring
-            log.warning("could not refresh metrics on demand", exc_info=True)
+            log.warning("could not refresh metrics", exc_info=True)
 
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

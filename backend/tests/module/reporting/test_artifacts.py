@@ -960,3 +960,67 @@ async def test_a_project_document_is_not_shared_with_a_student_off_the_project(
     assert await artifacts.list_artifacts(db, b_scope) == []
     with pytest.raises((ForbiddenError, NotFoundError)):
         await artifacts.download_url(db, b_scope, grant.artifact_id, store=store)
+
+
+# ------------------------------------------------------------------ what an upload is filed under
+#
+# `period_id` decides which week's submission reads the file and whether it is a project document
+# or a report attachment, and it was stored as given.
+
+
+async def test_an_upload_cannot_be_filed_under_another_workspaces_week(
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope,
+    student_a: identity_models.User,
+    store: InMemoryObjectStore,
+) -> None:
+    _period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    await identity_service.create_workspace(db, prof_scope, name="QA Lab")
+    elsewhere = await identity_service.scope_for(db, prof)
+    await reporting_service.configure_calendar(
+        db,
+        elsewhere,
+        timezone="Asia/Ho_Chi_Minh",
+        meeting_weekday=0,
+        week_start_weekday=0,
+        effective_from=date(2026, 9, 14),
+    )
+    foreign = (await reporting_service.ensure_periods(db, elsewhere, through=date(2026, 9, 20)))[0]
+
+    with pytest.raises(NotFoundError, match="reporting period"):
+        await artifacts.request_upload(
+            db,
+            scope,
+            project_id=project.id,
+            filename="notes.md",
+            byte_size=len(NOTE),
+            sha256=sha256_of(NOTE),
+            period_id=foreign.id,
+            store=store,
+        )
+
+
+async def test_an_upload_is_filed_under_a_week_of_its_own_workspace(
+    db: AsyncSession, prof_scope, student_a: identity_models.User, store: InMemoryObjectStore
+) -> None:
+    period, project = await _project(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    grant = await artifacts.request_upload(
+        db,
+        scope,
+        project_id=project.id,
+        filename="notes.md",
+        byte_size=len(NOTE),
+        sha256=sha256_of(NOTE),
+        period_id=period.id,
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, NOTE, content_type=grant.content_type)
+    await artifacts.confirm_upload(db, scope, grant.artifact_id, store=store)
+
+    listed = await artifacts.list_artifacts(db, scope, period_id=period.id)
+    assert [row.artifact_id for row in listed] == [grant.artifact_id]

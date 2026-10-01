@@ -751,6 +751,23 @@ async def approve(
         target_id=assessment_id,
         after={"override": bool(override), "rationale": rationale},
     )
+    retired = await repo.retire_other_approved_reviews(
+        session,
+        assessment.student_id,
+        assessment.project_id,
+        assessment.period_id,
+        assessment_id,
+    )
+    if retired:
+        write_audit(
+            session,
+            scope=scope,
+            action="assessment.superseded",
+            target_table="assessment_versions",
+            target_id=assessment_id,
+            before={"approved": [str(retired_id) for retired_id in retired]},
+            after={"superseded_by": str(assessment_id)},
+        )
     await session.flush()
     return ReviewOut.model_validate(review)
 
@@ -760,6 +777,11 @@ async def withdraw(session: AsyncSession, scope: Scope, assessment_id: UUID) -> 
     review = await repo.current_review(session, scope, assessment_id)
     if review is None:
         raise NotFoundError("assessment review not found")
+    if review.state is not ReviewState.APPROVED:
+        # Withdrawal takes back a publication. A draft was never published, and a superseded or
+        # withdrawn review is already out of the student's view; marking either withdrawn would
+        # only rewrite its history.
+        raise ConflictError("only an approved assessment can be withdrawn")
     review.state = ReviewState.WITHDRAWN
     review.reviewer_id = scope.user_id
     # It is no longer published, so it no longer has a publication time. Leaving the old one in

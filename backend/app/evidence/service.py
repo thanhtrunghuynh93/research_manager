@@ -14,11 +14,12 @@ from fnmatch import fnmatch
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
-from app.core.authz import Scope
+from app.core.authz import Scope, visible_to
 from app.core.clock import now
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.core.ids import uuid7
@@ -52,6 +53,7 @@ from app.evidence.models import (
     DeveloperIdentity,
     EventKind,
     EvidenceChunk,
+    EvidenceReference,
     EvidenceSourceKind,
     IdentityVerification,
     ProjectRepository,
@@ -1119,6 +1121,34 @@ async def evidence_for_sources(
         session, scope, source_kind=source_kind, source_ids=source_ids
     )
     return [_window_hit(chunk, reference) for chunk, reference in rows]
+
+
+async def unreachable_sources(
+    session: AsyncSession, scope: Scope, sources: list[tuple[str, UUID]]
+) -> set[tuple[str, UUID]]:
+    """Which of these (source_kind, source_id) pairs the caller can no longer open (ADR 0009).
+
+    A source counts as reachable only if at least one of its references passes the reference
+    policy now, so a relabelled source and a removed one both come back unreachable. One query,
+    and the same predicate the citation-open endpoint uses, so the cache cannot disagree with it.
+    Kinds that are not evidence source kinds are not this module's to judge and are ignored.
+    """
+    kinds = {kind.value for kind in EvidenceSourceKind}
+    wanted = {(kind, source_id) for kind, source_id in sources if kind in kinds}
+    if not wanted:
+        return set()
+    rows = await session.execute(
+        select(EvidenceReference.source_kind, EvidenceReference.source_id)
+        .where(
+            visible_to(scope, EvidenceReference),
+            tuple_(EvidenceReference.source_kind, EvidenceReference.source_id).in_(
+                [(EvidenceSourceKind(kind), source_id) for kind, source_id in wanted]
+            ),
+        )
+        .distinct()
+    )
+    reachable = {(str(kind), source_id) for kind, source_id in rows}
+    return wanted - reachable
 
 
 async def chunks_for_reference(session: AsyncSession, evidence_ref_id: UUID) -> list[EvidenceChunk]:

@@ -686,7 +686,7 @@ No human initiates these. They run in the worker and are why the product advance
 | `dispatch_due_reminders` | 15 min | Sends those reminders |
 | `send_queued_emails` | 2 min | Drains the email delivery table |
 | `incremental_sync` | 30 min | Pulls new repository evidence |
-| `queue_health` | 5 min | Refreshes the metric gauges |
+| `queue_health` | 5 min | Warns when the oldest queued job is over ten minutes old; its runs are the worker heartbeat `/readyz` reads |
 | `retention_sweep` | nightly | Expires the assistant's answer cache |
 
 Both calendar tasks are idempotent by construction, so a worker that was down for a day catches up

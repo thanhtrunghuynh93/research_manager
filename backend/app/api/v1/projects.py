@@ -130,10 +130,12 @@ async def end_membership(
     project_id: UUID,
     membership_id: UUID,
     payload: MembershipEndIn,
-    scope: ScopeDep,
+    scope: ProfScopeDep,
     session: SessionDep,
 ) -> MembershipOut:
-    return await service.end_membership(session, scope, membership_id, left_on=payload.left_on)
+    return await service.end_membership(
+        session, scope, membership_id, left_on=payload.left_on, project_id=project_id
+    )
 
 
 @router.get("/{project_id}/decisions", summary="Dated research decisions")

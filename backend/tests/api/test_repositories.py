@@ -56,6 +56,38 @@ async def test_a_student_cannot_connect_a_repository(
     assert response.status_code == 403
 
 
+async def test_a_provider_with_no_connector_is_refused_at_the_boundary(
+    client: AsyncClient, prof: identity_models.User
+) -> None:
+    """GitLab has no connector, so accepting it only moved the refusal into a 500."""
+    await _login(client, prof)
+
+    response = await client.post(
+        "/api/v1/repositories",
+        json={"provider": "gitlab", "external_id": "r1", "full_name": "lab/r1"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_in_production_connecting_without_a_github_app_is_a_503_not_a_500(
+    client: AsyncClient, prof: identity_models.User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import Settings
+    from app.evidence.connectors import factory
+
+    unconfigured = Settings(github_app_id="").model_copy(update={"env": "prod"})
+    monkeypatch.setattr(factory, "get_settings", lambda: unconfigured)
+    await _login(client, prof)
+
+    response = await client.post(
+        "/api/v1/repositories",
+        json={"provider": "github", "external_id": "r1", "full_name": "lab/r1"},
+    )
+
+    assert response.status_code == 503
+
+
 async def test_the_professor_connects_a_repository_and_it_appears_in_the_list(
     client: AsyncClient, prof: identity_models.User
 ) -> None:
@@ -149,8 +181,48 @@ async def test_evidence_search_is_reachable_and_scoped(
 
 # ------------------------------------------------------------------ webhooks (REPO-05, AC-09)
 
+WEBHOOK_SECRET = "a-configured-webhook-secret"
 
-async def test_an_unsigned_webhook_is_refused(client: AsyncClient) -> None:
+
+@pytest.fixture
+def webhook_secret(monkeypatch: pytest.MonkeyPatch) -> str:
+    """A deployment that set RM_GITHUB_WEBHOOK_SECRET; without one, every delivery is a 503."""
+    from pydantic import SecretStr
+
+    from app.core.config import Settings
+    from app.evidence.connectors import factory
+
+    configured = Settings(github_webhook_secret=SecretStr(WEBHOOK_SECRET))
+    monkeypatch.setattr(factory, "get_settings", lambda: configured)
+    return WEBHOOK_SECRET
+
+
+def _sign(secret: str, body: bytes) -> str:
+    return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+
+async def test_without_a_webhook_secret_a_delivery_signed_with_the_fake_secret_is_refused(
+    client: AsyncClient,
+) -> None:
+    """The test double's secret is published; accepting it would let anyone enqueue a sync."""
+    from app.evidence.connectors.fake import FakeRepositoryConnector
+
+    body = json.dumps({"repository": {"id": 999}}).encode()
+    response = await client.post(
+        "/api/v1/webhooks/github",
+        content=body,
+        headers={
+            "content-type": "application/json",
+            "X-GitHub-Delivery": "d9",
+            "X-GitHub-Event": "push",
+            "X-Hub-Signature-256": _sign(FakeRepositoryConnector().webhook_secret, body),
+        },
+    )
+
+    assert response.status_code == 503
+
+
+async def test_an_unsigned_webhook_is_refused(client: AsyncClient, webhook_secret: str) -> None:
     """The signature is the only credential this route accepts; there is no session on it."""
     response = await client.post(
         "/api/v1/webhooks/github",
@@ -161,7 +233,9 @@ async def test_an_unsigned_webhook_is_refused(client: AsyncClient) -> None:
     assert response.status_code == 401
 
 
-async def test_a_delivery_with_a_bad_signature_is_refused(client: AsyncClient) -> None:
+async def test_a_delivery_with_a_bad_signature_is_refused(
+    client: AsyncClient, webhook_secret: str
+) -> None:
     response = await client.post(
         "/api/v1/webhooks/github",
         content=b'{"repository": {"id": 1}}',
@@ -177,14 +251,11 @@ async def test_a_delivery_with_a_bad_signature_is_refused(client: AsyncClient) -
 
 
 async def test_a_correctly_signed_delivery_for_an_unknown_repository_is_accepted_and_ignored(
-    client: AsyncClient, db: AsyncSession
+    client: AsyncClient, db: AsyncSession, webhook_secret: str
 ) -> None:
     """A delivery we cannot place is not an error for GitHub to retry; it is nothing to do."""
-    from app.evidence.connectors.fake import FakeRepositoryConnector
-
     body = json.dumps({"repository": {"id": 999}}).encode()
-    secret = FakeRepositoryConnector().webhook_secret
-    signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    signature = _sign(webhook_secret, body)
 
     response = await client.post(
         "/api/v1/webhooks/github",

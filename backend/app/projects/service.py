@@ -51,7 +51,7 @@ from app.projects.schemas import (
 # The columns a PATCH may set back to null. Everything else refuses one rather than handing a
 # NOT NULL violation to the database.
 PROJECT_CLEARABLE = frozenset({"target_on", "venue_target", "repo_url"})
-TASK_CLEARABLE = frozenset({"blocker", "assignee_id", "target_on", "completion_reason"})
+TASK_CLEARABLE = frozenset({"blocker", "assignee_id", "completion_reason"})
 
 # AUTH-07: what the person who started a project may change about it. Everything omitted here —
 # `status`, `ai_restricted`, `open_to_join`, `shared_resources` — is a decision about the project's
@@ -165,7 +165,12 @@ async def list_joinable(
             status=project.status,
             member_count=count,
         )
-        for project, count in await repository.joinable_projects(session, scope, limit=limit)
+        for project, count in await repository.joinable_projects(
+            session,
+            scope,
+            limit=limit,
+            today=await identity_service.workspace_today(session, scope.workspace_id),
+        )
     ]
 
 
@@ -236,7 +241,10 @@ async def _left_on_for(session: AsyncSession, scope: Scope) -> dict[UUID, date]:
     """Which of the caller's projects they have already left, and when. Empty for a professor."""
     if scope.is_prof:
         return {}
-    return await repository.ended_membership_dates(session, scope.workspace_id, scope.user_id)
+    today = await identity_service.workspace_today(session, scope.workspace_id)
+    return await repository.ended_membership_dates(
+        session, scope.workspace_id, scope.user_id, today=today
+    )
 
 
 async def get_project(session: AsyncSession, scope: Scope, project_id: UUID) -> ProjectOut:
@@ -323,7 +331,12 @@ async def _enrol(
     Assignment and joining differ in who may ask and in what the row then owes; they must not
     differ in what gets written, or the two paths drift and only one of them is tested.
     """
-    if await repository.active_membership(session, project.id, student_id) is not None:
+    # The workspace's day, not UTC's: a membership dated in UTC is a date nothing else in the
+    # system uses, and the access check and the reporting week both read it as workspace-local.
+    joined_on = joined_on or await identity_service.workspace_today(session, scope.workspace_id)
+    # Overlap, judged from the day the new row would start (`open_on`): a membership the
+    # professor has dated to end later is still in force until then.
+    if await repository.active_membership(session, project.id, student_id, on=joined_on):
         raise ConflictError("this student already has an active membership on the project")
 
     membership = ProjectMembership(
@@ -332,9 +345,7 @@ async def _enrol(
         student_id=student_id,
         responsibility=responsibility,
         origin=origin,
-        # The workspace's day, not UTC's: a membership dated in UTC is a date nothing else in the
-        # system uses, and the access check and the reporting week both read it as workspace-local.
-        joined_on=joined_on or await identity_service.workspace_today(session, scope.workspace_id),
+        joined_on=joined_on,
         planned_allocation=planned_allocation,
     )
     session.add(membership)
@@ -373,7 +384,12 @@ async def _enrol(
 
 
 async def end_membership(
-    session: AsyncSession, scope: Scope, membership_id: UUID, *, left_on: date | None = None
+    session: AsyncSession,
+    scope: Scope,
+    membership_id: UUID,
+    *,
+    left_on: date | None = None,
+    project_id: UUID | None = None,
 ) -> MembershipOut:
     """PROJ-02 keeps the row; AUTH-03 revokes the access it granted.
 
@@ -386,15 +402,18 @@ async def end_membership(
     A professor ends a membership either directly — here — or by taking the project out of
     `ACTIVE`, which stops every membership on it owing a week (`memberships_open_through`). The
     second is usually what "this project is done" means, and it needs no row per student.
+
+    `project_id` is the project the request named. A membership on any other project is not
+    found under it, so a URL cannot end a membership it does not name.
     """
+    if not scope.is_prof:
+        raise ForbiddenError("only the professor may end a membership on a project")
     membership = await repository.get_membership(session, scope, membership_id)
-    if membership is None:
+    if membership is None or (project_id is not None and membership.project_id != project_id):
         raise NotFoundError("membership not found")
     # "Today" is the workspace's, the same day `joined_on` was written on and the same one the
     # access check reads it against.
     today = await identity_service.workspace_today(session, scope.workspace_id)
-    if not scope.is_prof:
-        raise ForbiddenError("only the professor may end a membership on a project")
     if membership.left_on is not None:
         return MembershipOut.model_validate(membership)
 
@@ -426,9 +445,11 @@ async def _on_user_removed(event: Any, session: AsyncSession) -> None:
     # it happened and revoke a day of access retroactively.
     left_on = await identity_service.workspace_today(session, event.workspace_id)
     memberships = await repository.active_memberships_for_student(
-        session, event.workspace_id, event.user_id
+        session, event.workspace_id, event.user_id, today=left_on
     )
     for membership in memberships:
+        # One set to end later is pulled in to today, and its audit says what it was.
+        before = membership.left_on.isoformat() if membership.left_on else None
         membership.left_on = left_on
         write_audit(
             session,
@@ -437,7 +458,7 @@ async def _on_user_removed(event: Any, session: AsyncSession) -> None:
             action="membership.ended",
             target_table="project_memberships",
             target_id=membership.id,
-            before={"left_on": None},
+            before={"left_on": before},
             after={"left_on": left_on.isoformat(), "reason": "user.removed"},
         )
     if memberships:
@@ -462,7 +483,10 @@ async def list_members(
     session: AsyncSession, scope: Scope, project_id: UUID, *, include_past: bool = False
 ) -> list[MembershipOut]:
     await _require_project(session, scope, project_id)
-    rows = await repository.list_memberships(session, scope, project_id, include_past=include_past)
+    today = await identity_service.workspace_today(session, scope.workspace_id)
+    rows = await repository.list_memberships(
+        session, scope, project_id, include_past=include_past, today=today
+    )
     return [
         MembershipOut.model_validate(row).model_copy(update={"student_name": name})
         for row, name in rows
@@ -519,8 +543,10 @@ def _require_student_may_update(scope: Scope, task: Task, changes: dict[str, obj
     student_fields = {"status", "completion_fraction", "completion_reason", "blocker"}
     if task.assignee_id != scope.user_id:
         raise NotFoundError("task not found")
-    offered = {field for field, value in changes.items() if value is not None}
-    if not offered <= student_fields:
+    # The keys, not the values, as in `_require_may_update_project`: an explicit null is a real
+    # edit, and `assignee_id` is clearable, so testing `is not None` let a student unassign
+    # themselves.
+    if not set(changes) <= student_fields:
         raise ValidationError("a student may only report progress on their own task")
 
 
@@ -898,7 +924,8 @@ async def effective_baseline_for_student(
     period_id: UUID,
 ) -> PlanBaselineOut | None:
     """Job-level read: the plan commitments are measured against, or None (ASSESS-05)."""
-    membership = await repository.active_membership(session, project_id, student_id)
+    today = await identity_service.workspace_today(session, workspace_id)
+    membership = await repository.active_membership(session, project_id, student_id, on=today)
     if membership is None:
         return None
     scope = Scope(

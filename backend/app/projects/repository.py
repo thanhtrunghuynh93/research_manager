@@ -26,6 +26,26 @@ from app.projects.models import (
 )
 
 
+def open_on(day: date) -> ColumnElement[bool]:
+    """The one meaning of "not yet ended" for a membership: `left_on` is absent or after `day`.
+
+    `left_on` is exclusive — the first day the student is no longer a member — so a membership
+    the professor has set to end next month is still in force today. Testing `left_on IS NULL`
+    instead treated it as already over: a removed student kept the project, and a second,
+    overlapping membership could be written beside it.
+
+    Deliberately silent on `joined_on`. A membership that starts later is not ended either: it
+    still conflicts with a second enrolment and is still closed when the student is removed. The
+    reads that ask whether a membership is *in effect* on a day add the start, via `in_effect_on`.
+    """
+    return or_(ProjectMembership.left_on.is_(None), ProjectMembership.left_on > day)
+
+
+def in_effect_on(day: date) -> ColumnElement[bool]:
+    """A membership that has begun and not yet ended on `day` — what grants access (AUTH-03)."""
+    return and_(ProjectMembership.joined_on <= day, open_on(day))
+
+
 async def get_project(session: AsyncSession, scope: Scope, project_id: UUID) -> Project | None:
     return (
         await session.execute(
@@ -82,7 +102,7 @@ async def joinable_project(session: AsyncSession, scope: Scope, project_id: UUID
 
 
 async def joinable_projects(
-    session: AsyncSession, scope: Scope, *, limit: int
+    session: AsyncSession, scope: Scope, *, limit: int, today: date
 ) -> list[tuple[Project, int]]:
     """Open projects with how many people are on each, so the choice is not made blind."""
     members = (
@@ -90,7 +110,7 @@ async def joinable_projects(
         .select_from(ProjectMembership)
         .where(
             ProjectMembership.project_id == Project.id,
-            ProjectMembership.left_on.is_(None),
+            open_on(today),
         )
         .correlate(Project)
         .scalar_subquery()
@@ -117,26 +137,27 @@ async def get_membership(
 
 
 async def ended_membership_dates(
-    session: AsyncSession, workspace_id: UUID, student_id: UUID
+    session: AsyncSession, workspace_id: UUID, student_id: UUID, *, today: date
 ) -> dict[UUID, date]:
     """When this student left each project they are no longer on (PROJ-02 keeps the row).
 
     Keyed by project rather than by membership: a student who left and was later assigned again
     has two rows, and the one that matters to a reader is the open one — which is absent here,
-    because an open membership has no `left_on` to report.
+    because an open membership has no `left_on` to report. A `left_on` still in the future is not
+    an ending yet, so it is not reported either (`open_on`).
     """
     rows = await session.execute(
         select(ProjectMembership.project_id, ProjectMembership.left_on).where(
             ProjectMembership.workspace_id == workspace_id,
             ProjectMembership.student_id == student_id,
-            ProjectMembership.left_on.is_not(None),
+            ~open_on(today),
         )
     )
     return {project_id: left_on for project_id, left_on in rows}
 
 
 async def list_memberships(
-    session: AsyncSession, scope: Scope, project_id: UUID, *, include_past: bool
+    session: AsyncSession, scope: Scope, project_id: UUID, *, include_past: bool, today: date
 ) -> list[tuple[ProjectMembership, str]]:
     """Each membership the caller may see, with the member's display name (PROJ-02)."""
     statement = (
@@ -146,28 +167,39 @@ async def list_memberships(
         .order_by(ProjectMembership.joined_on, ProjectMembership.id)
     )
     if not include_past:
-        statement = statement.where(ProjectMembership.left_on.is_(None))
+        statement = statement.where(open_on(today))
     return [(row, name) for row, name in (await session.execute(statement))]
 
 
 async def active_membership(
-    session: AsyncSession, project_id: UUID, student_id: UUID
+    session: AsyncSession, project_id: UUID, student_id: UUID, *, on: date
 ) -> ProjectMembership | None:
+    """The student's membership on this project still open on `on`, including one not yet begun.
+
+    `_enrol` passes the new membership's start, so a row overlapping it is found and one that
+    ends first is not: rejoining after a dated ending is allowed, rejoining into it is not. Of
+    two open rows the earlier is returned, being the one in force or the next to begin.
+    """
     return (
         await session.execute(
-            select(ProjectMembership).where(
+            select(ProjectMembership)
+            .where(
                 ProjectMembership.project_id == project_id,
                 ProjectMembership.student_id == student_id,
-                ProjectMembership.left_on.is_(None),
+                open_on(on),
             )
+            .order_by(ProjectMembership.joined_on, ProjectMembership.id)
+            .limit(1)
         )
     ).scalar_one_or_none()
 
 
 async def active_memberships_for_student(
-    session: AsyncSession, workspace_id: UUID, student_id: UUID
+    session: AsyncSession, workspace_id: UUID, student_id: UUID, *, today: date
 ) -> list[ProjectMembership]:
     """Every membership the student has not yet left, across all projects (ADR 0011).
+
+    Including one set to end later and one not yet begun: removal ends both today.
 
     Unscoped: the caller is the `UserRemoved` handler, which runs inside the removing professor's
     transaction and must close every membership, not only those a Scope would surface.
@@ -179,7 +211,7 @@ async def active_memberships_for_student(
                 .where(
                     ProjectMembership.workspace_id == workspace_id,
                     ProjectMembership.student_id == student_id,
-                    ProjectMembership.left_on.is_(None),
+                    open_on(today),
                 )
                 .order_by(ProjectMembership.joined_on, ProjectMembership.id)
             )
@@ -214,7 +246,7 @@ async def memberships_open_through(
         .join(Project, Project.id == ProjectMembership.project_id)
         .where(
             ProjectMembership.id.in_(list(membership_ids)),
-            or_(ProjectMembership.left_on.is_(None), ProjectMembership.left_on > through),
+            open_on(through),
             Project.status == ProjectStatus.ACTIVE,
         )
     )
@@ -238,7 +270,8 @@ async def memberships_active_in_range(
     A membership acquired by joining an existing project owes only weeks that began after the
     student joined (PROJ-07). Joining on a Saturday would otherwise owe a report by Sunday 23:59,
     and if they had already submitted that week they would be counted missing and emailed about it
-    — a late mark inflicted by the act of joining.
+    — a late mark inflicted by the act of joining. "After" is strict: a join on the Monday the week
+    begins owes from the next Monday, as PROJ-02 and the joinable list both promise.
 
     Starting a project is the other way round: the student is announcing work they are already
     doing, so it owes the week it lands in, exactly as a professor's assignment does.
@@ -251,14 +284,10 @@ async def memberships_active_in_range(
                 .where(
                     visible_to(scope, ProjectMembership),
                     Project.status == ProjectStatus.ACTIVE,
-                    ProjectMembership.joined_on <= local_end,
+                    in_effect_on(local_end),
                     or_(
                         ProjectMembership.origin != MembershipOrigin.SELF_JOINED,
-                        ProjectMembership.joined_on <= local_start,
-                    ),
-                    or_(
-                        ProjectMembership.left_on.is_(None),
-                        ProjectMembership.left_on > local_end,
+                        ProjectMembership.joined_on < local_start,
                     ),
                 )
                 .order_by(ProjectMembership.id)

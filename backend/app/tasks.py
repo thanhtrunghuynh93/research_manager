@@ -50,16 +50,16 @@ async def freeze_baselines(timestamp: int = 0) -> None:
 @procrastinate_app.periodic(cron="*/5 * * * *")
 @procrastinate_app.task(name="ops.queue_health", queueing_lock="queue_health")
 async def queue_health(timestamp: int = 0) -> None:
-    """Refresh the gauges `/api/metrics` serves (architecture §12, §15 observability).
+    """Say out loud when the worker is behind (architecture §12, §15 observability).
 
-    Running it here rather than on the scrape means the numbers are the same whoever asks, and a
-    scrape cannot become a load on the database.
+    The gauges are not refreshed here: they live in process memory and `/api/metrics` is served by
+    the api container, which reads them itself. What remains is the warning, and the heartbeat —
+    a job that succeeds every five minutes is what `/readyz`'s worker check reads as proof of life.
     """
     from app import observability
 
     async with session_factory()() as session:
-        summary = await observability.refresh(session)
-    oldest = summary.get("queue", {}).get("oldest_seconds", 0)
+        oldest = await observability.oldest_queued_seconds(session)
     if oldest and oldest > 600:
         # Ten minutes is the assessment-latency budget in requirements §11; a job older than that
         # means the worker is behind, which nothing else would say out loud.

@@ -1285,7 +1285,7 @@ async def _require_another_active_professor(
     account that mattered. With a set of co-equal professors that reasoning no longer holds, so the
     invariant is checked rather than inferred.
     """
-    if await repository.count_active_professors(session, workspace_id, excluding=excluding) == 0:
+    if await repository.count_active_professors_in(session, workspace_id, excluding=excluding) == 0:
         raise ConflictError(
             "this is the only active professor in the workspace; transfer the account instead"
         )
@@ -1459,6 +1459,16 @@ async def transfer_professor(
     previous.state = UserState.DEACTIVATED
     previous.deactivated_at = at
     await repository.revoke_sessions_for_user(session, previous.id, at)
+    await repository.revoke_pending_invitations(session, previous.id, at)
+    # Belonging is the membership row (ADR 0015): the successor takes every workspace the
+    # predecessor belonged to, and the predecessor leaves them, or the roll and the last-professor
+    # guard would still see the old account and miss the new one.
+    for joined in await repository.workspaces_joined_by(
+        session, previous.id, include_archived=True
+    ):
+        await repository.add_membership(session, joined.id, successor.id)
+        await repository.remove_membership(session, joined.id, previous.id)
+    await repository.add_membership(session, workspace_id, successor.id)
     # The owner is the workspace's break-glass contact (ADR 0011). A transfer moves it; leaving it
     # on a deactivated account would point the next recovery at someone who has already left.
     workspace = await session.get(Workspace, workspace_id)

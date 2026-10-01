@@ -1154,13 +1154,18 @@ def _check_package_is_complete(
 
 
 def _entry_says_something(payload: dict[str, Any]) -> bool:
-    """Whether this one entry has anything in it at all."""
+    """Whether this one entry has anything written in it at all.
+
+    Written means text a student typed, or a plan with at least one commitment in it. Not `hours`
+    — no longer asked for (REP-03) — and not a non-empty `next_plan` object, since `{"items": []}`
+    has keys and no plan; either let a blank entry discharge its obligation through the API.
+    """
     if any(
         str(payload.get(field) or "").strip()
         for field in ("work_performed", "results", "deviations", "questions")
     ):
         return True
-    return bool(payload.get("next_plan")) or payload.get("hours") is not None
+    return bool(_plan_items(payload.get("next_plan")))
 
 
 def _check_package_says_something(

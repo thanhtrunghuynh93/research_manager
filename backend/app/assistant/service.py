@@ -261,55 +261,35 @@ def _clarification(
 
 
 def _citations_from_facts(computed: list[facts.Fact]) -> list[CitationOut]:
-    seen: dict[str, CitationOut] = {}
-    for fact in computed:
-        for citation in fact.citations:
-            seen.setdefault(
-                str(citation.source_id),
-                CitationOut(
-                    source_kind=citation.source_kind,
-                    source_id=citation.source_id,
-                    source_version=citation.source_version,
-                    locator=citation.locator,
-                    label=citation.label,
-                ),
-            )
-    return list(seen.values())
+    return list(answer_module.fact_citations(computed).values())
 
 
 def _visibility_checker(session: AsyncSession, scope: Scope) -> object:
     """AC-11: a cached answer is served only if its sources are still the caller's to open.
 
     The epoch check in `cache.get` catches the structural changes; this catches an individual
-    record that moved out of reach without the epoch moving.
+    record that moved out of reach without the epoch moving — relabelled, or removed. Every
+    citation that points at evidence (a report entry, an artifact version, a repository event, a
+    decision, feedback) is resolved to its evidence references and checked in one query against
+    the same reference policy the citation-open endpoint uses, so the cache and the link cannot
+    disagree. A source with no visible reference left is a miss, which fails closed.
+
+    The other kinds are not re-checked here: they are the computed facts' anchors (a reporting
+    period, a project, a repository, an assessment or report version) and the professor's own
+    supervision notes. A fact is a number computed under the asker's scope and every fact
+    function reads through the owning module's policy; what can take one out of reach is a
+    membership, role, or deactivation change, which is exactly what the epoch moves on, and the
+    TTL bounds the rest. Re-checking them would mean the assistant reaching into every module's
+    tables, which the import contracts forbid for good reason.
     """
 
     async def _check(citations: list[CitationOut]) -> bool:
         from app.evidence import service as evidence_service
 
-        for citation in citations:
-            if citation.source_kind in ("report_entry", "evidence_reference"):
-                chunks = await evidence_service.chunks_for_reference(session, citation.source_id)
-                if chunks and not any(
-                    _chunk_visible(chunk, scope) for chunk in chunks
-                ):  # pragma: no cover - defence in depth behind the epoch check
-                    return False
-        return True
+        sources = [(citation.source_kind, citation.source_id) for citation in citations]
+        return not await evidence_service.unreachable_sources(session, scope, sources)
 
     return _check
-
-
-def _chunk_visible(chunk: object, scope: Scope) -> bool:
-    if scope.is_prof:
-        return getattr(chunk, "workspace_id", None) == scope.workspace_id
-    owner = getattr(chunk, "owner_student_id", None)
-    project_id = getattr(chunk, "project_id", None)
-    visibility = str(getattr(chunk, "visibility", ""))
-    if visibility == "professor_only":
-        return False
-    if owner == scope.user_id:
-        return True
-    return project_id in scope.project_ids
 
 
 # ------------------------------------------------------------------ conversations (QA-05)

@@ -41,7 +41,7 @@ router = APIRouter(tags=["evidence"])
 
 
 class ConnectIn(BaseModel):
-    provider: str = Field(default="github", pattern="^(github|gitlab)$")
+    provider: str = Field(default="github", pattern="^github$")
     external_id: str = Field(min_length=1, max_length=200)
     full_name: str = Field(min_length=1, max_length=300)
     default_branch: str | None = None
@@ -102,17 +102,23 @@ async def connect_repository(
 ) -> RepositoryOut:
     """REPO-01: read-only, and the product stays fully usable without ever calling this."""
     from app.evidence.connectors import factory
+    from app.evidence.connectors.base import AuthorizationError
 
-    return await service.connect_repository(
-        session,
-        scope,
-        provider=payload.provider,
-        external_id=payload.external_id,
-        full_name=payload.full_name,
-        default_branch=payload.default_branch,
-        credential_ref=payload.credential_ref,
-        connector=factory.build(payload.provider, credential_ref=payload.credential_ref),
-    )
+    try:
+        return await service.connect_repository(
+            session,
+            scope,
+            provider=payload.provider,
+            external_id=payload.external_id,
+            full_name=payload.full_name,
+            default_branch=payload.default_branch,
+            credential_ref=payload.credential_ref,
+            connector=factory.build(payload.provider, credential_ref=payload.credential_ref),
+        )
+    except AuthorizationError as error:
+        # The provider cannot be reached with what this deployment has — no app configured, no
+        # installation granted. A person has to fix it, and it is not the caller's mistake.
+        raise DependencyUnavailableError(f"the repository cannot be read: {error}") from error
 
 
 @router.get("/repositories", summary="Connected repositories")

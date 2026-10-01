@@ -29,7 +29,8 @@ class UploadRequest(BaseModel):
     # The client hashes the file before asking. It is what the server verifies against afterwards.
     sha256: str = Field(min_length=64, max_length=64)
     supported_claim: str = ""
-    entry_id: UUID | None = None
+    # The week this file is attached for; unset for a project document. Checked against the
+    # caller's workspace. Filing under an entry is not done here — see `attach_to_entry`.
     period_id: UUID | None = None
     # Set to replace an existing artifact, keeping its identity and its earlier versions.
     artifact_id: UUID | None = None
@@ -118,7 +119,6 @@ async def request_upload(
         byte_size=payload.byte_size,
         sha256=payload.sha256,
         supported_claim=payload.supported_claim,
-        entry_id=payload.entry_id,
         period_id=payload.period_id,
         artifact_id=payload.artifact_id,
     )

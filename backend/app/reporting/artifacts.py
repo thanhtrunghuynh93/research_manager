@@ -40,7 +40,7 @@ from app.core.storage import (
     storage_key,
 )
 from app.identity import service as identity_service
-from app.reporting import events, extraction
+from app.reporting import events, extraction, repository
 from app.reporting.models import (
     Artifact,
     ArtifactKind,
@@ -129,7 +129,6 @@ async def request_upload(
     byte_size: int,
     sha256: str,
     supported_claim: str = "",
-    entry_id: UUID | None = None,
     period_id: UUID | None = None,
     artifact_id: UUID | None = None,
     store: ObjectStore | None = None,
@@ -138,6 +137,10 @@ async def request_upload(
 
     The size is checked here rather than after the transfer, because refusing a 40 MB file once it
     has already crossed the network is a worse experience and a worse use of the host.
+
+    `period_id` is checked, not stored as given: it decides which week's submission reads the file
+    and whether the file is a report attachment or a project document. There is no `entry_id` —
+    an upload is filed under its entry by `attach_to_entry`, which checks the entry's author.
     """
     scope.require_project(project_id)
     if byte_size <= 0:
@@ -149,6 +152,8 @@ async def request_upload(
         # Checked as a *format*, not only a length: the checksum is interpolated into the object
         # key, and a 64-character path fragment would grant a write outside the workspace prefix.
         raise ValidationError("a SHA-256 checksum of the file is required before uploading")
+    if period_id is not None and await repository.get_period(session, scope, period_id) is None:
+        raise NotFoundError("reporting period not found")
 
     artifact = await _open_artifact(
         session,
@@ -157,7 +162,6 @@ async def request_upload(
         project_id=project_id,
         filename=filename,
         supported_claim=supported_claim,
-        entry_id=entry_id,
         period_id=period_id,
     )
     version_no = artifact.current_version_no + 1
@@ -447,7 +451,6 @@ async def _open_artifact(
     project_id: UUID,
     filename: str,
     supported_claim: str,
-    entry_id: UUID | None,
     period_id: UUID | None,
 ) -> Artifact:
     if artifact_id is not None:
@@ -461,7 +464,7 @@ async def _open_artifact(
         workspace_id=scope.workspace_id,
         owner_student_id=scope.user_id,
         project_id=project_id,
-        entry_id=entry_id,
+        entry_id=None,
         period_id=period_id,
         kind=ArtifactKind.UPLOAD,
         filename=filename,

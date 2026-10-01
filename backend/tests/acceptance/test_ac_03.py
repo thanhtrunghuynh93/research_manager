@@ -166,6 +166,39 @@ async def test_ac_03_the_student_sees_the_approved_version_until_the_new_one_is_
     assert [row.id for row in visible] == [approved.id]
 
 
+async def test_ac_03_approving_the_new_version_retires_the_old_one(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """One week has one published reading: approving v2 takes v1 out of the trend."""
+    period, project, _first, approved = await _approved_assessment(db, prof_scope, student_a)
+    second_version = await _submit(
+        db, student_a, period, project, results="Corrected: nDCG@10 is 0.408, not 0.412."
+    )
+    revised = await assessment_service.run_pipeline(
+        db,
+        student_id=student_a.id,
+        project_id=project.id,
+        period_id=period.id,
+        report_version_id=second_version.id,
+        gateway=FakeGateway(),
+    )
+    assert revised is not None
+
+    await assessment_service.approve(db, prof_scope, revised.id)
+
+    series = await assessment_service.progress_series(
+        db, prof_scope, student_id=student_a.id, project_id=project.id
+    )
+    assert [point.assessment_id for point in series] == [revised.id]
+    old_review = await assessment_service.current_review(db, prof_scope, approved.id)
+    assert old_review is not None and old_review.state is ReviewState.SUPERSEDED
+    student_scope = await identity_service.scope_for(db, student_a)
+    visible = await assessment_service.list_assessments(
+        db, student_scope, student_id=student_a.id, project_id=project.id
+    )
+    assert [row.id for row in visible] == [revised.id]
+
+
 async def test_ac_03_the_original_report_version_cannot_be_edited(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:

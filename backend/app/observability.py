@@ -22,7 +22,10 @@ log = logging.getLogger(__name__)
 
 
 async def refresh(session: AsyncSession) -> dict[str, Any]:
-    """Read the current state into the gauges. Never raises: monitoring must not break the worker.
+    """Read the current state into the gauges. Never raises: monitoring must not break the api.
+
+    Called by `/api/metrics` (throttled there), in the process that serves the gauges — they live
+    in that process's memory, so filling them anywhere else would fill nobody's scrape.
 
     Counts are workspace-wide totals rather than per-workspace series. This deployment has one
     workspace, and a per-workspace label would become a way to enumerate them from the metrics
@@ -43,17 +46,8 @@ async def refresh(session: AsyncSession) -> dict[str, Any]:
     return summary
 
 
-async def _queue(session: AsyncSession) -> dict[str, Any]:
-    """procrastinate owns these tables, so they are read as SQL rather than through an ORM model."""
-    rows = (
-        await session.execute(
-            text("SELECT status, count(*) FROM procrastinate_jobs GROUP BY status")
-        )
-    ).all()
-    depths = {str(status): int(count) for status, count in rows}
-    for status in ("todo", "doing", "succeeded", "failed", "cancelled", "aborted"):
-        metrics.QUEUE_DEPTH.labels(status=status).set(depths.get(status, 0))
-
+async def oldest_queued_seconds(session: AsyncSession) -> float:
+    """How long the oldest `todo` job has been waiting, in seconds; 0 when nothing waits."""
     # `scheduled_at` is NULL for every job deferred without a delay, which is nearly all of them,
     # and min() skips NULLs — so a backlog of thousands of immediately-deferred jobs reported an
     # age of zero and the "worker is behind" warning could never fire. The `deferred` event
@@ -71,7 +65,22 @@ async def _queue(session: AsyncSession) -> dict[str, Any]:
             )
         )
     ).scalar()
-    metrics.QUEUE_OLDEST_SECONDS.set(float(oldest or 0))
+    return float(oldest or 0)
+
+
+async def _queue(session: AsyncSession) -> dict[str, Any]:
+    """procrastinate owns these tables, so they are read as SQL rather than through an ORM model."""
+    rows = (
+        await session.execute(
+            text("SELECT status, count(*) FROM procrastinate_jobs GROUP BY status")
+        )
+    ).all()
+    depths = {str(status): int(count) for status, count in rows}
+    for status in ("todo", "doing", "succeeded", "failed", "cancelled", "aborted"):
+        metrics.QUEUE_DEPTH.labels(status=status).set(depths.get(status, 0))
+
+    oldest = await oldest_queued_seconds(session)
+    metrics.QUEUE_OLDEST_SECONDS.set(oldest)
 
     failures = (
         await session.execute(
@@ -85,7 +94,7 @@ async def _queue(session: AsyncSession) -> dict[str, Any]:
     for task_name, count in failures:
         metrics.JOB_FAILURES.labels(task=str(task_name)).set(int(count))
 
-    return {"depth": depths, "oldest_seconds": float(oldest or 0)}
+    return {"depth": depths, "oldest_seconds": oldest}
 
 
 async def _sync(session: AsyncSession) -> dict[str, Any]:

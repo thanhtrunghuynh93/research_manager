@@ -131,12 +131,23 @@ def validate_citations(
             "and were removed; treat the statements resting on them as unsupported"
         )
 
+    for citation_key, citation in fact_citations(computed).items():
+        kept.setdefault(citation_key, citation)
+
+    return list(kept.values()), gaps
+
+
+def fact_citations(computed: list[Fact]) -> dict[str, CitationOut]:
+    """Every fact's citations, once each, keyed by where they point as well as what at.
+
+    A week's obligations cite one report per student, all of them sourced to the same period, and
+    keying on the source alone kept the first student and dropped everybody else. The facts-only
+    answer and the drafted one both build their fact citations here, so they cannot drift apart.
+    """
+    out: dict[str, CitationOut] = {}
     for fact in computed:
         for citation in fact.citations:
-            # Keyed by where it points as well as what it points at. A week's obligations now
-            # cite one report per student, all of them sourced to the same period, and keying on
-            # the source alone kept the first student and dropped everybody else.
-            kept.setdefault(
+            out.setdefault(
                 f"{citation.source_id}:{citation.locator}",
                 CitationOut(
                     source_kind=citation.source_kind,
@@ -146,8 +157,7 @@ def validate_citations(
                     label=citation.label,
                 ),
             )
-
-    return list(kept.values()), gaps
+    return out
 
 
 def time_range(answer_scope: AnswerScope) -> str:

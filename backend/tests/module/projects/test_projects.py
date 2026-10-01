@@ -216,12 +216,16 @@ async def test_the_same_student_cannot_hold_two_active_memberships(
 async def test_a_student_can_rejoin_after_leaving(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
+    # Relative to today: fixed dates made this pass only until the second join was in the past.
+    today = _workspace_today()
     project = await _project(db, prof_scope)
-    first = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
-    await service.end_membership(db, prof_scope, first.id, left_on=date(2026, 10, 1))
+    first = await service.add_member(
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=today - timedelta(days=30)
+    )
+    await service.end_membership(db, prof_scope, first.id, left_on=today - timedelta(days=7))
 
     second = await service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 11, 1)
+        db, prof_scope, project.id, student_id=student_a.id, joined_on=today
     )
 
     assert second.id != first.id
@@ -724,3 +728,87 @@ async def test_a_partial_completion_must_carry_a_reason(
         completion_reason="The second seed is still running",
     )
     assert updated.completion_fraction == Decimal("0.5")
+
+
+async def test_a_student_may_not_unassign_themselves_from_their_task(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """An explicit null is an edit: clearing the assignee is the professor's plan, not progress."""
+    _, task = await _assigned_task(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
+
+    with pytest.raises(ValidationError):
+        await service.update_task(db, scope, task.id, assignee_id=None)
+
+    row = await db.get(models.Task, task.id)
+    assert row is not None
+    assert row.assignee_id == student_a.id
+
+
+async def test_a_membership_is_ended_only_under_its_own_project(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    project = await _project(db, prof_scope, title="Theirs")
+    other = await _project(db, prof_scope, title="Another")
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+
+    with pytest.raises(NotFoundError):
+        await service.end_membership(db, prof_scope, membership.id, project_id=other.id)
+
+    row = await db.get(models.ProjectMembership, membership.id)
+    assert row is not None
+    assert row.left_on is None
+
+
+async def test_a_membership_ending_in_the_future_still_blocks_a_second_one(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """A future `left_on` is a membership still in force; a second row would overlap it."""
+    project = await _project(db, prof_scope)
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    later = _workspace_today() + timedelta(days=14)
+    await service.end_membership(db, prof_scope, membership.id, left_on=later)
+
+    with pytest.raises(ConflictError):
+        await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+
+
+async def test_a_membership_ending_in_the_future_is_still_listed_as_current(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    project = await _project(db, prof_scope)
+    membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
+    later = _workspace_today() + timedelta(days=14)
+    await service.end_membership(db, prof_scope, membership.id, left_on=later)
+
+    members = await service.list_members(db, prof_scope, project.id)
+
+    assert [m.id for m in members] == [membership.id]
+
+
+async def test_joining_on_the_first_day_of_a_week_owes_from_the_next_week(
+    db: AsyncSession, prof_scope: Scope, student_a_scope: Scope
+) -> None:
+    """PROJ-02: a self-joined membership owes only weeks that began *after* the join."""
+    from app.projects import repository
+
+    project = await _open_project(db, prof_scope)
+    membership = await service.join_project(db, student_a_scope, project.id)
+    monday = date(2026, 9, 21)
+    row = await db.get(models.ProjectMembership, membership.id)
+    assert row is not None
+    row.joined_on = monday
+    await db.flush()
+
+    same_week = await repository.memberships_active_in_range(
+        db, prof_scope, local_start=monday, local_end=monday + timedelta(days=6)
+    )
+    next_week = await repository.memberships_active_in_range(
+        db,
+        prof_scope,
+        local_start=monday + timedelta(days=7),
+        local_end=monday + timedelta(days=13),
+    )
+
+    assert membership.id not in {m.id for m in same_week}
+    assert membership.id in {m.id for m in next_week}

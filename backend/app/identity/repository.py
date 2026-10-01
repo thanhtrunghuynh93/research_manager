@@ -254,24 +254,6 @@ async def professor_ids(session: AsyncSession, workspace_id: UUID) -> list[UUID]
     return list(rows.scalars().all())
 
 
-async def count_active_professors(
-    session: AsyncSession, workspace_id: UUID, *, excluding: UUID | None = None
-) -> int:
-    """How many professors would remain if `excluding` stopped being one (ADR 0011)."""
-    statement = (
-        select(func.count())
-        .select_from(User)
-        .where(
-            User.workspace_id == workspace_id,
-            User.role == Role.PROF,
-            User.state == UserState.ACTIVE,
-        )
-    )
-    if excluding is not None:
-        statement = statement.where(User.id != excluding)
-    return int((await session.execute(statement)).scalar_one())
-
-
 async def get_invitation_by_token(session: AsyncSession, token_hash: str) -> Invitation | None:
     """Unauthenticated lookup: the token is the credential."""
     return (

@@ -19,6 +19,8 @@ from __future__ import annotations
 from prometheus_client import Counter, Gauge
 
 # ---------------------------------------------------------------- counters (incremented in place)
+# Only visible from the process that increments them: no multiprocess registry, so the worker's
+# MODEL_CALLS and CITATION_FAILURES never reach the api's `/api/metrics` scrape.
 
 MODEL_CALLS = Counter(
     "rm_model_calls_total",
@@ -36,7 +38,7 @@ ACCESS_DENIALS = Counter(
     labelnames=("status",),
 )
 
-# ---------------------------------------------------------------- gauges (refreshed on a schedule)
+# ---------------------------------------------------------------- gauges (refreshed by /metrics)
 
 QUEUE_DEPTH = Gauge("rm_queue_depth", "Jobs waiting to run.", labelnames=("status",))
 QUEUE_OLDEST_SECONDS = Gauge(

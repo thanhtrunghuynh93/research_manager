@@ -465,3 +465,29 @@ async def test_a_rate_limited_run_keeps_the_wait_the_provider_asked_for(
 
     assert run.state is models.SyncState.PARTIAL
     assert run.retry_after_seconds == 60
+
+
+async def test_in_production_an_unconfigured_connector_ends_the_run_failed(
+    db: AsyncSession, prof_scope: Scope
+) -> None:
+    """AC-04: zero events from the test double would read as a quiet week. The run must fail."""
+    from pydantic import SecretStr
+
+    from app.core.config import Settings
+    from app.evidence.connectors import factory
+
+    _, repository = await _connected(db, prof_scope, FakeRepositoryConnector())
+    connector = factory.build(
+        "github",
+        credential_ref="123",
+        # Validation skipped on purpose: a prod Settings checks the whole deployment.
+        settings=Settings(
+            github_app_id="", github_app_private_key_path="", github_webhook_secret=SecretStr("")
+        ).model_copy(update={"env": "prod"}),
+    )
+
+    run = await service.sync_repository(db, prof_scope, repository.id, connector=connector)
+
+    assert run.state is models.SyncState.FAILED
+    assert run.events_ingested == 0
+    assert run.error_summary

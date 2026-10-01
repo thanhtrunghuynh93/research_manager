@@ -272,6 +272,37 @@ async def supersede_other_reviews(
     )
 
 
+async def retire_other_approved_reviews(
+    session: AsyncSession,
+    student_id: UUID,
+    project_id: UUID,
+    period_id: UUID,
+    keep_assessment_id: UUID,
+) -> list[UUID]:
+    """Approving a week's replacement retires the reading it replaces (ASSESS-09, AC-03).
+
+    A week has one published assessment. Without this the older approved version kept standing
+    beside the new one, and both appeared in the trend and to the student. Returns the ids of
+    the assessment versions retired, so the caller can record them."""
+    older = select(AssessmentVersion.id).where(
+        AssessmentVersion.student_id == student_id,
+        AssessmentVersion.project_id == project_id,
+        AssessmentVersion.period_id == period_id,
+        AssessmentVersion.id != keep_assessment_id,
+    )
+    retired = await session.execute(
+        update(AssessmentReview)
+        .where(
+            AssessmentReview.assessment_version_id.in_(older),
+            AssessmentReview.state == ReviewState.APPROVED,
+        )
+        .values(state=ReviewState.SUPERSEDED, published_at=None)
+        .returning(AssessmentReview.assessment_version_id)
+        .execution_options(synchronize_session="fetch")
+    )
+    return list(retired.scalars().all())
+
+
 async def latest_run(
     session: AsyncSession, student_id: UUID, project_id: UUID, period_id: UUID
 ) -> AnalysisRun | None:
