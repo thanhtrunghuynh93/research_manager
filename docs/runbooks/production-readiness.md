@@ -92,7 +92,7 @@ Three documents said otherwise: [.env.example](../../.env.example) ("Changing it
 session and every unused invitation and reset link"), [deploy.md](deploy.md) step 2 ("the same as
 having no session protection at all"), and [rotate-secrets.md](rotate-secrets.md) row 1. Two more
 the audit missed: [repo_layout.md](../repo_layout.md) §3.6 ("Session and token signing") and
-[scripts/run.sh](../../scripts/run.sh), which refused to start real mode on the shipped default
+`scripts/run.sh` (since removed), which refused to start real mode on the shipped default
 with the same false explanation.
 
 Resolution: **deleted, not wired up.** The opaque-token design is the stronger one — the row is the

@@ -53,13 +53,6 @@ Trigger: a change on `main` is to go out, or a hotfix must. Nothing here is driv
    The caddy image builds the SPA (`infra/caddy/Dockerfile` runs `npm run build` and copies
    `dist` into `/srv`), so a frontend change ships only if caddy is rebuilt. `pull` is the step a
    registry deployment would run instead, and it is kept here for the day this uses one.
-
-   > **The mock stack shares these tags unless told otherwise.** `scripts/run_mock.sh` builds the
-   > `builder` target — the one with `uv` in it — and writing that to `rm-backend:local` leaves the
-   > production containers pointing at a dev image the moment they are next recreated. It happened
-   > on 21 September 2026 in the other direction: a production build overwrote the tag and the mock
-   > worker then died with `uv: executable file not found`. Set `RM_BACKEND_IMAGE=rm-backend:dev`
-   > and `RM_CADDY_IMAGE=rm-caddy:dev` in `infra/.env.mock` so the two can never trade images.
 4. Take a pre-deploy backup: `docker compose ... exec backup backup.sh`.
 5. Apply: `docker compose ... up -d`. Migrations run from the api container:
    `docker compose ... exec api alembic upgrade head`.

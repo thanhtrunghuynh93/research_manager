@@ -1,5 +1,4 @@
 # Production stack for one VPS (architecture §3). Start:  docker compose --env-file .env up -d
-# Development overrides live in docker-compose.dev.yml (see Makefile `dev`).
 name: research-management
 
 x-backend: &backend

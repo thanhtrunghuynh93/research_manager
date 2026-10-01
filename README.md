@@ -16,39 +16,22 @@ Professors are co-equal inside a workspace ([ADR 0011](docs/adr/0011-co-equal-pr
 - [ADRs](docs/adr/) — decisions and their reasons
 - [Runbooks](docs/runbooks/) — operate it
 
-## Quick start (development)
+## Running it
 
-Prerequisites: Docker with Compose, [uv](https://docs.astral.sh/uv/), Node 20+ with npm.
+The system runs as one production Compose stack (`infra/docker-compose.yml`) configured by a
+root-owned `infra/.env` made from [.env.example](.env.example). Deploying, bootstrapping the first
+professor and checking readiness are in the [deploy runbook](docs/runbooks/deploy.md).
 
-```bash
-scripts/run_mock.sh --seed    # everything on the fakes, with the demo dataset
-```
-
-That starts postgres, minio and mailpit, runs the migrations, brings up the api and worker with
-reload, and serves the app on http://localhost:8020. Assessments are produced by the
-deterministic gateway rather than a model provider, which exercises the whole workflow without
-spending anything — see `scripts/run_mock.sh --help`.
-
-To run against real integrations instead, fill in `infra/.env.real` and use `scripts/run.sh`. It
-refuses to start when a credential is missing rather than falling back to the fake, because the
-fallback is silent and its output looks real.
-
-The individual steps are also available as make targets:
+## Checks
 
 ```bash
-cp .env.example infra/.env
-make dev          # starts postgres, minio, mailpit; runs migrations; starts api + worker with reload
-make bootstrap    # creates the workspace and professor; prints the invitation link
-make web          # frontend dev server on http://localhost:8020 (proxies /api to :8021)
 make test         # backend tests (needs Docker for testcontainers)
+make lint         # ruff, import-linter, eslint
+make typecheck    # mypy, tsc
+make check-docs   # docs against the tree
 ```
 
-`make bootstrap` prints a single-use invitation link; open it to set the professor's password.
-Every later invitation and recovery link travels by email — in development to mailpit, which the
-mock stack serves on http://localhost:8025, because a link nobody receives is an account nobody
-can reach (AUTH-01).
-
-API health: `http://localhost:8021/api/healthz`. Interactive API docs: `http://localhost:8021/api/docs`.
+Frontend unit tests: `cd frontend && npm test -- --run`.
 
 ## Layout
 

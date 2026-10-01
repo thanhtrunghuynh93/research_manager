@@ -8,23 +8,29 @@ cd "$(dirname "$0")/.."
 BACKUPS=${1:?backups dir required}
 AGE_IDENTITY=${2:?age identity file required}
 PROJECT=rm-restore-drill
-COMPOSE=(docker compose -p "$PROJECT" -f infra/docker-compose.yml -f infra/docker-compose.dev.yml --env-file infra/.env)
+COMPOSE=(docker compose -p "$PROJECT" -f infra/docker-compose.yml --env-file infra/.env)
 
 LATEST=$(ls -1t "$BACKUPS"/db/rm-*.dump.age | head -1)
 echo "[drill] latest dump: $LATEST"
 START=$(date +%s)
 
+"${COMPOSE[@]}" build backup
 "${COMPOSE[@]}" up -d postgres minio
 sleep 5
-docker run --rm --network "${PROJECT}_default" \
+"${COMPOSE[@]}" run --rm --no-deps \
   -v "$BACKUPS":/backups:ro -v "$AGE_IDENTITY":/run/age.key:ro \
-  --env-file infra/.env -e AGE_IDENTITY=/run/age.key \
-  "$(docker compose -p "$PROJECT" -f infra/docker-compose.yml images -q backup 2>/dev/null || echo rm-backup:local)" \
-  restore.sh "/backups/db/$(basename "$LATEST")" "/backups/objects/${RM_S3_BUCKET:-rm-dev}"
+  -e AGE_IDENTITY=/run/age.key \
+  backup restore.sh "/backups/db/$(basename "$LATEST")" "/backups/objects/${RM_S3_BUCKET:-rm-dev}"
 
 "${COMPOSE[@]}" up -d api
-bash scripts/dev-up.sh --wait-only
-"${COMPOSE[@]}" exec -T api uv run alembic current
+echo "[drill] waiting for api ..."
+for _ in $(seq 1 60); do
+  "${COMPOSE[@]}" exec -T api curl -fsS http://localhost:8000/api/healthz >/dev/null 2>&1 && break
+  sleep 2
+done
+"${COMPOSE[@]}" exec -T api curl -fsS http://localhost:8000/api/healthz >/dev/null \
+  || { echo "[drill] api did not become healthy"; "${COMPOSE[@]}" logs api | tail -50; exit 1; }
+"${COMPOSE[@]}" exec -T api alembic current
 
 END=$(date +%s)
 echo "[drill] restore completed in $((END-START)) s (target RTO 4 h)"

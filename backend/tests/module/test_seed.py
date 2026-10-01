@@ -1,8 +1,8 @@
 """The demo dataset (docs/repo_layout.md §6).
 
-`make seed`, `scripts/seed_demo.py` and the deploy runbook all point at this command, so it has to
-work. It is tested rather than eyeballed for a second reason: it runs every module's service in one
-pass, which makes it an unusually good smoke test of the whole write path.
+The deploy runbook points at this command, so it has to work. It is tested rather than eyeballed
+for a second reason: it runs every module's service in one pass, which makes it an unusually good
+smoke test of the whole write path.
 """
 
 from __future__ import annotations

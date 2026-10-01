@@ -10,10 +10,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _MASKED_VALUE = "***"
 
-# The development defaults from .env.example, by the name an operator would see them under. Each
-# one exists so `make dev` works on a clean checkout; each one surviving into production is a
-# different silent failure, so `prod` refuses to start on any of them rather than trusting a
-# checklist to have been read (docs/runbooks/production-readiness.md §2.3).
+# The placeholders from .env.example, by the name an operator would see them under. Each one
+# surviving into production is a different silent failure, so `prod` refuses to start on any of
+# them rather than trusting a checklist to have been read (docs/runbooks/production-readiness.md
+# §2.3).
 _DEV_PASSWORDS = ("rm-dev-password", "rm-minio-dev-password")
 _DEV_MAIL_FROM = "research-management@example.edu"
 _DEV_SMTP_HOSTS = ("mailpit", "localhost")
@@ -27,10 +27,8 @@ class Settings(BaseSettings):
     log_json: bool = False
     public_url: str = "http://localhost:8020"
 
-    # The host-side default, for the make targets that run alembic and the seed outside the
-    # containers. It has to match what the dev stack actually creates: the credential from
-    # .env.example, on the port infra/docker-compose.dev.yml publishes. Inside the containers
-    # RM_DATABASE_URL names `postgres:5432` on the compose network instead.
+    # A host-side placeholder. Inside the containers RM_DATABASE_URL names `postgres:5432` on the
+    # compose network, and the test suite supplies its own database.
     database_url: str = "postgresql+psycopg://rm:rm-dev-password@localhost:8022/rm"
 
     s3_endpoint: str = "http://localhost:9000"

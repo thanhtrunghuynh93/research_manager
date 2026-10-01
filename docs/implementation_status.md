@@ -264,8 +264,7 @@ The professor overview is built from the same fact functions the assistant uses,
 the dashboard and the number in an answer cannot disagree.
 
 The demo dataset (`app.cli seed demo`) and the missed-deadline drill (`seed missed-deadline-drill`)
-give the Playwright suite something to act on; the e2e specs read mailpit to prove REP-08 end to
-end, which the service tests cannot.
+give a deployment something to act on before real students arrive.
 
 ### Step 9 — the seams (architecture §9.1, §12; REPO-01..05)
 
@@ -370,7 +369,7 @@ was a place where two parts of the product answered the same question on differe
 | Moving a student who has written history | AUTH-06 | Four composite foreign keys refuse it, by design rather than by omission. The two ways out — cascade the history into the new workspace, or make the move a new account — both change what "the workspace a record was written in" means, and neither is worth doing before someone needs it (use_cases.md §2.1) |
 | Pre-deadline reminders reaching anyone | REP-07 | The rows are written every fifteen minutes and nothing reads them: use cases v0.4 withdrew the in-app surface and only `missed_deadline` is emailed. The offsets endpoint has no screen either. Kept rather than deleted because the unique key is what makes a retried dispatch a no-op |
 | Professor-authored feedback | REP-07 | `FeedbackKind.PROFESSOR_COMMENT` exists in the enum and no code path writes one. What a student can read today is the approved assessment, their own correction thread, and — since v0.13 — the reason attached to a revision request, which is the one thing a professor can now write that reaches them |
-| Performance benchmarks | §11, §15 | `scripts/bench/` is empty. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured against the 100k-chunk corpus the seed script can build |
+| Performance benchmarks | §11, §15 | Nothing measures them. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured, and no seed builds the 100k-chunk corpus they assume |
 
 ### Acceptance scenarios
 
@@ -421,8 +420,7 @@ produced something wrong. Each is reflected in the code and in the document it c
 
 Carried from requirements §14 and architecture §17, narrowed to what is still open:
 
-1. **Mail provider** — SMTP relay or a transactional API. The `EmailSender` protocol takes either;
-   the dev stack uses mailpit.
+1. **Mail provider** — SMTP relay or a transactional API. The `EmailSender` protocol takes either.
 2. **Model and data-processing terms** — which content may reach OpenAI, and which projects need
    `ai_restricted`. The gateway, the ledger and the restriction flag are built and wired; what is
    missing is the decision about what may be sent.
@@ -475,14 +473,6 @@ for module in TASK_MODULES: importlib.import_module(module)
 print(sorted(procrastinate_app.tasks))
 print(sorted(d.task.name for d in procrastinate_app.periodic_registry.periodic_tasks.values()))
 "
-```
-
-The end-to-end suite needs the Compose stack and the demo dataset:
-
-```bash
-bash scripts/dev-up.sh
-cd backend && uv run python -m app.cli seed demo
-cd ../frontend && npm run e2e
 ```
 
 The calibration run costs money and is opt-in:

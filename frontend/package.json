@@ -7,14 +7,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest",
-    "e2e": "playwright test",
     "gen:api": "bash ../scripts/gen_api_client.sh"
   },
   "dependencies": {
@@ -33,7 +30,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
-    "@playwright/test": "^1.48.0",
     "@testing-library/jest-dom": "^6.6.2",
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.6.7",

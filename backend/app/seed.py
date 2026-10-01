@@ -112,10 +112,8 @@ def demo() -> None:
     try:
         result = run_in_session(load_demo)
     except AlreadySeededError:
-        # The documented way to start is `scripts/run_mock.sh --seed`, so this runs whenever
-        # anyone restarts against a volume that already has the data — the ordinary case, not a
-        # fault. It used to escape as a traceback, and because run.sh runs under `set -e` that
-        # aborted the whole startup: no ready banner, no frontend, just a stack trace.
+        # Running it against a volume that already has the data is the ordinary case, not a
+        # fault, so it says so instead of escaping as a traceback.
         typer.echo("The demo dataset is already loaded; leaving it as it is.")
         typer.echo(f"  sign in as {PROF_EMAIL} with the password {PASSWORD!r}")
         return

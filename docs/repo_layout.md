@@ -23,9 +23,8 @@ research_management/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml             lint, type-check, tests, build images, client drift check
-│       ├── e2e.yml            Playwright against the Compose stack on pull requests to main
 │       └── release.yml        tag → build and push images, attach SBOM
-├── Makefile                   thin wrappers: make dev, make test, make migrate, make seed, make e2e
+├── Makefile                   thin wrappers: make test, make lint, make typecheck, make check-docs
 ├── docs/
 │   ├── research_management_requirements.md
 │   ├── architecture.md
@@ -264,7 +263,7 @@ Conventions: test names state the behaviour (`test_late_submission_keeps_first_s
 | mypy | strict, plugins for SQLAlchemy and Pydantic | Type check |
 | import-linter | section 3.3 | Module boundaries |
 | pytest | `-p no:cacheprovider`, `asyncio_mode = auto`, markers `unit`, `module`, `api`, `authz`, `acceptance`, `evaluation_contract`, `evaluation` | Tests |
-| alembic | autogenerate diff checked in CI (`make migrate-check`) | Schema drift |
+| alembic | autogenerate diff checked in CI (`migrate-check` job) | Schema drift |
 | gitleaks | pre-commit and CI | Secret scanning |
 
 ### 3.6 Environment variables
@@ -283,24 +282,21 @@ All read once by `core/config.py`. Prefix `RM_`.
 | `RM_UPLOAD_MAX_FILE_MB` | api | Default 25 |
 | `RM_LOG_LEVEL`, `RM_LOG_JSON` | all | Observability |
 
-`.env.example` at repository root lists every variable with a safe development value; `infra/.env` is git-ignored.
+`.env.example` at repository root lists every variable with a placeholder the api refuses in production; `infra/.env` is git-ignored.
 
 ## 4 Frontend
 
 ```
 frontend/
-├── package.json               scripts: dev, build, preview, lint, typecheck, test, e2e, gen:api
+├── package.json               scripts: build, lint, format, typecheck, test, gen:api
 ├── package-lock.json          npm; CI installs with `npm ci`
-├── vite.config.ts             /api proxy to localhost:8021 in dev; build to dist/
+├── vite.config.ts             build to dist/; vitest config
 ├── tsconfig.json              project references → tsconfig.app.json (strict, alias @/ → src/) and tsconfig.node.json
 ├── tailwind.config.ts, postcss.config.js, components.json (shadcn)
 ├── eslint.config.js           ESLint 9 flat config (typescript-eslint, react-hooks, react-refresh)
 ├── .prettierrc, .prettierignore
 ├── index.html
 ├── public/                    favicon, static assets
-├── playwright.config.ts
-├── e2e/                       Playwright specs named after user journeys: submit-weekly-package.spec.ts,
-│                              review-and-approve.spec.ts, missed-deadline-email.spec.ts (uses console sender outbox)
 └── src/
     ├── main.tsx               providers: QueryClient, Router, I18n, Theme
     ├── app/
@@ -353,7 +349,6 @@ Conventions: a `features/<name>/` folder contains `pages/`, `components/`, `quer
 ```
 infra/
 ├── docker-compose.yml         production: caddy, api, worker, postgres, minio, backup
-├── docker-compose.dev.yml     overrides: bind mounts, hot reload, mailpit for email, exposed ports
 ├── caddy/
 │   └── Caddyfile              TLS, serve frontend/dist, reverse_proxy /api/* api:8000, security headers
 ├── postgres/
@@ -374,14 +369,6 @@ Image build: one `backend/Dockerfile` produces `rm-backend`; `frontend/` builds 
 
 ```
 scripts/
-├── run.sh                     start the stack in real mode; refuses to start with a credential
-│                              missing, because each integration otherwise falls back to a fake
-├── run_mock.sh                the same in mock mode: fake gateway, in-memory connector, mailpit;
-│                              a separate compose project, so seeded demo data never mixes in
-├── dev-up.sh                  compose dev stack, wait for readiness, run migrations
-├── seed_demo.py               calls app.cli seed: one professor, 6 students, 4 projects, 8 periods, fake repo events
-├── seed_benchmark.py          50 students × 30 projects × 3 years, 100k chunks, for the performance suite
-├── bench/                     k6 scripts for the p95 targets in architecture section 15
 ├── gen_api_client.sh          exports openapi.json from the app and runs openapi-typescript
 ├── check_docs.py             asserts this file against the tree: every path named here exists and
 │                          every high-churn path is named, every /api/... route cited in any
@@ -403,7 +390,6 @@ scripts/
 - `main` is deployable; feature branches `feat/<area>-<slug>`, fixes `fix/<slug>`; squash merge with a Conventional Commits title (`feat(reporting): freeze plan baselines at period start`).
 - Pull request template asks for: requirement IDs touched, migration present yes/no, docs updated yes/no, screenshots for UI.
 - `ci.yml` jobs: `backend-lint` (ruff, mypy, import-linter), `backend-test` (pytest with testcontainers, coverage gate), `migrate-check` (alembic autogenerate produces no diff), `frontend` (eslint, tsc, vitest, build), `client-drift` (regenerate API client and fail on diff), `docs` (`scripts/check_traceability.py` and `scripts/check_docs.py`), `images` (build both images, Trivy scan).
-- `e2e.yml` runs Playwright against the dev Compose stack with the console email sender and fake connector.
 - `release.yml` on tag `v*`: build, push to the registry, generate SBOM, create release notes from commits.
 
 ## 9 Bootstrap order

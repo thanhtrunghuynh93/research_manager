@@ -54,12 +54,7 @@ def test_a_missing_required_option_fails_before_any_database_work() -> None:
 def test_reseeding_an_already_seeded_database_says_so_instead_of_crashing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`scripts/run_mock.sh --seed` is the documented way to start, and people run it daily.
-
-    The second run is the normal case, not an error: the dataset is already there. Letting the
-    refusal escape as a traceback also aborted run.sh under `set -e`, so the stack never reached
-    the frontend and the developer was left with a stack trace and no app.
-    """
+    """The second run is the normal case, not an error: the dataset is already there."""
     from app import seed
 
     def already_there(_operation: object) -> None:

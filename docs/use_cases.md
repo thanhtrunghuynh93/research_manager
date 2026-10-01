@@ -721,7 +721,7 @@ configured and the worker running:
 Every link was a working, tested endpoint; the chain was broken only at the surface. v0.11 joined
 it up: the calendar and the weeks it opens on `/workspaces`, creating a project on `/projects`,
 activating it and assigning a student on `/projects/:id`, and deriving this week's obligations on
-`/overview`. `frontend/e2e/setup-a-project.spec.ts` walks the whole of it in a browser.
+`/overview`.
 
 One link in that chain was invisible even to this document, because it is not a missing screen but
 a default. `POST /projects` writes `status = proposed`, and `obligations_for` requires
