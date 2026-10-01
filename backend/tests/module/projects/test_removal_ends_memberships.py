@@ -16,25 +16,19 @@ from app.core.authz import Scope
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import models, service
+from tests.factories import make_project
 
 pytestmark = pytest.mark.module
 
-
-async def _project(db: AsyncSession, scope: Scope, title: str) -> object:
-    return await service.create_project(
-        db,
-        scope,
-        title=title,
-        description="Evaluate the published baselines on our dataset.",
-        stage=models.ResearchStage.IMPLEMENTATION,
-    )
+# The status `create_project` gives (no activation), with a description like a real record's.
+AS_CREATED = {"active": False, "description": "Evaluate the published baselines on our dataset."}
 
 
 async def test_removal_ends_every_membership_the_student_still_holds(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    first = await _project(db, prof_scope, "Baseline evaluation")
-    second = await _project(db, prof_scope, "Theory")
+    first = await make_project(db, prof_scope, **AS_CREATED)
+    second = await make_project(db, prof_scope, title="Theory", **AS_CREATED)
     await service.add_member(db, prof_scope, first.id, student_id=student_a.id)
     await service.add_member(db, prof_scope, second.id, student_id=student_a.id)
 
@@ -59,7 +53,7 @@ async def test_removal_keeps_the_membership_rows_as_history(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     """PROJ-02: the row is kept rather than deleted, so past work stays attributable."""
-    project = await _project(db, prof_scope, "Baseline evaluation")
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     await identity_service.remove_student(db, prof_scope, student_a.id)
@@ -72,7 +66,7 @@ async def test_removal_keeps_the_membership_rows_as_history(
 async def test_removal_audits_each_membership_it_ends(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope, "Baseline evaluation")
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     await identity_service.remove_student(db, prof_scope, student_a.id)
@@ -92,7 +86,7 @@ async def test_removal_audits_each_membership_it_ends(
 async def test_a_membership_already_ended_is_left_alone(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope, "Baseline evaluation")
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     ended = await service.end_membership(db, prof_scope, membership.id)
 
@@ -107,7 +101,7 @@ async def test_suspending_a_student_leaves_their_memberships_open(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     """Deactivation is suspension and `reactivate_user` undoes it, so the roll is untouched."""
-    project = await _project(db, prof_scope, "Baseline evaluation")
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     await identity_service.deactivate_user(db, prof_scope, student_a.id)
@@ -123,7 +117,7 @@ async def test_removal_ends_a_membership_that_was_due_to_end_later(
     """A future `left_on` is a membership still in force; removal ends it today, not later."""
     from datetime import timedelta
 
-    project = await _project(db, prof_scope, "Baseline evaluation")
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     today = await identity_service.workspace_today(db, prof_scope.workspace_id)
     await service.end_membership(db, prof_scope, membership.id, left_on=today + timedelta(days=30))

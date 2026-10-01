@@ -22,9 +22,8 @@ from app.assessment import events as assessment_events
 from app.core.authz import Scope
 from app.core.jobs import key
 from app.identity import models as identity_models
-from app.identity import service as identity_service
-from app.projects import service as projects_service
 from app.reporting import service as reporting_service
+from tests.factories import Week, make_entry, make_week, submit
 
 pytestmark = pytest.mark.module
 
@@ -42,42 +41,13 @@ def enqueued(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
 
 async def _week(
-    db: AsyncSession,
-    prof_scope: Scope,
-    student: identity_models.User,
-    *,
-    projects: int = 1,
-) -> tuple[Any, list[Any]]:
-    await reporting_service.configure_calendar(
-        db,
-        prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
-    )
-    created = []
-    for index in range(projects):
-        project = await projects_service.create_project(
-            db, prof_scope, title=f"Project {index}", stage="implementation"
-        )
-        await projects_service.update_project(db, prof_scope, project.id, status="active")
-        await projects_service.add_member(
-            db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
-        )
-        created.append(project)
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
-    return period, created
+    db: AsyncSession, prof_scope: Scope, student: identity_models.User, *, projects: int = 1
+) -> Week:
+    return await make_week(db, prof_scope, [student], projects=projects, joined_on=date(2026, 9, 1))
 
 
 def _entry(project: Any, work: str = "Ran the baseline.") -> dict[str, Any]:
-    return {
-        "project_id": project.id,
-        "stage": "implementation",
-        "work_performed": work,
-        "results": "nDCG@10 is 0.412.",
-    }
+    return make_entry(project.id, work=work, results="nDCG@10 is 0.412.", next_plan={})
 
 
 async def test_submitting_a_report_enqueues_an_assessment(
@@ -86,12 +56,10 @@ async def test_submitting_a_report_enqueues_an_assessment(
     student_a: identity_models.User,
     enqueued: list[dict[str, Any]],
 ) -> None:
-    period, projects = await _week(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
+    week = await _week(db, prof_scope, student_a)
+    period, projects = week.period, week.projects
 
-    await reporting_service.submit_report(
-        db, scope, period_id=period.id, entries=[_entry(projects[0])]
-    )
+    await submit(db, student_a, week, _entry(projects[0]))
 
     assert len(enqueued) == 1
     assert enqueued[0]["student_id"] == student_a.id
@@ -106,15 +74,10 @@ async def test_a_package_with_two_projects_enqueues_two_assessments(
     enqueued: list[dict[str, Any]],
 ) -> None:
     """AC-01: one weekly package, two entries, two separate assessments."""
-    period, projects = await _week(db, prof_scope, student_a, projects=2)
-    scope = await identity_service.scope_for(db, student_a)
+    week = await _week(db, prof_scope, student_a, projects=2)
+    projects = week.projects
 
-    await reporting_service.submit_report(
-        db,
-        scope,
-        period_id=period.id,
-        entries=[_entry(projects[0]), _entry(projects[1])],
-    )
+    await submit(db, student_a, week, _entry(projects[0]), _entry(projects[1]))
 
     assert {call["project_id"] for call in enqueued} == {projects[0].id, projects[1].id}
 
@@ -126,24 +89,17 @@ async def test_a_resubmission_enqueues_only_the_entry_whose_content_moved(
     enqueued: list[dict[str, Any]],
 ) -> None:
     """AC-17: revising one project entry must not re-assess the other."""
-    period, projects = await _week(db, prof_scope, student_a, projects=2)
-    scope = await identity_service.scope_for(db, student_a)
-    await reporting_service.submit_report(
-        db,
-        scope,
-        period_id=period.id,
-        entries=[_entry(projects[0]), _entry(projects[1])],
-    )
+    week = await _week(db, prof_scope, student_a, projects=2)
+    projects = week.projects
+    await submit(db, student_a, week, _entry(projects[0]), _entry(projects[1]))
     enqueued.clear()
 
-    await reporting_service.submit_report(
+    await submit(
         db,
-        scope,
-        period_id=period.id,
-        entries=[
-            _entry(projects[0], work="Corrected: the parser was off by one."),
-            _entry(projects[1]),  # byte-identical to the first submission
-        ],
+        student_a,
+        week,
+        _entry(projects[0], work="Corrected: the parser was off by one."),
+        _entry(projects[1]),  # byte-identical to the first submission
     )
 
     assert [call["project_id"] for call in enqueued] == [projects[0].id]
@@ -153,7 +109,8 @@ async def test_the_job_key_is_stable_so_a_retry_is_the_same_job(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     """Architecture §12: the queueing lock is what makes at-least-once delivery safe."""
-    period, projects = await _week(db, prof_scope, student_a)
+    week = await _week(db, prof_scope, student_a)
+    period, projects = week.period, week.projects
 
     first = assessment_events.pipeline_key(
         student_id=student_a.id,
@@ -189,12 +146,10 @@ async def test_an_enqueue_failure_does_not_lose_the_report(
         raise RuntimeError("queue unavailable")
 
     monkeypatch.setattr(assessment_events, "defer_pipeline", _explode)
-    period, projects = await _week(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
+    week = await _week(db, prof_scope, student_a)
+    projects = week.projects
 
-    version = await reporting_service.submit_report(
-        db, scope, period_id=period.id, entries=[_entry(projects[0])]
-    )
+    version = await submit(db, student_a, week, _entry(projects[0]))
 
     assert version.version_no == 1
     stored = await reporting_service.get_version(db, prof_scope, version.id)

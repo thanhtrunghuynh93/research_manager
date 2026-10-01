@@ -20,6 +20,7 @@ from app.identity import models as identity_models
 from app.notifications import models as notification_models
 from app.notifications import service as notifications
 from app.reporting import models as reporting_models
+from tests.factories import make_week
 
 pytestmark = pytest.mark.acceptance
 
@@ -27,9 +28,9 @@ WEEK = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
 
 
 async def test_ac_09_nothing_is_counted_twice(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
+    week = await make_week(db, prof_scope, [student_a])
     connector = FakeRepositoryConnector(
         commits=[
             CommitMeta(

@@ -23,6 +23,7 @@ from app.projects import service as projects_service
 from app.reporting import artifacts
 from app.reporting import service as reporting_service
 from app.reporting.models import ExtractionState
+from tests.factories import make_week
 
 pytestmark = pytest.mark.module
 
@@ -37,24 +38,10 @@ def store() -> InMemoryObjectStore:
 async def _project(
     db: AsyncSession, prof_scope, student: identity_models.User
 ) -> tuple[object, object]:
-    await reporting_service.configure_calendar(
-        db,
-        prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
+    week = await make_week(
+        db, prof_scope, [student], title="Retrieval baselines", joined_on=date(2026, 9, 1)
     )
-    project = await projects_service.create_project(
-        db, prof_scope, title="Retrieval baselines", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
-    )
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
-    return period, project
+    return week.period, week.project
 
 
 async def _upload(

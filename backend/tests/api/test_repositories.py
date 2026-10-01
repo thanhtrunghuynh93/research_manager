@@ -17,16 +17,9 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity import models as identity_models
-from tests.factories import DEFAULT_PASSWORD
+from tests.factories import login
 
 pytestmark = pytest.mark.api
-
-
-async def _login(client: AsyncClient, user: identity_models.User) -> None:
-    response = await client.post(
-        "/api/v1/auth/login", json={"email": user.email, "password": DEFAULT_PASSWORD}
-    )
-    assert response.status_code == 200, response.text
 
 
 async def _connect(client: AsyncClient, *, external_id: str = "r1") -> dict[str, object]:
@@ -46,7 +39,7 @@ async def _connect(client: AsyncClient, *, external_id: str = "r1") -> dict[str,
 async def test_a_student_cannot_connect_a_repository(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
-    await _login(client, student_a)
+    await login(client, student_a)
 
     response = await client.post(
         "/api/v1/repositories",
@@ -60,7 +53,7 @@ async def test_a_provider_with_no_connector_is_refused_at_the_boundary(
     client: AsyncClient, prof: identity_models.User
 ) -> None:
     """GitLab has no connector, so accepting it only moved the refusal into a 500."""
-    await _login(client, prof)
+    await login(client, prof)
 
     response = await client.post(
         "/api/v1/repositories",
@@ -78,7 +71,7 @@ async def test_in_production_connecting_without_a_github_app_is_a_503_not_a_500(
 
     unconfigured = Settings(github_app_id="").model_copy(update={"env": "prod"})
     monkeypatch.setattr(factory, "get_settings", lambda: unconfigured)
-    await _login(client, prof)
+    await login(client, prof)
 
     response = await client.post(
         "/api/v1/repositories",
@@ -91,7 +84,7 @@ async def test_in_production_connecting_without_a_github_app_is_a_503_not_a_500(
 async def test_the_professor_connects_a_repository_and_it_appears_in_the_list(
     client: AsyncClient, prof: identity_models.User
 ) -> None:
-    await _login(client, prof)
+    await login(client, prof)
 
     connected = await _connect(client)
     listed = (await client.get("/api/v1/repositories")).json()
@@ -105,7 +98,7 @@ async def test_a_repository_carries_its_sync_state_rather_than_nothing(
     client: AsyncClient, prof: identity_models.User
 ) -> None:
     """REPO-05: the screen shows last successful sync, covered range, and errors."""
-    await _login(client, prof)
+    await login(client, prof)
     connected = await _connect(client)
 
     status = await client.get(f"/api/v1/repositories/{connected['id']}/sync")
@@ -118,7 +111,7 @@ async def test_a_repository_carries_its_sync_state_rather_than_nothing(
 async def test_the_professor_can_trigger_a_sync_and_see_the_run(
     client: AsyncClient, prof: identity_models.User
 ) -> None:
-    await _login(client, prof)
+    await login(client, prof)
     connected = await _connect(client)
 
     run = await client.post(f"/api/v1/repositories/{connected['id']}/sync")
@@ -131,7 +124,7 @@ async def test_a_student_may_claim_their_own_developer_identity(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
     """REPO-03: a student links their own account; only the professor maps someone else's."""
-    await _login(client, student_a)
+    await login(client, student_a)
 
     response = await client.post(
         "/api/v1/developer-identities",
@@ -145,7 +138,7 @@ async def test_a_student_may_claim_their_own_developer_identity(
 async def test_a_student_cannot_claim_another_students_identity(
     client: AsyncClient, student_a: identity_models.User, student_b: identity_models.User
 ) -> None:
-    await _login(client, student_a)
+    await login(client, student_a)
 
     response = await client.post(
         "/api/v1/developer-identities",
@@ -159,7 +152,7 @@ async def test_a_student_sees_the_contributions_attributed_to_them(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
     """REPO-04: a student can see what was attributed to them, so it can be challenged."""
-    await _login(client, student_a)
+    await login(client, student_a)
 
     response = await client.get("/api/v1/contributions")
 
@@ -171,7 +164,7 @@ async def test_evidence_search_is_reachable_and_scoped(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
     """QA-02/AUTH-02: the same predicate as everywhere else, through an ordinary endpoint."""
-    await _login(client, student_a)
+    await login(client, student_a)
 
     response = await client.get("/api/v1/evidence/search?q=baseline")
 

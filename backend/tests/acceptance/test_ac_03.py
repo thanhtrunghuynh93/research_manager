@@ -21,92 +21,58 @@ from app.assessment.schemas import ReviewState
 from app.core.authz import Scope
 from app.identity import models as identity_models
 from app.identity import service as identity_service
-from app.projects import service as projects_service
 from app.reporting import service as reporting_service
+from tests.factories import Week, make_entry, make_week, submit
 
 pytestmark = pytest.mark.acceptance
 
 
-async def _week(
-    db: AsyncSession, prof_scope: Scope, student: identity_models.User
-) -> tuple[object, object]:
-    await reporting_service.configure_calendar(
-        db,
-        prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
-    )
-    project = await projects_service.create_project(
-        db, prof_scope, title="Retrieval baselines", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
-    )
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
-    return period, project
-
-
 async def _submit(
-    db: AsyncSession,
-    student: identity_models.User,
-    period: object,
-    project: object,
-    *,
-    results: str,
+    db: AsyncSession, student: identity_models.User, week: Week, *, results: str
 ) -> object:
-    scope = await identity_service.scope_for(db, student)
-    return await reporting_service.submit_report(
+    return await submit(
         db,
-        scope,
-        period_id=period.id,  # type: ignore[attr-defined]
-        entries=[
-            {
-                "project_id": project.id,  # type: ignore[attr-defined]
-                "stage": "implementation",
-                "work_performed": "Ran the baseline.",
-                "results": results,
-            }
-        ],
+        student,
+        week,
+        make_entry(week.project.id, work="Ran the baseline.", results=results, next_plan={}),
     )
 
 
 async def _approved_assessment(
     db: AsyncSession, prof_scope: Scope, student: identity_models.User
-) -> tuple[object, object, object, object]:
-    period, project = await _week(db, prof_scope, student)
+) -> tuple[Week, object, object]:
+    week = await make_week(
+        db, prof_scope, [student], title="Retrieval baselines", joined_on=date(2026, 9, 1)
+    )
     first_version = await _submit(
-        db, student, period, project, results="nDCG@10 is 0.412 on the internal split."
+        db, student, week, results="nDCG@10 is 0.412 on the internal split."
     )
     assessment = await assessment_service.run_pipeline(
         db,
         student_id=student.id,
-        project_id=project.id,
-        period_id=period.id,
+        project_id=week.project.id,
+        period_id=week.period.id,
         report_version_id=first_version.id,  # type: ignore[attr-defined]
         gateway=FakeGateway(),
     )
     assert assessment is not None
     await assessment_service.approve(db, prof_scope, assessment.id)
-    return period, project, first_version, assessment
+    return week, first_version, assessment
 
 
 async def test_ac_03_the_approved_assessment_stays_published_when_the_report_is_revised(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    period, project, _first, approved = await _approved_assessment(db, prof_scope, student_a)
+    week, _first, approved = await _approved_assessment(db, prof_scope, student_a)
 
     second_version = await _submit(
-        db, student_a, period, project, results="Corrected: nDCG@10 is 0.408, not 0.412."
+        db, student_a, week, results="Corrected: nDCG@10 is 0.408, not 0.412."
     )
     await assessment_service.run_pipeline(
         db,
         student_id=student_a.id,
-        project_id=project.id,
-        period_id=period.id,
+        project_id=week.project.id,
+        period_id=week.period.id,
         report_version_id=second_version.id,
         gateway=FakeGateway(),
     )
@@ -120,16 +86,16 @@ async def test_ac_03_the_approved_assessment_stays_published_when_the_report_is_
 async def test_ac_03_the_new_assessment_references_the_new_version_and_awaits_review(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    period, project, _first, approved = await _approved_assessment(db, prof_scope, student_a)
+    week, _first, approved = await _approved_assessment(db, prof_scope, student_a)
 
     second_version = await _submit(
-        db, student_a, period, project, results="Corrected: nDCG@10 is 0.408, not 0.412."
+        db, student_a, week, results="Corrected: nDCG@10 is 0.408, not 0.412."
     )
     revised = await assessment_service.run_pipeline(
         db,
         student_id=student_a.id,
-        project_id=project.id,
-        period_id=period.id,
+        project_id=week.project.id,
+        period_id=week.period.id,
         report_version_id=second_version.id,
         gateway=FakeGateway(),
     )
@@ -145,22 +111,22 @@ async def test_ac_03_the_student_sees_the_approved_version_until_the_new_one_is_
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     """ASSESS-08: approval is the publication step, and a draft is not a publication."""
-    period, project, _first, approved = await _approved_assessment(db, prof_scope, student_a)
+    week, _first, approved = await _approved_assessment(db, prof_scope, student_a)
     second_version = await _submit(
-        db, student_a, period, project, results="Corrected: nDCG@10 is 0.408, not 0.412."
+        db, student_a, week, results="Corrected: nDCG@10 is 0.408, not 0.412."
     )
     await assessment_service.run_pipeline(
         db,
         student_id=student_a.id,
-        project_id=project.id,
-        period_id=period.id,
+        project_id=week.project.id,
+        period_id=week.period.id,
         report_version_id=second_version.id,
         gateway=FakeGateway(),
     )
     student_scope = await identity_service.scope_for(db, student_a)
 
     visible = await assessment_service.list_assessments(
-        db, student_scope, student_id=student_a.id, project_id=project.id
+        db, student_scope, student_id=student_a.id, project_id=week.project.id
     )
 
     assert [row.id for row in visible] == [approved.id]
@@ -170,15 +136,15 @@ async def test_ac_03_approving_the_new_version_retires_the_old_one(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     """One week has one published reading: approving v2 takes v1 out of the trend."""
-    period, project, _first, approved = await _approved_assessment(db, prof_scope, student_a)
+    week, _first, approved = await _approved_assessment(db, prof_scope, student_a)
     second_version = await _submit(
-        db, student_a, period, project, results="Corrected: nDCG@10 is 0.408, not 0.412."
+        db, student_a, week, results="Corrected: nDCG@10 is 0.408, not 0.412."
     )
     revised = await assessment_service.run_pipeline(
         db,
         student_id=student_a.id,
-        project_id=project.id,
-        period_id=period.id,
+        project_id=week.project.id,
+        period_id=week.period.id,
         report_version_id=second_version.id,
         gateway=FakeGateway(),
     )
@@ -187,14 +153,14 @@ async def test_ac_03_approving_the_new_version_retires_the_old_one(
     await assessment_service.approve(db, prof_scope, revised.id)
 
     series = await assessment_service.progress_series(
-        db, prof_scope, student_id=student_a.id, project_id=project.id
+        db, prof_scope, student_id=student_a.id, project_id=week.project.id
     )
     assert [point.assessment_id for point in series] == [revised.id]
     old_review = await assessment_service.current_review(db, prof_scope, approved.id)
     assert old_review is not None and old_review.state is ReviewState.SUPERSEDED
     student_scope = await identity_service.scope_for(db, student_a)
     visible = await assessment_service.list_assessments(
-        db, student_scope, student_id=student_a.id, project_id=project.id
+        db, student_scope, student_id=student_a.id, project_id=week.project.id
     )
     assert [row.id for row in visible] == [revised.id]
 
@@ -207,9 +173,7 @@ async def test_ac_03_the_original_report_version_cannot_be_edited(
 
     from app.reporting.models import ReportVersion
 
-    _period, _project, first_version, _approved = await _approved_assessment(
-        db, prof_scope, student_a
-    )
+    _week, first_version, _approved = await _approved_assessment(db, prof_scope, student_a)
 
     with pytest.raises(DBAPIError):
         await db.execute(
@@ -223,11 +187,9 @@ async def test_ac_03_the_original_report_version_cannot_be_edited(
 async def test_ac_03_both_report_versions_remain_readable(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    period, project, first_version, _approved = await _approved_assessment(
-        db, prof_scope, student_a
-    )
+    week, first_version, _approved = await _approved_assessment(db, prof_scope, student_a)
     second_version = await _submit(
-        db, student_a, period, project, results="Corrected: nDCG@10 is 0.408, not 0.412."
+        db, student_a, week, results="Corrected: nDCG@10 is 0.408, not 0.412."
     )
 
     original = await reporting_service.get_version(db, prof_scope, first_version.id)

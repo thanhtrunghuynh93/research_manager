@@ -30,8 +30,8 @@ from app.evidence import service as evidence_service
 from app.evidence.connectors.fake import FakeRepositoryConnector
 from app.identity import models as identity_models
 from app.identity import service as identity_service
-from app.projects import service as projects_service
 from app.reporting import service as reporting_service
+from tests.factories import make_week
 
 pytestmark = pytest.mark.module
 
@@ -39,23 +39,10 @@ pytestmark = pytest.mark.module
 async def _week(
     db: AsyncSession, prof_scope: Scope, student: identity_models.User
 ) -> tuple[object, object, object]:
-    await reporting_service.configure_calendar(
-        db,
-        prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
+    week = await make_week(
+        db, prof_scope, [student], title="Baseline evaluation", joined_on=date(2026, 9, 1)
     )
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline evaluation", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
-    )
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
+    period, project = week.period, week.project
 
     repository = await evidence_service.connect_repository(
         db,

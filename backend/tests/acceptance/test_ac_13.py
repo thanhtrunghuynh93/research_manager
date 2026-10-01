@@ -17,17 +17,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import Scope
 from app.core.clock import now
 from app.identity import models as identity_models
+from app.identity import service as identity_service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
-from tests.acceptance.conftest import entry
+from tests.factories import make_week, submit
 
 pytestmark = pytest.mark.acceptance
 
 
 async def test_ac_13_a_late_report_keeps_its_real_timestamp(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
+    week = await make_week(db, prof_scope, [student_a])
     await db.execute(
         update(reporting_models.ReportingPeriod)
         .where(reporting_models.ReportingPeriod.id == week.period.id)
@@ -35,22 +36,19 @@ async def test_ac_13_a_late_report_keeps_its_real_timestamp(
     )
     started = now()
 
-    version = await reporting_service.submit_report(
-        db, week.student_scope, period_id=week.period.id, entries=[entry(week.projects[0].id)]
-    )
+    version = await submit(db, student_a, week)
 
     assert version.timing_status is reporting_models.TimingStatus.LATE
     assert version.submitted_at >= started
 
 
 async def test_ac_13_the_first_submission_time_cannot_be_moved(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
-    await reporting_service.submit_report(
-        db, week.student_scope, period_id=week.period.id, entries=[entry(week.projects[0].id)]
-    )
-    report = await reporting_service.get_report(db, week.student_scope, period_id=week.period.id)
+    week = await make_week(db, prof_scope, [student_a])
+    await submit(db, student_a, week)
+    student_scope = await identity_service.scope_for(db, student_a)
+    report = await reporting_service.get_report(db, student_scope, period_id=week.period.id)
 
     with pytest.raises(DBAPIError, match="write-once"):
         await db.execute(
@@ -62,12 +60,10 @@ async def test_ac_13_the_first_submission_time_cannot_be_moved(
 
 
 async def test_ac_13_a_submitted_version_cannot_be_rewritten(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
-    version = await reporting_service.submit_report(
-        db, week.student_scope, period_id=week.period.id, entries=[entry(week.projects[0].id)]
-    )
+    week = await make_week(db, prof_scope, [student_a])
+    version = await submit(db, student_a, week)
 
     with pytest.raises(DBAPIError, match="immutable"):
         await db.execute(

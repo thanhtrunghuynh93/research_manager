@@ -10,18 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
 from app.identity import models as identity_models
+from app.identity import service as identity_service
 from app.projects import models as projects_models
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
-from tests.acceptance.conftest import entry
+from tests.factories import make_week, submit
 
 pytestmark = pytest.mark.acceptance
 
 
 async def test_ac_18_a_first_plan_becomes_a_commitment_only_once_accepted(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
+    week = await make_week(db, prof_scope, [student_a])
 
     # Nothing to freeze: this is the student's first week on the project.
     baselines = await reporting_service.freeze_baselines(db, prof_scope, week.period.id)
@@ -36,14 +37,12 @@ async def test_ac_18_a_first_plan_becomes_a_commitment_only_once_accepted(
     ), "commitment completion is unavailable"
 
     # The report is still accepted, and carries the plan the student proposes.
-    version = await reporting_service.submit_report(
-        db, week.student_scope, period_id=week.period.id, entries=[entry(week.projects[0].id)]
-    )
+    version = await submit(db, student_a, week)
     assert version.version_no == 1
 
     proposed = await projects_service.propose_baseline(
         db,
-        week.student_scope,
+        await identity_service.scope_for(db, student_a),
         membership_id=membership_id,
         period_id=week.period.id,
         items=[{"planned_outcome": "Run the baseline end to end", "weight": 1}],

@@ -15,8 +15,7 @@ from app.evidence import service as evidence_service
 from app.evidence.connectors.base import Actor, AuthorizationError, CommitMeta
 from app.evidence.connectors.fake import FakeRepositoryConnector
 from app.identity import models as identity_models
-from app.reporting import service as reporting_service
-from tests.acceptance.conftest import entry
+from tests.factories import make_week, submit
 
 pytestmark = pytest.mark.acceptance
 
@@ -24,9 +23,9 @@ WEEK = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
 
 
 async def test_ac_04_a_broken_connection_blocks_nothing_and_claims_nothing(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
+    week = await make_week(db, prof_scope, [student_a])
     connector = FakeRepositoryConnector(
         commits=[
             CommitMeta(
@@ -55,9 +54,7 @@ async def test_ac_04_a_broken_connection_blocks_nothing_and_claims_nothing(
     run = await evidence_service.sync_repository(db, prof_scope, repository.id, connector=connector)
 
     # The report still submits: acceptance never waits on a repository (requirements §10).
-    version = await reporting_service.submit_report(
-        db, week.student_scope, period_id=week.period.id, entries=[entry(week.projects[0].id)]
-    )
+    version = await submit(db, student_a, week)
     assert version.version_no == 1
 
     # The dashboard can say the evidence is stale, and why.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import argon2
 import pytest
 
 from app.core.errors import ValidationError
@@ -21,6 +22,17 @@ def test_password_hash_is_salted_and_verifiable() -> None:
     assert "correct horse battery" not in first
     assert security.verify_password("correct horse battery", first)
     assert security.verify_password("correct horse battery", second)
+
+
+@pytest.mark.unit
+def test_production_hashing_uses_the_argon2id_recommended_cost() -> None:
+    # The suite swaps in a minimum-cost hasher (tests/conftest.py). The dummy hash is made at
+    # import, before that swap, by the hasher production uses — so its parameters are the real ones.
+    parameters = argon2.extract_parameters(security._DUMMY_HASH)
+
+    assert parameters.type is argon2.Type.ID
+    assert parameters.time_cost >= 3
+    assert parameters.memory_cost >= 64 * 1024
 
 
 @pytest.mark.unit

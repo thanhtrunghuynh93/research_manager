@@ -17,6 +17,7 @@ from app.notifications import service as notifications
 from app.projects import service as projects_service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
+from tests.factories import make_week
 
 pytestmark = pytest.mark.acceptance
 
@@ -30,9 +31,9 @@ async def _overdue(db: AsyncSession, period_id: object) -> None:
 
 
 async def test_ac_08_an_approved_leave_raises_no_alert(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
+    week = await make_week(db, prof_scope, [student_a])
     obligations = await reporting_service.list_obligations(db, prof_scope, week.period.id)
     await reporting_service.excuse_obligation(
         db, prof_scope, obligations[0].id, reason="Approved holiday"
@@ -43,9 +44,9 @@ async def test_ac_08_an_approved_leave_raises_no_alert(
 
 
 async def test_ac_08_a_paused_project_owes_nothing(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a, through=date(2026, 9, 27))
+    week = await make_week(db, prof_scope, [student_a], through=date(2026, 9, 27))
     await projects_service.update_project(db, prof_scope, week.projects[0].id, status="paused")
 
     periods = await reporting_service.list_periods(db, prof_scope)
@@ -54,9 +55,9 @@ async def test_ac_08_a_paused_project_owes_nothing(
 
 
 async def test_ac_08_an_extension_moves_the_deadline_for_that_obligation_only(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
+    week = await make_week(db, prof_scope, [student_a])
     obligations = await reporting_service.list_obligations(db, prof_scope, week.period.id)
     await reporting_service.extend_obligation(
         db, prof_scope, obligations[0].id, until=now() + timedelta(days=2), reason="Cluster outage"

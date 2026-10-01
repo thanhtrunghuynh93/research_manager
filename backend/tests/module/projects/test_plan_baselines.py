@@ -14,6 +14,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
@@ -22,6 +23,7 @@ from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import models, service
 from app.reporting import service as reporting_service
+from tests.factories import make_project
 
 pytestmark = pytest.mark.module
 
@@ -43,10 +45,7 @@ async def _membership(
         week_start_weekday=0,
         effective_from=date(2026, 9, 14),
     )
-    project = await service.create_project(
-        db, scope, title="Baseline evaluation", stage="implementation"
-    )
-    await service.update_project(db, scope, project.id, status="active")
+    project = await make_project(db, scope)
     membership = await service.add_member(
         db, scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
     )
@@ -250,7 +249,7 @@ async def test_a_frozen_plan_cannot_be_edited_in_place(
         db, prof_scope, membership_id=membership.id, period_id=period.id, items=PLAN
     )
 
-    with pytest.raises(Exception, match="immutable|frozen"):
+    with pytest.raises(DBAPIError, match="immutable|frozen"):
         await db.execute(
             update(models.PlanBaselineItem)
             .where(models.PlanBaselineItem.baseline_id == baseline.id)

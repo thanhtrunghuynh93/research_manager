@@ -12,22 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import cost
 from app.identity import models as identity_models
-from tests.factories import DEFAULT_PASSWORD
+from tests.factories import login
 
 pytestmark = pytest.mark.api
-
-
-async def _login(client: AsyncClient, user: identity_models.User) -> None:
-    response = await client.post(
-        "/api/v1/auth/login", json={"email": user.email, "password": DEFAULT_PASSWORD}
-    )
-    assert response.status_code == 200, response.text
 
 
 async def test_a_student_may_not_read_the_ai_spend(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
-    await _login(client, student_a)
+    await login(client, student_a)
 
     response = await client.get("/api/v1/admin/ai/usage")
 
@@ -49,7 +42,7 @@ async def test_the_professor_reads_this_month_s_spend(
         tokens_in=1_000_000,
         tokens_out=0,
     )
-    await _login(client, prof)
+    await login(client, prof)
 
     response = await client.get("/api/v1/admin/ai/usage")
 
@@ -63,7 +56,7 @@ async def test_the_professor_reads_this_month_s_spend(
 async def test_the_professor_sets_and_reads_back_a_budget(
     client: AsyncClient, prof: identity_models.User
 ) -> None:
-    await _login(client, prof)
+    await login(client, prof)
 
     written = await client.put(
         "/api/v1/admin/ai/budgets", json={"monthly_usd": "25.00", "project_monthly_usd": {}}
@@ -81,7 +74,7 @@ async def test_the_budget_endpoint_reports_whether_analysis_is_currently_delayed
     workspace: identity_models.Workspace,
 ) -> None:
     """Requirements §11: the delayed state must be visible, not inferred from silence."""
-    await _login(client, prof)
+    await login(client, prof)
     await client.put("/api/v1/admin/ai/budgets", json={"monthly_usd": "1.00"})
     await cost.record_call(
         db,
@@ -102,7 +95,7 @@ async def test_the_budget_endpoint_reports_whether_analysis_is_currently_delayed
 async def test_a_student_may_not_read_the_sync_health(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
-    await _login(client, student_a)
+    await login(client, student_a)
 
     assert (await client.get("/api/v1/admin/sync")).status_code == 403
 
@@ -111,7 +104,7 @@ async def test_sync_health_is_empty_rather_than_absent_without_repositories(
     client: AsyncClient, prof: identity_models.User
 ) -> None:
     """REPO-01: the product is fully usable without a repository, including this screen."""
-    await _login(client, prof)
+    await login(client, prof)
 
     response = await client.get("/api/v1/admin/sync")
 
@@ -138,7 +131,7 @@ async def test_the_retry_route_refuses_a_student_from_another_workspace(
     stranger = await make_user(db, other, email="stranger@other.edu")
     await db.commit()
 
-    await _login(client, prof)
+    await login(client, prof)
     response = await client.post(
         "/api/v1/admin/assessments/retry",
         params={
@@ -156,7 +149,7 @@ async def test_a_student_may_not_retry_an_assessment(
 ) -> None:
     from uuid import uuid4
 
-    await _login(client, student_a)
+    await login(client, student_a)
     response = await client.post(
         "/api/v1/admin/assessments/retry",
         params={

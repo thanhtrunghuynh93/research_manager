@@ -13,23 +13,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
 from app.identity import models as identity_models
+from app.identity import service as identity_service
 from app.reporting import service as reporting_service
-from tests.acceptance.conftest import entry
+from tests.factories import make_entry, make_week, submit
 
 pytestmark = pytest.mark.acceptance
 
 
 async def test_ac_17_only_the_revised_entry_counts_as_changed(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, week_for
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    week = await week_for(db, prof_scope, student_a, project_count=2)
-    first = await reporting_service.submit_report(
-        db,
-        week.student_scope,
-        period_id=week.period.id,
-        entries=[entry(week.projects[0].id), entry(week.projects[1].id)],
-    )
-    report = await reporting_service.get_report(db, week.student_scope, period_id=week.period.id)
+    week = await make_week(db, prof_scope, [student_a], projects=2)
+    first = await submit(db, student_a, week)
+    student_scope = await identity_service.scope_for(db, student_a)
+    report = await reporting_service.get_report(db, student_scope, period_id=week.period.id)
     await reporting_service.request_revision(
         db,
         prof_scope,
@@ -38,14 +35,12 @@ async def test_ac_17_only_the_revised_entry_counts_as_changed(
         reason="Name the baseline you compared against",
     )
 
-    second = await reporting_service.submit_report(
+    second = await submit(
         db,
-        week.student_scope,
-        period_id=week.period.id,
-        entries=[
-            entry(week.projects[0].id, work="Implemented the loader; compared against CNN-B"),
-            entry(week.projects[1].id),
-        ],
+        student_a,
+        week,
+        make_entry(week.projects[0].id, work="Implemented the loader; compared against CNN-B"),
+        make_entry(week.projects[1].id),
     )
 
     changed = next(e for e in second.entries if e.project_id == week.projects[0].id)

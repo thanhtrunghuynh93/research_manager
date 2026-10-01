@@ -19,33 +19,25 @@ from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
-from tests.factories import DEFAULT_PASSWORD
+from tests.factories import TZ, WEEK_END, WEEK_START, login, make_project
 
 pytestmark = pytest.mark.api
-
-
-async def _login(client: AsyncClient, user: identity_models.User) -> None:
-    response = await client.post(
-        "/api/v1/auth/login", json={"email": user.email, "password": DEFAULT_PASSWORD}
-    )
-    assert response.status_code == 200, response.text
 
 
 async def _week(
     db: AsyncSession, prof_scope: Scope, students: list[identity_models.User]
 ) -> tuple[object, object]:
+    # Not `make_week`: that opens 14 September and owes it, and here only the current week may be
+    # owed, or `outstanding` would count every week since.
     await reporting_service.configure_calendar(
         db,
         prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
+        timezone=TZ,
         meeting_weekday=0,
         week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
+        effective_from=WEEK_START,
     )
-    project = await projects_service.create_project(
-        db, prof_scope, title="Retrieval baselines", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    project = await make_project(db, prof_scope, title="Retrieval baselines")
     for student in students:
         await projects_service.add_member(
             db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
@@ -55,9 +47,7 @@ async def _week(
     # midnight on the 21st, after which `current_period` was None and this file failed on a clock
     # rather than on a change. A test that asserts something is current has to open the week that
     # contains now.
-    periods = await reporting_service.ensure_periods(
-        db, prof_scope, through=local_date(now(), "Asia/Ho_Chi_Minh")
-    )
+    periods = await reporting_service.ensure_periods(db, prof_scope, through=local_date(now(), TZ))
     current = periods[-1]
     await reporting_service.ensure_obligations(db, prof_scope, current.id)
     return current, project
@@ -66,7 +56,7 @@ async def _week(
 async def test_a_student_may_not_read_the_professor_overview(
     client: AsyncClient, student_a: identity_models.User
 ) -> None:
-    await _login(client, student_a)
+    await login(client, student_a)
 
     assert (await client.get("/api/v1/overview")).status_code == 403
 
@@ -79,7 +69,7 @@ async def test_the_overview_names_the_current_week_and_its_deadline(
     student_a: identity_models.User,
 ) -> None:
     await _week(db, prof_scope, [student_a])
-    await _login(client, prof)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 
@@ -111,7 +101,7 @@ async def test_the_overview_counts_outstanding_obligations_from_the_table(
             }
         ],
     )
-    await _login(client, prof)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 
@@ -131,7 +121,7 @@ async def test_the_overview_shows_an_empty_review_queue_rather_than_omitting_it(
 ) -> None:
     """A missing section reads as a broken screen; an empty one reads as nothing to do."""
     await _week(db, prof_scope, [student_a])
-    await _login(client, prof)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 
@@ -160,7 +150,7 @@ async def test_the_overview_surfaces_a_spent_budget_as_a_named_condition(
         tokens_in=1_000_000,
         tokens_out=0,
     )
-    await _login(client, prof)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 
@@ -176,7 +166,7 @@ async def test_the_overview_is_quiet_about_mail_when_nothing_has_failed(
     student_a: identity_models.User,
 ) -> None:
     await _week(db, prof_scope, [student_a])
-    await _login(client, prof)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 
@@ -207,7 +197,7 @@ async def test_an_invitation_that_never_sent_reaches_the_overview(
         {"lock": "a-spent-invitation"},
     )
     await db.flush()
-    await _login(client, prof)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 
@@ -246,7 +236,7 @@ async def test_the_week_lists_every_report_owed_and_which_of_them_are_in(
             }
         ],
     )
-    await _login(client, prof)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 
@@ -284,7 +274,7 @@ async def test_an_excused_obligation_is_listed_and_marked_rather_than_counted_as
     await reporting_service.excuse_obligation(
         db, prof_scope, obligations[0].id, reason="Approved leave"
     )
-    await _login(client, prof)
+    await login(client, prof)
 
     board = (await client.get("/api/v1/overview")).json()["week"][0]
 
@@ -304,13 +294,13 @@ async def test_a_week_with_no_obligations_yet_is_an_empty_board_rather_than_a_mi
     await reporting_service.configure_calendar(
         db,
         prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
+        timezone=TZ,
         meeting_weekday=0,
         week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
+        effective_from=WEEK_START,
     )
-    await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20))
-    await _login(client, prof)
+    await reporting_service.ensure_periods(db, prof_scope, through=WEEK_END)
+    await login(client, prof)
 
     body = (await client.get("/api/v1/overview")).json()
 

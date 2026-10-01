@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 import pytest
 from sqlalchemy import update
 from sqlalchemy.exc import DBAPIError
@@ -15,8 +13,8 @@ from app.core.authz import Scope
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
-from app.projects import service as projects_service
 from app.reporting import service as reporting_service
+from tests.factories import make_entry, make_week, submit
 
 pytestmark = pytest.mark.module
 
@@ -24,37 +22,18 @@ pytestmark = pytest.mark.module
 async def _assessed(
     db: AsyncSession, prof_scope: Scope, student: identity_models.User
 ) -> tuple[object, object, object]:
-    await reporting_service.configure_calendar(
+    week = await make_week(db, prof_scope, [student], title="Baseline")
+    period, project = week.period, week.project
+    version = await submit(
         db,
-        prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
-    )
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
-    )
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
-    scope = await identity_service.scope_for(db, student)
-    version = await reporting_service.submit_report(
-        db,
-        scope,
-        period_id=period.id,
-        entries=[
-            {
-                "project_id": project.id,
-                "stage": "implementation",
-                "work_performed": "Implemented the loader and reproduced the baseline.",
-                "results": "Within one point of the published score.",
-                "next_plan": {},
-            }
-        ],
+        student,
+        week,
+        make_entry(
+            project.id,
+            work="Implemented the loader and reproduced the baseline.",
+            results="Within one point of the published score.",
+            next_plan={},
+        ),
     )
     assessment = await service.run_pipeline(
         db,

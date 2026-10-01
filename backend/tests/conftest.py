@@ -10,7 +10,8 @@ may commit freely (`join_transaction_mode="create_savepoint"`) without leaking r
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from datetime import datetime
 
 import pytest
 from alembic import command
@@ -63,6 +64,47 @@ def settings(database_url: str) -> Settings:
     os.environ["RM_ENV"] = "test"
     get_settings.cache_clear()
     return Settings(env="test", database_url=database_url)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cheap_password_hashing() -> Iterator[None]:
+    """Argon2 at its minimum cost for every test but the one that pins the production parameters.
+
+    The production hasher costs about half a second per hash, and nearly every test makes two or
+    three users. `verify` reads the parameters from the hash itself, so hashes made either way
+    still verify. `tests/unit/test_identity_security.py` checks the real settings.
+    """
+    from argon2 import PasswordHasher
+
+    from app.identity import security
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            security, "_hasher", PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+        )
+        yield
+
+
+@pytest.fixture
+def frozen_now() -> Iterator[Callable[[datetime], None]]:
+    """Move the whole process's clock to a fixed instant: `frozen_now(datetime(..., tzinfo=UTC))`.
+
+    For a test whose world is a dated week. Every module's `now()`, `datetime.now()` and uuid7 see
+    the same time, so nothing can disagree with the date the test was written against. The clock
+    keeps ticking from that instant, so rows written in order still sort in order.
+    """
+    import time_machine
+
+    travellers: list[time_machine.travel] = []
+
+    def _at(instant: datetime) -> None:
+        traveller = time_machine.travel(instant, tick=True)
+        traveller.start()
+        travellers.append(traveller)
+
+    yield _at
+    for traveller in reversed(travellers):
+        traveller.stop()
 
 
 @pytest.fixture(scope="session", autouse=True)

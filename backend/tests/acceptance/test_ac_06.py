@@ -16,6 +16,7 @@ from app.evidence.connectors.base import Actor, CommitMeta, PullRequest
 from app.evidence.connectors.fake import FakeRepositoryConnector
 from app.identity import models as identity_models
 from app.projects import service as projects_service
+from tests.factories import make_week
 
 pytestmark = pytest.mark.acceptance
 
@@ -27,9 +28,8 @@ async def test_ac_06_joint_authorship_survives_the_merge(
     prof_scope: Scope,
     student_a: identity_models.User,
     student_b: identity_models.User,
-    week_for,
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
+    week = await make_week(db, prof_scope, [student_a])
     await projects_service.add_member(db, prof_scope, week.projects[0].id, student_id=student_b.id)
 
     connector = FakeRepositoryConnector(

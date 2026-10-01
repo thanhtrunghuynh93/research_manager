@@ -7,6 +7,7 @@ period covering Mon 14 to Sun 20 September is discussed on Mon 21 and is due Sun
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
@@ -20,6 +21,7 @@ from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import models, repository, service
+from tests.factories import make_week
 
 pytestmark = pytest.mark.module
 
@@ -75,14 +77,12 @@ async def test_generating_periods_twice_creates_nothing_new(
 
 
 async def test_changing_the_meeting_day_applies_to_future_periods_only(
-    db: AsyncSession, prof_scope: Scope, monkeypatch: pytest.MonkeyPatch
+    db: AsyncSession, prof_scope: Scope, frozen_now: Callable[[datetime], None]
 ) -> None:
     # REP-01: a week under way keeps its original deadline; weeks opened ahead but not yet begun
     # take the new one, or a changed meeting day would reach nothing for the eight weeks the
     # nightly job keeps open.
-    monkeypatch.setattr(
-        "app.reporting.service.now", lambda: datetime(2026, 9, 24, 3, 0, tzinfo=UTC), raising=True
-    )
+    frozen_now(datetime(2026, 9, 24, 3, 0, tzinfo=UTC))
     await _calendar(db, prof_scope)
     existing = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 27)))[0]
     original_deadline = existing.deadline_utc
@@ -175,16 +175,8 @@ async def test_leaving_mid_week_takes_the_week_with_it(
     drop a report already owed. This is the other reading: a project you are no longer on should
     not sit on your week at all.
     """
-    await _calendar(db, prof_scope)
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    membership = await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
-    )
-    periods = await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20))
-    week = periods[0]
+    built = await make_week(db, prof_scope, [student_a])
+    project, membership, week = built.project, built.memberships[0], built.period
     derived = await service.ensure_obligations(db, prof_scope, week.id)
     assert [o.project_id for o in derived] == [project.id], "owed while they are on it"
 
@@ -209,16 +201,8 @@ async def test_completing_a_project_takes_the_week_off_everyone_on_it(
     the student's week and in the professor's outstanding list, so a student owed — and was
     emailed at 00:00 on the meeting day about — work that had just been called finished.
     """
-    await _calendar(db, prof_scope)
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
-    )
-    periods = await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20))
-    week = periods[0]
+    built = await make_week(db, prof_scope, [student_a])
+    project, week = built.project, built.period
     derived = await service.ensure_obligations(db, prof_scope, week.id)
     assert [o.project_id for o in derived] == [project.id], "owed while the project is active"
 
@@ -258,15 +242,7 @@ async def test_an_exemption_records_its_reason_and_no_report_is_owed(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # REP-06: record leave, holidays, and extensions; do not invent a missing report.
-    await _calendar(db, prof_scope)
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
-    )
-    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
+    period = (await make_week(db, prof_scope, [student_a])).period
     obligation = (await service.ensure_obligations(db, prof_scope, period.id))[0]
 
     excused = await service.excuse_obligation(
@@ -280,15 +256,7 @@ async def test_an_exemption_records_its_reason_and_no_report_is_owed(
 async def test_an_extension_moves_the_effective_deadline_for_one_obligation(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    await _calendar(db, prof_scope)
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
-    )
-    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
+    period = (await make_week(db, prof_scope, [student_a])).period
     obligation = (await service.ensure_obligations(db, prof_scope, period.id))[0]
     extended_to = period.deadline_utc + timedelta(days=2)
 
@@ -303,15 +271,7 @@ async def test_an_extension_moves_the_effective_deadline_for_one_obligation(
 async def test_a_student_cannot_excuse_themselves(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, student_a_scope: Scope
 ) -> None:
-    await _calendar(db, prof_scope)
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
-    )
-    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
+    period = (await make_week(db, prof_scope, [student_a])).period
     obligation = (await service.ensure_obligations(db, prof_scope, period.id))[0]
 
     with pytest.raises(ForbiddenError):
@@ -422,18 +382,7 @@ async def test_freezing_with_no_previous_plan_records_an_empty_baseline(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # AC-18: a new member has no previous report, so there is nothing to freeze.
-    from app.projects import service as projects_service
-
-    await _calendar(db, prof_scope)
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
-    )
-    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await service.ensure_obligations(db, prof_scope, period.id)
+    period = (await make_week(db, prof_scope, [student_a])).period
 
     baselines = await service.freeze_baselines(db, prof_scope, period.id)
 
@@ -443,18 +392,7 @@ async def test_freezing_with_no_previous_plan_records_an_empty_baseline(
 async def test_freezing_twice_changes_nothing(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    from app.projects import service as projects_service
-
-    await _calendar(db, prof_scope)
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student_a.id, joined_on=date(2026, 9, 14)
-    )
-    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await service.ensure_obligations(db, prof_scope, period.id)
+    period = (await make_week(db, prof_scope, [student_a])).period
 
     first = await service.freeze_baselines(db, prof_scope, period.id)
     second = await service.freeze_baselines(db, prof_scope, period.id)

@@ -17,16 +17,11 @@ from app.evidence import models, service
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
+from tests.factories import make_project
 
 pytestmark = pytest.mark.module
 
 WEEK = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
-
-
-async def _project(db: AsyncSession, scope: Scope, title: str = "Baseline") -> object:
-    project = await projects_service.create_project(db, scope, title=title, stage="implementation")
-    await projects_service.update_project(db, scope, project.id, status="active")
-    return project
 
 
 async def _index(
@@ -58,7 +53,7 @@ async def _index(
 
 
 async def test_a_professor_retrieves_what_matches(db: AsyncSession, prof_scope: Scope) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await _index(db, prof_scope, project, "We reproduced the published baseline within one point.")
     await _index(db, prof_scope, project, "The dataset loader drops the final validation split.")
 
@@ -75,7 +70,7 @@ async def test_a_student_never_sees_another_students_private_evidence(
     student_b: identity_models.User,
 ) -> None:
     # QA-06: authorization is applied before retrieval, not after generation.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     for student in (student_a, student_b):
         await projects_service.add_member(db, prof_scope, project.id, student_id=student.id)
     await _index(
@@ -96,7 +91,7 @@ async def test_a_student_never_sees_another_students_private_evidence(
 async def test_a_student_retrieves_their_own_private_evidence(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await projects_service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     await _index(
         db,
@@ -117,7 +112,7 @@ async def test_professor_only_material_never_reaches_a_student(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # QA-06: private supervision material must never flow into a student-facing answer.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await projects_service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     await _index(
         db,
@@ -136,7 +131,7 @@ async def test_a_student_sees_nothing_from_a_project_they_left(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # AUTH-03: removing a membership invalidates subsequent access, retrieval included.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     membership = await projects_service.add_member(
         db, prof_scope, project.id, student_id=student_a.id
     )
@@ -151,8 +146,8 @@ async def test_a_student_sees_nothing_from_a_project_they_left(
 
 
 async def test_retrieval_can_be_scoped_to_one_project(db: AsyncSession, prof_scope: Scope) -> None:
-    first = await _project(db, prof_scope, title="Baseline")
-    second = await _project(db, prof_scope, title="Theory")
+    first = await make_project(db, prof_scope, title="Baseline")
+    second = await make_project(db, prof_scope, title="Theory")
     await _index(db, prof_scope, first, "The baseline evaluation harness is complete.")
     await _index(db, prof_scope, second, "The baseline proof needs another lemma.")
 
@@ -165,7 +160,7 @@ async def test_retrieval_can_be_scoped_to_one_project(db: AsyncSession, prof_sco
 async def test_retrieval_can_be_bounded_by_time(db: AsyncSession, prof_scope: Scope) -> None:
     from datetime import timedelta
 
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await service.index_evidence(
         db,
         workspace_id=prof_scope.workspace_id,
@@ -192,7 +187,7 @@ async def test_a_hit_carries_everything_a_citation_needs(
     db: AsyncSession, prof_scope: Scope
 ) -> None:
     # QA-03: a citation opens an authorized source at a stated version and location.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await _index(db, prof_scope, project, "The baseline reproduces.", locator="work_performed")
 
     [hit] = await service.search_evidence(db, prof_scope, query="baseline")
@@ -209,7 +204,7 @@ async def test_reindexing_the_same_source_replaces_rather_than_duplicates(
 ) -> None:
     from uuid import uuid4
 
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     source_id = uuid4()
     await _index(
         db, prof_scope, project, "First version of the baseline note.", source_id=source_id
@@ -232,7 +227,7 @@ async def test_a_semantic_query_finds_a_chunk_with_no_shared_words(
     With the deterministic embedder a vector is a hash, so the honest check is that an exact
     restatement retrieves through the vector path when the lexical query is empty.
     """
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     text = "We reproduced the published baseline within one point on the public split."
     await _index(db, prof_scope, project, text)
     await _index(db, prof_scope, project, "Unrelated notes on meeting scheduling.")
@@ -246,7 +241,7 @@ async def test_a_semantic_query_finds_a_chunk_with_no_shared_words(
 async def test_an_empty_query_returns_nothing_rather_than_everything(
     db: AsyncSession, prof_scope: Scope
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await _index(db, prof_scope, project, "Something about the baseline.")
 
     assert await service.search_evidence(db, prof_scope, query="   ") == []
@@ -256,7 +251,7 @@ async def test_indexed_evidence_carries_its_visibility_label(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # Requirements §9: explicit access labels on indexed evidence.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     reference = await _index(
         db,
         prof_scope,

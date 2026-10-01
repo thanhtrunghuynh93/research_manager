@@ -8,27 +8,9 @@ edge would have meant building Caddy with a third-party module.
 
 from __future__ import annotations
 
-import pytest
 from httpx import AsyncClient
 
-from app.api.middleware import AuthRateLimitMiddleware, auth_rate_limits
-
-
-@pytest.fixture(autouse=True)
-def _empty_counters(client: AsyncClient) -> None:
-    """Each test starts from an empty table; the middleware instance outlives one request."""
-    for middleware in _limiters(client):
-        middleware._hits.clear()
-
-
-def _limiters(client: AsyncClient) -> list[AuthRateLimitMiddleware]:
-    app = client._transport.app  # type: ignore[attr-defined]
-    found = []
-    while app is not None:
-        if isinstance(app, AuthRateLimitMiddleware):
-            found.append(app)
-        app = getattr(app, "app", None)
-    return found
+from app.api.middleware import auth_rate_limits
 
 
 async def test_repeated_sign_in_attempts_are_eventually_refused(client: AsyncClient) -> None:

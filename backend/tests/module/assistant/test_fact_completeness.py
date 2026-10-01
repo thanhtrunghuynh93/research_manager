@@ -22,6 +22,7 @@ from app.evidence.connectors.fake import FakeRepositoryConnector
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
+from tests.factories import make_project, make_user
 
 pytestmark = pytest.mark.module
 
@@ -34,10 +35,7 @@ async def _project_with_two_members(
     first: identity_models.User,
     second: identity_models.User,
 ) -> object:
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline evaluation", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    project = await make_project(db, prof_scope)
     for student in (first, second):
         await projects_service.add_member(
             db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
@@ -83,10 +81,7 @@ async def test_the_professor_sees_the_same_members(
 
 async def test_stale_repositories_cites_the_stale_ones(db: AsyncSession, prof_scope: Scope) -> None:
     """Twenty citations to healthy repositories beside "one is stale" is worse than none."""
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline evaluation", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
+    project = await make_project(db, prof_scope)
 
     healthy = await evidence_service.connect_repository(
         db,
@@ -127,13 +122,18 @@ async def test_a_student_past_the_first_page_is_still_found(
     `_resolve_entities` then noted "no student matches" and the assistant answered about the whole
     workspace instead of asking who was meant — the failure `router` is written to prevent (QA-05).
     """
-    from tests.factories import make_user
-
+    # Nobody here signs in, so no password is hashed: 206 hashes were most of this test's time.
     for index in range(205):
         await make_user(
-            db, workspace, email=f"bulk-{index}@example.edu", display_name=f"Bulk {index}"
+            db,
+            workspace,
+            email=f"bulk-{index}@example.edu",
+            display_name=f"Bulk {index}",
+            password=None,
         )
-    needle = await make_user(db, workspace, email="trang@example.edu", display_name="Trang Nguyen")
+    needle = await make_user(
+        db, workspace, email="trang@example.edu", display_name="Trang Nguyen", password=None
+    )
 
     matches = await router._match_students(db, prof_scope, "Trang Nguyen")
 

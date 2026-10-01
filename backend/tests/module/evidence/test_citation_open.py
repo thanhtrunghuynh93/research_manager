@@ -24,16 +24,11 @@ from app.evidence import models, service
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
+from tests.factories import make_project
 
 pytestmark = pytest.mark.module
 
 WEEK = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
-
-
-async def _project(db: AsyncSession, scope: Scope, title: str = "Baseline") -> object:
-    project = await projects_service.create_project(db, scope, title=title, stage="implementation")
-    await projects_service.update_project(db, scope, project.id, status="active")
-    return project
 
 
 async def _reference(
@@ -60,7 +55,7 @@ async def _reference(
 
 
 async def test_a_professor_opens_a_citation(db: AsyncSession, prof_scope: Scope) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     reference = await _reference(db, prof_scope, project)
 
     opened = await service.get_reference(db, prof_scope, reference.id)
@@ -74,7 +69,7 @@ async def test_a_student_opens_a_citation_shared_with_their_project(
     prof_scope: Scope,
     student_a: identity_models.User,
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await projects_service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     reference = await _reference(db, prof_scope, project)
 
@@ -89,7 +84,7 @@ async def test_a_student_cannot_open_a_citation_for_a_project_they_are_not_on(
     prof_scope: Scope,
     student_a: identity_models.User,
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     reference = await _reference(db, prof_scope, project)
 
     scope = await identity_service.scope_for(db, student_a)
@@ -103,7 +98,7 @@ async def test_a_student_cannot_open_a_professor_only_citation(
     student_a: identity_models.User,
 ) -> None:
     """QA-06: the professor's own notes are not reachable by opening a link to them."""
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await projects_service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     reference = await _reference(db, prof_scope, project, visibility=Visibility.PROFESSOR_ONLY)
 
@@ -118,7 +113,7 @@ async def test_a_student_cannot_open_another_students_private_citation(
     student_a: identity_models.User,
     student_b: identity_models.User,
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope)
     await projects_service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     await projects_service.add_member(db, prof_scope, project.id, student_id=student_b.id)
     reference = await _reference(

@@ -19,6 +19,7 @@ from app.core.types import Visibility
 from app.evidence import models, service
 from app.evidence.index import embeddings
 from app.projects import service as projects_service
+from tests.factories import make_project
 
 pytestmark = pytest.mark.module
 
@@ -50,9 +51,7 @@ def provider(monkeypatch: pytest.MonkeyPatch) -> _Provider:
 
 
 async def _project(db: AsyncSession, scope: Scope, *, restricted: bool) -> object:
-    project = await projects_service.create_project(
-        db, scope, title=f"Study {uuid4()}", stage="implementation"
-    )
+    project = await make_project(db, scope, title=f"Study {uuid4()}", active=False)
     await projects_service.update_project(
         db, scope, project.id, status="active", ai_restricted=restricted
     )

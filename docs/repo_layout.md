@@ -243,9 +243,8 @@ backend/tests/
 │   └── test_metrics.py       includes the spec example: ratings 3,4,3,2 → 78.75 → 79
 ├── module/                   service-level tests per bounded context, real DB, fakes for AI and GitHub
 │   ├── identity/  projects/  reporting/  evidence/  assessment/  assistant/  notifications/
-├── authz/                    test_user_visibility.py: that one predicate decides every read of a
-│                          user record. The access acceptance scenarios (AC-02, AC-11, QA-06) live
-│                          in acceptance/, and Scope.within is covered in unit/test_authz.py
+│                             (identity/test_user_visibility.py: one predicate decides every read of a user record;
+│                             the access scenarios AC-02, AC-11, QA-06 live in acceptance/, Scope.within in unit/test_authz.py)
 ├── api/                      HTTP tests through the ASGI app; OpenAPI schema snapshot
 ├── jobs/                     idempotency and retry: duplicate webhook, retried sync range, killed worker (AC-09, AC-13)
 ├── acceptance/               test_ac_01.py … test_ac_19.py, each named after the requirements scenario it proves

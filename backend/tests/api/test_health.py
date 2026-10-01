@@ -29,9 +29,10 @@ async def test_readyz_checks_database(client: AsyncClient) -> None:
     response = await client.get("/api/readyz")
     body = response.json()
     assert body["checks"]["database"] == "ok"
-    # object storage is not running in unit tests, so readiness is degraded, not an error
-    assert response.status_code in (200, 503)
-    assert body["status"] in ("ready", "degraded")
+    # Nothing in the test setup fails: no worker has run yet and no relay answers, and both of
+    # those are `skipped`, which is not a reason to call the deployment unready.
+    assert response.status_code == 200
+    assert body["status"] == "ready"
 
 
 async def test_readyz_reports_the_worker_and_smtp(client: AsyncClient) -> None:
@@ -47,16 +48,15 @@ async def test_readyz_reports_the_worker_and_smtp(client: AsyncClient) -> None:
     assert "smtp" in checks
 
 
-async def test_an_empty_queue_is_not_a_dead_worker(client: AsyncClient, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_an_empty_queue_is_not_a_dead_worker(client: AsyncClient) -> None:
     """A fresh deploy has an empty queue for its first few minutes.
 
     Answering `fail` there would make a correct first boot look broken, which is how an operator
     learns to ignore a check.
     """
-    from app.api.v1 import health
+    response = await client.get("/api/readyz")
 
-    state = await health._check_worker()
-    assert state in ("ok", "skipped")
+    assert response.json()["checks"]["worker"] in ("ok", "skipped")
 
 
 async def test_rejected_credentials_make_the_deployment_unready(
@@ -108,7 +108,10 @@ async def test_a_busy_relay_does_not_make_the_deployment_unready(
     assert response.json()["status"] == "ready"
 
 
-async def test_the_smtp_result_is_reused_between_polls(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_the_smtp_result_is_reused_between_polls(
+    client: AsyncClient,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
     """A relay is a third party with an opinion about how often it may be connected to."""
     from app.api.v1 import health
 
@@ -120,11 +123,8 @@ async def test_the_smtp_result_is_reused_between_polls(monkeypatch) -> None:  # 
     monkeypatch.setattr(health, "_smtp_connect", _count)
     monkeypatch.setattr(health, "_smtp_cached", None)
 
-    from app.core.config import get_settings
-
-    settings = get_settings()
-    assert await health._check_smtp(settings) == "ok"
-    assert await health._check_smtp(settings) == "ok"
+    for _ in range(2):
+        assert (await client.get("/api/readyz")).json()["checks"]["smtp"] == "ok"
     assert len(calls) == 1
 
 

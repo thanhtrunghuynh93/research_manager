@@ -7,7 +7,8 @@ says nothing about anyone else's work.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select, update
@@ -16,19 +17,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import Scope
 from app.core.clock import now
 from app.identity import models as identity_models
-from app.identity import service as identity_service
 from app.notifications import models, repository, service
-from app.projects import service as projects_service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
+from tests.factories import Week, make_entry, make_week, submit
 
 pytestmark = pytest.mark.module
 
 
-class Week:
-    def __init__(self, period: object, projects: list[object]) -> None:
-        self.period = period
-        self.projects = projects
+@pytest.fixture(autouse=True)
+def _inside_the_week(frozen_now: Callable[[datetime], None]) -> None:
+    # Every test here is about the week of 14 September. Left to the wall clock, saving the
+    # calendar opens each week up to today, and their reminders come due beside this one.
+    frozen_now(datetime(2026, 9, 15, 3, 0, tzinfo=UTC))
 
 
 async def _week(
@@ -38,46 +39,16 @@ async def _week(
     *,
     project_count: int = 1,
 ) -> Week:
-    await reporting_service.configure_calendar(
-        db,
-        prof_scope,
-        timezone="Asia/Ho_Chi_Minh",
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
-    )
-    projects = []
-    for index in range(project_count):
-        project = await projects_service.create_project(
-            db, prof_scope, title=f"Project {index}", stage="implementation"
-        )
-        await projects_service.update_project(db, prof_scope, project.id, status="active")
-        for student in students:
-            await projects_service.add_member(
-                db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
-            )
-        projects.append(project)
-
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
+    week = await make_week(db, prof_scope, students, projects=project_count)
     # The period is generated for a future week; pull its deadline behind us so it is now overdue.
     await db.execute(
         update(reporting_models.ReportingPeriod)
-        .where(reporting_models.ReportingPeriod.id == period.id)
+        .where(reporting_models.ReportingPeriod.id == week.period.id)
         .values(
             deadline_utc=now() - timedelta(hours=1), reminder_due_utc=now() - timedelta(minutes=1)
         )
     )
-    return Week(period, projects)
-
-
-def _entry(project_id: object) -> dict[str, object]:
-    return {
-        "project_id": project_id,
-        "stage": "implementation",
-        "work_performed": "Implemented the loader",
-        "next_plan": {},
-    }
+    return week
 
 
 async def test_the_student_who_did_not_submit_is_emailed(
@@ -97,10 +68,7 @@ async def test_a_submission_a_minute_before_the_deadline_gets_no_email(
 ) -> None:
     # REP-08: obligation state is read at send time, so a late-evening submission is seen.
     week = await _week(db, prof_scope, [student_a])
-    scope = await identity_service.scope_for(db, student_a)
-    await reporting_service.submit_report(
-        db, scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
-    )
+    await submit(db, student_a, week, make_entry(week.projects[0].id, next_plan={}))
 
     sent = await service.dispatch_missed_deadline(db, week.period.id)
 
@@ -143,10 +111,7 @@ async def test_a_partial_package_is_still_unfulfilled(
     obligations = await reporting_service.list_obligations(db, prof_scope, week.period.id)
     second = next(o for o in obligations if o.project_id == week.projects[1].id)
     await reporting_service.excuse_obligation(db, prof_scope, second.id, reason="Paused")
-    scope = await identity_service.scope_for(db, student_a)
-    await reporting_service.submit_report(
-        db, scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
-    )
+    await submit(db, student_a, week, make_entry(week.projects[0].id, next_plan={}))
     # Re-require the second project after the package was submitted without it.
     await db.execute(
         update(reporting_models.ReportingObligation)

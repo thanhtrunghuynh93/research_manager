@@ -7,16 +7,9 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity import models, repository
-from tests.factories import DEFAULT_PASSWORD
+from tests.factories import login
 
 pytestmark = pytest.mark.module
-
-
-async def _sign_in(client: AsyncClient, user: models.User) -> None:
-    response = await client.post(
-        "/api/v1/auth/login", json={"email": user.email, "password": DEFAULT_PASSWORD}
-    )
-    assert response.status_code == 200
 
 
 async def _own(db: AsyncSession, prof: models.User) -> None:
@@ -29,7 +22,7 @@ async def _own(db: AsyncSession, prof: models.User) -> None:
 async def test_a_student_cannot_reach_any_workspace_route(
     client: AsyncClient, student_a: models.User
 ) -> None:
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     assert (await client.get("/api/v1/workspaces")).status_code == 403
     assert (await client.post("/api/v1/workspaces", json={"name": "Mine"})).status_code == 403
@@ -38,7 +31,7 @@ async def test_a_student_cannot_reach_any_workspace_route(
 async def test_a_professor_creates_and_lists(client: AsyncClient, prof: models.User) -> None:
     # Captured before the create: creating joins, which moves the anchor the fixture points at.
     source = str(prof.workspace_id)
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     created = await client.post("/api/v1/workspaces", json={"name": "Vision Lab"})
     assert created.status_code == 201
@@ -54,7 +47,7 @@ async def test_renaming_a_workspace_nobody_owns_is_a_404_not_a_403(
     client: AsyncClient, prof: models.User
 ) -> None:
     # AC-02: the status must not distinguish "exists but not yours" from "does not exist".
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.patch(
         f"/api/v1/workspaces/{prof.workspace_id}", json={"name": "Renamed"}
@@ -67,7 +60,7 @@ async def test_archiving_your_own_workspace_says_why_you_cannot(
     client: AsyncClient, db: AsyncSession, prof: models.User
 ) -> None:
     await _own(db, prof)
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.post(f"/api/v1/workspaces/{prof.workspace_id}/archive")
 
@@ -83,7 +76,7 @@ async def test_archiving_your_own_workspace_says_why_you_cannot(
 async def test_an_invitation_names_the_workspace_it_enrols_into(
     client: AsyncClient, prof: models.User
 ) -> None:
-    await _sign_in(client, prof)
+    await login(client, prof)
     created = (await client.post("/api/v1/workspaces", json={"name": "Vision Lab"})).json()
 
     response = await client.post(
@@ -102,7 +95,7 @@ async def test_leaving_moves_the_account_and_the_roll_changes_with_it(
 ) -> None:
     await _own(db, prof)
     source = str(prof.workspace_id)
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     created = (await client.post("/api/v1/workspaces", json={"name": "Vision Lab"})).json()
     await client.post(
@@ -125,7 +118,7 @@ async def test_the_roll_is_the_workspace_the_professor_switched_to(
     """ADR 0020: switching is the frame, so the roll is the workspace the professor is in."""
     await _own(db, prof)
     source = str(prof.workspace_id)
-    await _sign_in(client, prof)
+    await login(client, prof)
     elsewhere = (await client.post("/api/v1/workspaces", json={"name": "Vision Lab"})).json()
     await client.post(
         "/api/v1/users/invitations",
@@ -151,7 +144,7 @@ async def test_leaving_a_workspace_takes_its_people_off_the_roll(
 ) -> None:
     """The span follows membership, so giving one up narrows what the professor can read."""
     await _own(db, prof)
-    await _sign_in(client, prof)
+    await login(client, prof)
     elsewhere = (await client.post("/api/v1/workspaces", json={"name": "Vision Lab"})).json()
     await client.post(
         "/api/v1/users/invitations",
@@ -174,7 +167,7 @@ async def test_a_student_still_sees_only_themselves(
     client: AsyncClient, student_a: models.User, student_b: models.User
 ) -> None:
     """A student belongs to one workspace, so spanning membership changes nothing for them."""
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     listed = (await client.get("/api/v1/users")).json()["items"]
 

@@ -8,22 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.types import Role
 from app.identity import models
-from tests.factories import DEFAULT_PASSWORD
+from tests.factories import login
 
 pytestmark = pytest.mark.module
-
-
-async def _sign_in(client: AsyncClient, user: models.User) -> None:
-    response = await client.post(
-        "/api/v1/auth/login", json={"email": user.email, "password": DEFAULT_PASSWORD}
-    )
-    assert response.status_code == 200
 
 
 async def test_the_professor_lists_the_workspace(
     client: AsyncClient, prof: models.User, student_a: models.User, student_b: models.User
 ) -> None:
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.get("/api/v1/users")
 
@@ -35,7 +28,7 @@ async def test_the_professor_lists_the_workspace(
 async def test_a_student_lists_only_themselves(
     client: AsyncClient, student_a: models.User, student_b: models.User
 ) -> None:
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     response = await client.get("/api/v1/users")
 
@@ -45,7 +38,7 @@ async def test_a_student_lists_only_themselves(
 async def test_a_student_cannot_read_another_student(
     client: AsyncClient, student_a: models.User, student_b: models.User
 ) -> None:
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     response = await client.get(f"/api/v1/users/{student_b.id}")
 
@@ -53,7 +46,7 @@ async def test_a_student_cannot_read_another_student(
 
 
 async def test_a_student_cannot_invite(client: AsyncClient, student_a: models.User) -> None:
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     response = await client.post("/api/v1/users/invitations", json={"email": "new@example.edu"})
 
@@ -63,7 +56,7 @@ async def test_a_student_cannot_invite(client: AsyncClient, student_a: models.Us
 async def test_the_professor_invites_and_the_token_stays_out_of_the_response(
     client: AsyncClient, prof: models.User
 ) -> None:
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.post(
         "/api/v1/users/invitations",
@@ -79,7 +72,7 @@ async def test_the_professor_invites_and_the_token_stays_out_of_the_response(
 async def test_a_student_cannot_deactivate_anyone(
     client: AsyncClient, student_a: models.User, student_b: models.User
 ) -> None:
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     response = await client.post(f"/api/v1/users/{student_b.id}/deactivate")
 
@@ -89,7 +82,7 @@ async def test_a_student_cannot_deactivate_anyone(
 async def test_the_professor_deactivates_and_reactivates(
     client: AsyncClient, prof: models.User, student_a: models.User
 ) -> None:
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     deactivated = await client.post(f"/api/v1/users/{student_a.id}/deactivate")
     assert deactivated.status_code == 200
@@ -100,7 +93,7 @@ async def test_the_professor_deactivates_and_reactivates(
 
 
 async def test_a_user_edits_their_own_profile(client: AsyncClient, student_a: models.User) -> None:
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     response = await client.patch("/api/v1/users/me", json={"display_name": "Renamed"})
 
@@ -113,7 +106,7 @@ async def test_the_profile_carries_no_language_setting(
 ) -> None:
     """The product is English. A stored language nothing reads is a setting that lies about what
     the next email will be written in, so the field is gone rather than pinned to one value."""
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     response = await client.patch("/api/v1/users/me", json={"display_name": "Renamed"})
 
@@ -126,7 +119,7 @@ async def test_there_is_no_route_to_change_a_role(
 ) -> None:
     """ADR 0011: a role is fixed at acceptance, so the endpoint is gone rather than guarded —
     even for the professor, who would previously have been allowed through."""
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.patch(f"/api/v1/users/{student_b.id}/role", json={"role": "prof"})
 
@@ -136,7 +129,7 @@ async def test_there_is_no_route_to_change_a_role(
 async def test_only_the_professor_removes_a_student(
     client: AsyncClient, student_a: models.User, student_b: models.User
 ) -> None:
-    await _sign_in(client, student_a)
+    await login(client, student_a)
 
     response = await client.post(f"/api/v1/users/{student_b.id}/remove")
 
@@ -146,7 +139,7 @@ async def test_only_the_professor_removes_a_student(
 async def test_the_professor_removes_a_student(
     client: AsyncClient, prof: models.User, student_b: models.User
 ) -> None:
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.post(f"/api/v1/users/{student_b.id}/remove")
 
@@ -161,7 +154,7 @@ async def test_a_professor_account_is_not_removable_over_http(
     from tests.factories import make_user
 
     colleague = await make_user(db, workspace, role=Role.PROF, email="colleague@example.edu")
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.post(f"/api/v1/users/{colleague.id}/remove")
 
@@ -190,7 +183,7 @@ async def test_listing_users_requires_a_session(client: AsyncClient) -> None:
 async def test_a_malformed_cursor_is_a_bad_request(
     client: AsyncClient, prof: models.User, cursor: str, why: str
 ) -> None:
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     response = await client.get("/api/v1/users", params={"cursor": cursor})
 
@@ -201,7 +194,7 @@ async def test_a_malformed_cursor_is_a_bad_request(
 async def test_a_valid_cursor_still_pages(
     client: AsyncClient, prof: models.User, student_a: models.User, student_b: models.User
 ) -> None:
-    await _sign_in(client, prof)
+    await login(client, prof)
 
     first = (await client.get("/api/v1/users", params={"limit": 1})).json()
     assert first["next_cursor"]

@@ -18,8 +18,7 @@ from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
-from tests.acceptance.conftest import entry
-from tests.factories import DEFAULT_PASSWORD
+from tests.factories import login, make_week, submit
 
 pytestmark = pytest.mark.acceptance
 
@@ -30,12 +29,9 @@ async def test_ac_02_another_students_report_is_not_readable(
     prof_scope: Scope,
     student_a: identity_models.User,
     student_b: identity_models.User,
-    week_for,
 ) -> None:
-    week = await week_for(db, prof_scope, student_a)
-    await reporting_service.submit_report(
-        db, week.student_scope, period_id=week.period.id, entries=[entry(week.projects[0].id)]
-    )
+    week = await make_week(db, prof_scope, [student_a])
+    await submit(db, student_a, week)
     other = await identity_service.scope_for(db, student_b)
 
     # Through the service.
@@ -59,9 +55,7 @@ async def test_ac_02_another_students_report_is_not_readable(
     assert rows == []
 
     # Through HTTP.
-    await client.post(
-        "/api/v1/auth/login", json={"email": student_b.email, "password": DEFAULT_PASSWORD}
-    )
+    await login(client, student_b)
     response = await client.get(
         f"/api/v1/periods/{week.period.id}/report", params={"student_id": str(student_a.id)}
     )

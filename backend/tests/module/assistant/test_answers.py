@@ -19,7 +19,7 @@ from app.assistant import service
 from app.core.authz import Scope
 from app.identity import models as identity_models
 from app.identity import service as identity_service
-from tests.module.assistant.conftest import AFTER_THE_WEEK
+from tests.module.assistant.conftest import AFTER_THE_WEEK, submit_entry
 
 pytestmark = pytest.mark.module
 
@@ -29,11 +29,10 @@ async def test_an_answer_states_its_time_range_and_its_scope(
     prof_scope: Scope,
     student_a: identity_models.User,
     build_week,
-    submit_entry,
 ) -> None:
     """QA-03: an answer without its scope cannot be checked or followed up."""
-    workspace = await build_week(db, prof_scope, [student_a])
-    await submit_entry(db, student_a, workspace)
+    week = await build_week(db, prof_scope, [student_a])
+    await submit_entry(db, student_a, week)
 
     answer = await service.ask(
         db,
@@ -55,11 +54,10 @@ async def test_a_count_is_rendered_from_the_fact_and_never_from_the_model(
     student_a: identity_models.User,
     student_b: identity_models.User,
     build_week,
-    submit_entry,
 ) -> None:
     """AC-15/QA-02: the number in the answer is the number in the obligations table."""
-    workspace = await build_week(db, prof_scope, [student_a, student_b])
-    await submit_entry(db, student_a, workspace)
+    week = await build_week(db, prof_scope, [student_a, student_b])
+    await submit_entry(db, student_a, week)
     gateway = FakeGateway(
         responses={
             "route_question": RoutePlan(intent="fact", fact_functions=["missing_reports"]),
@@ -118,11 +116,10 @@ async def test_a_citation_the_model_invented_is_dropped_and_the_drop_is_reported
     prof_scope: Scope,
     student_a: identity_models.User,
     build_week,
-    submit_entry,
 ) -> None:
     """AC-07: an answer quietly missing its support reads exactly like a well-supported one."""
-    workspace = await build_week(db, prof_scope, [student_a])
-    await submit_entry(db, student_a, workspace)
+    week = await build_week(db, prof_scope, [student_a])
+    await submit_entry(db, student_a, week)
     gateway = FakeGateway(
         responses={
             "route_question": RoutePlan(intent="narrative", search_query="baseline"),
@@ -159,11 +156,10 @@ async def test_read_facts_and_inferred_synthesis_are_separate_fields(
     prof_scope: Scope,
     student_a: identity_models.User,
     build_week,
-    submit_entry,
 ) -> None:
     """QA-03: the reader is entitled to know which is which."""
-    workspace = await build_week(db, prof_scope, [student_a])
-    await submit_entry(db, student_a, workspace)
+    week = await build_week(db, prof_scope, [student_a])
+    await submit_entry(db, student_a, week)
 
     answer = await service.ask(
         db,
@@ -187,17 +183,16 @@ async def test_a_supervision_note_never_reaches_a_students_answer(
     prof_scope: Scope,
     student_a: identity_models.User,
     build_week,
-    submit_entry,
 ) -> None:
     """QA-06: the student branch does not make the call that would retrieve it."""
-    workspace = await build_week(db, prof_scope, [student_a])
-    await submit_entry(db, student_a, workspace)
+    week = await build_week(db, prof_scope, [student_a])
+    await submit_entry(db, student_a, week)
     await assessment_service.add_supervision_note(
         db,
         prof_scope,
         body="Consider moving this student off the baseline work before the review.",
         student_id=student_a.id,
-        project_id=workspace.project.id,
+        project_id=week.project.id,
     )
     student_scope = await identity_service.scope_for(db, student_a)
 
@@ -219,12 +214,11 @@ async def test_a_student_cannot_read_another_students_work_through_the_assistant
     student_a: identity_models.User,
     student_b: identity_models.User,
     build_week,
-    submit_entry,
 ) -> None:
     """AC-02: the same predicate that denies the API denies retrieval."""
-    workspace = await build_week(db, prof_scope, [student_a, student_b])
+    week = await build_week(db, prof_scope, [student_a, student_b])
     await submit_entry(
-        db, student_a, workspace, work_performed="Discovered a leak in the evaluation split."
+        db, student_a, week, work_performed="Discovered a leak in the evaluation split."
     )
     outsider = await identity_service.scope_for(db, student_b)
 
@@ -286,11 +280,10 @@ async def test_a_failed_generation_step_still_returns_the_computed_facts(
     student_a: identity_models.User,
     student_b: identity_models.User,
     build_week,
-    submit_entry,
 ) -> None:
     """AC-13: the deterministic half of the answer does not depend on the provider."""
-    workspace = await build_week(db, prof_scope, [student_a, student_b])
-    await submit_entry(db, student_a, workspace)
+    week = await build_week(db, prof_scope, [student_a, student_b])
+    await submit_entry(db, student_a, week)
 
     answer = await service.ask(
         db,
@@ -312,10 +305,10 @@ async def test_a_failed_generation_step_still_returns_the_computed_facts(
 
 
 async def test_a_spent_budget_is_named_rather_than_looking_like_an_empty_answer(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, build_week, submit_entry
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, build_week
 ) -> None:
-    workspace = await build_week(db, prof_scope, [student_a])
-    await submit_entry(db, student_a, workspace)
+    week = await build_week(db, prof_scope, [student_a])
+    await submit_entry(db, student_a, week)
     await identity_service.set_ai_budgets(db, prof_scope, {"monthly_usd": "0"})
 
     from app.ai.gateway import OpenAIGateway

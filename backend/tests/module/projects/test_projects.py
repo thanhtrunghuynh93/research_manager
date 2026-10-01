@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -17,8 +18,12 @@ from app.core.types import Role
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import models, service
+from tests.factories import make_project
 
 pytestmark = pytest.mark.module
+
+# The status `create_project` gives (no activation), with a description like a real record's.
+AS_CREATED = {"active": False, "description": "Evaluate the published baselines on our dataset."}
 
 
 def _workspace_today() -> date:
@@ -28,16 +33,6 @@ def _workspace_today() -> date:
     assertions below pass for seventeen hours of every day and fail for the other seven.
     """
     return local_date(now(), "Asia/Ho_Chi_Minh")
-
-
-async def _project(db: AsyncSession, scope: Scope, title: str = "Baseline evaluation") -> object:
-    return await service.create_project(
-        db,
-        scope,
-        title=title,
-        description="Evaluate the published baselines on our dataset.",
-        stage=models.ResearchStage.IMPLEMENTATION,
-    )
 
 
 async def test_the_professor_creates_a_project_with_its_research_record(
@@ -66,7 +61,7 @@ async def test_a_student_starts_their_own_project_and_is_on_it(
 ) -> None:
     # PROJ-07. Active rather than proposed, because there is no second party to activate it, and a
     # proposed project derives no obligation — the student would have a page and no weekly report.
-    project = await _project(db, student_a_scope, title="My own project")
+    project = await make_project(db, student_a_scope, title="My own project", **AS_CREATED)
 
     assert project.status is models.ProjectStatus.ACTIVE
     assert project.created_by == student_a.id
@@ -82,8 +77,8 @@ async def test_a_student_starts_their_own_project_and_is_on_it(
 async def test_a_student_sees_only_the_projects_they_belong_to(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    joined = await _project(db, prof_scope, title="Joined")
-    await _project(db, prof_scope, title="Not joined")
+    joined = await make_project(db, prof_scope, title="Joined", **AS_CREATED)
+    await make_project(db, prof_scope, title="Not joined", **AS_CREATED)
     await service.add_member(db, prof_scope, joined.id, student_id=student_a.id)
 
     scope = await identity_service.scope_for(db, student_a)
@@ -95,7 +90,7 @@ async def test_a_student_sees_only_the_projects_they_belong_to(
 async def test_membership_is_what_fills_a_students_scope(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     scope = await identity_service.scope_for(db, student_a)
@@ -110,15 +105,9 @@ async def test_ending_a_membership_removes_access_and_advances_the_epoch(
     student_a: identity_models.User,
 ) -> None:
     # AUTH-03: removing a membership invalidates subsequent access and cached answers.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
-    before = (
-        await db.execute(
-            select(identity_models.Workspace.access_epoch).where(
-                identity_models.Workspace.id == workspace.id
-            )
-        )
-    ).scalar_one()
+    before = await _epoch(db, workspace.id)
 
     await service.end_membership(db, prof_scope, membership.id)
 
@@ -136,7 +125,7 @@ async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
     keyed to `student_id` — and every one of those refers to the project by id. Without the record
     they render as a bare uuid and the page they link to is a refusal.
     """
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     await service.record_decision(
         db, prof_scope, project.id, decision="Freeze the split", rationale="Comparability"
@@ -161,7 +150,7 @@ async def test_a_project_never_worked_on_stays_invisible(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     """The widening is "was ever on it", not "is in the workspace"."""
-    project = await _project(db, prof_scope, title="Someone else's project")
+    project = await make_project(db, prof_scope, title="Someone else's project", **AS_CREATED)
     scope = await identity_service.scope_for(db, student_a)
 
     with pytest.raises(NotFoundError):
@@ -171,7 +160,7 @@ async def test_a_project_never_worked_on_stays_invisible(
 async def test_a_departure_dated_in_the_future_keeps_access_until_then(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     later = _workspace_today() + timedelta(days=30)
 
@@ -185,7 +174,7 @@ async def test_ending_a_membership_keeps_the_history(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     # PROJ-02: retain membership history instead of deleting it when a student leaves.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     ended = await service.end_membership(db, prof_scope, membership.id, left_on=date(2026, 10, 1))
@@ -206,7 +195,7 @@ async def test_ending_a_membership_keeps_the_history(
 async def test_the_same_student_cannot_hold_two_active_memberships(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     with pytest.raises(ConflictError):
@@ -218,7 +207,7 @@ async def test_a_student_can_rejoin_after_leaving(
 ) -> None:
     # Relative to today: fixed dates made this pass only until the second join was in the past.
     today = _workspace_today()
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     first = await service.add_member(
         db, prof_scope, project.id, student_id=student_a.id, joined_on=today - timedelta(days=30)
     )
@@ -238,7 +227,7 @@ async def test_a_membership_cannot_reach_into_another_workspace(
 ) -> None:
     from tests.factories import make_user, make_workspace
 
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     other = await make_workspace(db, name="Another Lab")
     outsider = await make_user(db, other)
 
@@ -249,7 +238,7 @@ async def test_a_membership_cannot_reach_into_another_workspace(
 async def test_the_professor_cannot_be_enrolled_as_a_student(
     db: AsyncSession, prof_scope: Scope, prof: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
 
     with pytest.raises(ConflictError):
         await service.add_member(db, prof_scope, project.id, student_id=prof.id)
@@ -259,7 +248,7 @@ async def test_a_student_cannot_enrol_another_student(
     db: AsyncSession, prof_scope: Scope, student_b: identity_models.User, student_a_scope: Scope
 ) -> None:
     # PROJ-07 opened joining, not assigning: a student speaks for themselves and no one else.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
 
     with pytest.raises(ForbiddenError):
         await service.add_member(db, student_a_scope, project.id, student_id=student_b.id)
@@ -272,7 +261,7 @@ async def test_project_members_can_see_each_other(
     student_b: identity_models.User,
 ) -> None:
     # UI-03: the project workspace lists its members to the people working on it.
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     await service.add_member(db, prof_scope, project.id, student_id=student_b.id)
 
@@ -285,7 +274,7 @@ async def test_project_members_can_see_each_other(
 async def test_a_non_member_cannot_read_the_project(
     db: AsyncSession, prof_scope: Scope, student_a_scope: Scope
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
 
     with pytest.raises(NotFoundError):
         await service.get_project(db, student_a_scope, project.id)
@@ -294,7 +283,7 @@ async def test_a_non_member_cannot_read_the_project(
 async def test_the_status_moves_through_the_documented_states(
     db: AsyncSession, prof_scope: Scope
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
 
     for status in (
         models.ProjectStatus.ACTIVE,
@@ -309,7 +298,7 @@ async def test_the_status_moves_through_the_documented_states(
 async def test_project_and_membership_changes_are_audited(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     await service.end_membership(db, prof_scope, membership.id, left_on=date(2026, 10, 1))
 
@@ -321,7 +310,7 @@ async def test_project_and_membership_changes_are_audited(
 
 
 async def _open_project(db: AsyncSession, prof_scope: Scope, title: str = "Open project") -> object:
-    project = await _project(db, prof_scope, title=title)
+    project = await make_project(db, prof_scope, title=title, **AS_CREATED)
     return await service.update_project(
         db,
         prof_scope,
@@ -335,7 +324,7 @@ async def test_the_joinable_list_offers_only_what_the_professor_opened(
     db: AsyncSession, prof_scope: Scope, student_a_scope: Scope
 ) -> None:
     opened = await _open_project(db, prof_scope, title="Open")
-    await _project(db, prof_scope, title="Closed")
+    await make_project(db, prof_scope, title="Closed", **AS_CREATED)
     archived = await _open_project(db, prof_scope, title="Archived")
     await service.update_project(db, prof_scope, archived.id, status=models.ProjectStatus.ARCHIVED)
 
@@ -373,7 +362,7 @@ async def test_a_student_joins_an_open_project_and_can_then_read_it(
 async def test_a_closed_project_cannot_be_joined(
     db: AsyncSession, prof_scope: Scope, student_a_scope: Scope
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     await service.update_project(db, prof_scope, project.id, status=models.ProjectStatus.ACTIVE)
 
     with pytest.raises(NotFoundError):
@@ -495,7 +484,7 @@ async def test_the_professor_may_back_date_an_ending(
 async def test_the_creator_edits_the_record_but_not_its_standing(
     db: AsyncSession, student_a_scope: Scope
 ) -> None:
-    project = await _project(db, student_a_scope, title="Mine")
+    project = await make_project(db, student_a_scope, title="Mine", **AS_CREATED)
 
     renamed = await service.update_project(db, student_a_scope, project.id, title="Renamed")
     assert renamed.title == "Renamed"
@@ -512,7 +501,7 @@ async def test_the_creator_edits_the_record_but_not_its_standing(
 async def test_a_member_who_did_not_create_the_project_cannot_edit_it(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     scope = await identity_service.scope_for(db, student_a)
@@ -524,7 +513,7 @@ async def test_the_creator_keeps_the_record_after_leaving_it(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User, student_a_scope: Scope
 ) -> None:
     # AUTH-07 outlives the membership, so `project_visible_to` has to grant the creator the row.
-    project = await _project(db, student_a_scope, title="Mine")
+    project = await make_project(db, student_a_scope, title="Mine", **AS_CREATED)
     members = await service.list_members(db, student_a_scope, project.id)
     # The professor ends it now (ADR 0019); what is being tested is what survives it.
     await service.end_membership(db, prof_scope, members[0].id)
@@ -567,7 +556,7 @@ async def test_the_repository_link_is_optional_and_blank_means_absent(
     db: AsyncSession, student_a_scope: Scope
 ) -> None:
     # Absent and empty must not be two states, or every screen decides for itself what "" means.
-    omitted = await _project(db, student_a_scope, title="No repo")
+    omitted = await make_project(db, student_a_scope, title="No repo", **AS_CREATED)
     assert omitted.repo_url is None
 
     blanked = await service.update_project(db, student_a_scope, omitted.id, repo_url="   ")
@@ -577,7 +566,7 @@ async def test_the_repository_link_is_optional_and_blank_means_absent(
 async def test_the_creator_may_change_the_repository_link(
     db: AsyncSession, student_a_scope: Scope
 ) -> None:
-    project = await _project(db, student_a_scope, title="Mine")
+    project = await make_project(db, student_a_scope, title="Mine", **AS_CREATED)
 
     updated = await service.update_project(
         db, student_a_scope, project.id, repo_url="git@github.com:lab/mine.git"
@@ -597,7 +586,7 @@ async def test_a_membership_created_after_local_midnight_grants_access_at_once(
     db: AsyncSession,
     prof_scope: Scope,
     student_a: identity_models.User,
-    monkeypatch: pytest.MonkeyPatch,
+    frozen_now: Callable[[datetime], None],
 ) -> None:
     """A project that owes a report this week is a project its member may write to.
 
@@ -606,9 +595,9 @@ async def test_a_membership_created_after_local_midnight_grants_access_at_once(
     weekly entry but could not attach a file to it: "not a member of this project".
     """
     just_after_local_midnight = datetime(2026, 9, 19, 17, 30, tzinfo=UTC)
-    monkeypatch.setattr("app.identity.service.now", lambda: just_after_local_midnight, raising=True)
+    frozen_now(just_after_local_midnight)
 
-    project = await _project(db, prof_scope, title="Assigned just after midnight")
+    project = await make_project(db, prof_scope, title="Assigned just after midnight", **AS_CREATED)
     await service.update_project(db, prof_scope, project.id, status="active")
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
@@ -623,13 +612,13 @@ async def test_an_ending_is_dated_by_the_workspaces_today(
     db: AsyncSession,
     prof_scope: Scope,
     student_a: identity_models.User,
-    monkeypatch: pytest.MonkeyPatch,
+    frozen_now: Callable[[datetime], None],
 ) -> None:
     """An ending is dated on the workspace's calendar, not the host's (REP-01)."""
     just_after_local_midnight = datetime(2026, 9, 19, 17, 30, tzinfo=UTC)
-    monkeypatch.setattr("app.identity.service.now", lambda: just_after_local_midnight, raising=True)
+    frozen_now(just_after_local_midnight)
 
-    project = await _project(db, prof_scope, title="Left just after midnight")
+    project = await make_project(db, prof_scope, title="Left just after midnight", **AS_CREATED)
     await service.update_project(db, prof_scope, project.id, status="active")
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
@@ -645,7 +634,7 @@ async def _assigned_task(
     db: AsyncSession, prof_scope: Scope, student: identity_models.User
 ) -> tuple[object, object]:
     """A project the student is on, and a task on it assigned to them."""
-    project = await _project(db, prof_scope, title="Tasked")
+    project = await make_project(db, prof_scope, title="Tasked", **AS_CREATED)
     await service.add_member(db, prof_scope, project.id, student_id=student.id)
     task = await service.create_task(
         db,
@@ -748,8 +737,8 @@ async def test_a_student_may_not_unassign_themselves_from_their_task(
 async def test_a_membership_is_ended_only_under_its_own_project(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope, title="Theirs")
-    other = await _project(db, prof_scope, title="Another")
+    project = await make_project(db, prof_scope, title="Theirs", **AS_CREATED)
+    other = await make_project(db, prof_scope, title="Another", **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     with pytest.raises(NotFoundError):
@@ -764,7 +753,7 @@ async def test_a_membership_ending_in_the_future_still_blocks_a_second_one(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     """A future `left_on` is a membership still in force; a second row would overlap it."""
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     later = _workspace_today() + timedelta(days=14)
     await service.end_membership(db, prof_scope, membership.id, left_on=later)
@@ -776,7 +765,7 @@ async def test_a_membership_ending_in_the_future_still_blocks_a_second_one(
 async def test_a_membership_ending_in_the_future_is_still_listed_as_current(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project = await _project(db, prof_scope)
+    project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
     later = _workspace_today() + timedelta(days=14)
     await service.end_membership(db, prof_scope, membership.id, left_on=later)

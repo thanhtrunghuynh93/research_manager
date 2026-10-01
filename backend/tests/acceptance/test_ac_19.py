@@ -6,7 +6,8 @@ job sends no duplicate.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import update
@@ -19,14 +20,11 @@ from app.identity import service as identity_service
 from app.notifications import repository as notifications_repository
 from app.notifications import service as notifications
 from app.notifications.email.console import ConsoleEmailSender
-from app.projects import service as projects_service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
-from tests.factories import make_user
+from tests.factories import make_entry, make_user, make_week, submit
 
 pytestmark = pytest.mark.acceptance
-
-TZ = "Asia/Ho_Chi_Minh"
 
 
 async def test_ac_19_exactly_one_email_reaches_the_student_who_owes_a_report(
@@ -34,30 +32,20 @@ async def test_ac_19_exactly_one_email_reaches_the_student_who_owes_a_report(
     workspace: identity_models.Workspace,
     prof: identity_models.User,
     prof_scope: Scope,
+    frozen_now: Callable[[datetime], None],
 ) -> None:
+    # Inside the week of 14 September, the one this scenario is about. Left to the wall clock,
+    # saving the calendar opens every week up to today and their reminders come due too.
+    frozen_now(datetime(2026, 9, 15, 3, 0, tzinfo=UTC))
     unsubmitted = await make_user(db, workspace, email="unsubmitted@example.edu")
     on_time = await make_user(db, workspace, email="on-time@example.edu")
     on_leave = await make_user(db, workspace, email="on-leave@example.edu")
 
-    await reporting_service.configure_calendar(
-        db,
-        prof_scope,
-        timezone=TZ,
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
+    week = await make_week(
+        db, prof_scope, [unsubmitted, on_time, on_leave], title="Baseline evaluation"
     )
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline evaluation", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    for student in (unsubmitted, on_time, on_leave):
-        await projects_service.add_member(
-            db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
-        )
-
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    obligations = await reporting_service.ensure_obligations(db, prof_scope, period.id)
+    period = week.period
+    obligations = await reporting_service.list_obligations(db, prof_scope, period.id)
 
     # The third student is on approved leave for the week.
     excused = next(o for o in obligations if o.student_id == on_leave.id)
@@ -72,19 +60,8 @@ async def test_ac_19_exactly_one_email_reaches_the_student_who_owes_a_report(
         .where(reporting_models.ReportingPeriod.id == period.id)
         .values(deadline_utc=deadline, reminder_due_utc=reminder_due(deadline))
     )
-    submitter_scope = await identity_service.scope_for(db, on_time)
-    await reporting_service.submit_report(
-        db,
-        submitter_scope,
-        period_id=period.id,
-        entries=[
-            {
-                "project_id": project.id,
-                "stage": "implementation",
-                "work_performed": "Finished the loader",
-                "next_plan": {},
-            }
-        ],
+    await submit(
+        db, on_time, week, make_entry(week.project.id, work="Finished the loader", next_plan={})
     )
 
     # 00:00 local on the meeting day: the periodic scan runs.
@@ -130,24 +107,8 @@ async def test_ac_19_the_email_says_what_is_missing_and_nothing_else(
     """The message lists the recipient's missing entries and the submit link, states the late or
     grace outcome, and contains no assessment content and no other student's information (REP-08).
     """
-    await reporting_service.configure_calendar(
-        db,
-        prof_scope,
-        timezone=TZ,
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
-    )
-    project = await projects_service.create_project(
-        db, prof_scope, title="Baseline evaluation", stage="implementation"
-    )
-    await projects_service.update_project(db, prof_scope, project.id, status="active")
-    for student in (student_a, student_b):
-        await projects_service.add_member(
-            db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
-        )
-    period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await reporting_service.ensure_obligations(db, prof_scope, period.id)
+    week = await make_week(db, prof_scope, [student_a, student_b], title="Baseline evaluation")
+    period = week.period
     await db.execute(
         update(reporting_models.ReportingPeriod)
         .where(reporting_models.ReportingPeriod.id == period.id)

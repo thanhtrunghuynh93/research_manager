@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
@@ -26,7 +27,7 @@ from app.evidence.connectors.base import (
     Review,
 )
 from app.evidence.connectors.fake import FakeRepositoryConnector
-from app.projects import service as projects_service
+from tests.factories import make_project
 
 pytestmark = pytest.mark.module
 
@@ -49,18 +50,10 @@ def _commit(
     )
 
 
-async def _project(db: AsyncSession, scope: Scope) -> object:
-    project = await projects_service.create_project(
-        db, scope, title="Baseline evaluation", stage="implementation"
-    )
-    await projects_service.update_project(db, scope, project.id, status="active")
-    return project
-
-
 async def _connected(
     db: AsyncSession, scope: Scope, connector: FakeRepositoryConnector
 ) -> tuple[object, object]:
-    project = await _project(db, scope)
+    project = await make_project(db, scope)
     repository = await service.connect_repository(
         db,
         scope,
@@ -361,7 +354,7 @@ async def test_an_ingested_event_cannot_be_rewritten(db: AsyncSession, prof_scop
     _, repository = await _connected(db, prof_scope, connector)
     await service.sync_repository(db, prof_scope, repository.id, connector=connector)
 
-    with pytest.raises(Exception, match="immutable"):
+    with pytest.raises(DBAPIError, match="immutable"):
         await db.execute(
             update(models.RepositoryEvent)
             .where(models.RepositoryEvent.repository_id == repository.id)
@@ -374,8 +367,8 @@ async def test_a_repository_can_serve_several_projects(db: AsyncSession, prof_sc
     # REPO-01: multiple repositories per project, and a repository may serve several projects.
     connector = FakeRepositoryConnector()
     first_project, repository = await _connected(db, prof_scope, connector)
-    second_project = await projects_service.create_project(
-        db, prof_scope, title="Theory", stage="theory"
+    second_project = await make_project(
+        db, prof_scope, title="Theory", stage="theory", active=False
     )
 
     await service.link_project(

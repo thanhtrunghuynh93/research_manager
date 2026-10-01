@@ -7,11 +7,12 @@ is created for work nobody touched.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
@@ -21,26 +22,16 @@ from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import models, service
+from tests.factories import TZ, Week, make_entry, make_week
 
 pytestmark = pytest.mark.module
 
-TZ = "Asia/Ho_Chi_Minh"
 
+@dataclass
+class StudentWeek(Week):
+    """A configured week with a student enrolled on its projects, and that student's scope."""
 
-class Week:
-    """One configured period with a student enrolled on two active projects."""
-
-    def __init__(
-        self,
-        period: object,
-        projects: list[object],
-        student_scope: Scope,
-        memberships: list[object] | None = None,
-    ) -> None:
-        self.period = period
-        self.projects = projects
-        self.scope = student_scope
-        self.memberships = memberships or []
+    scope: Scope = field(kw_only=True)
 
 
 async def _week(
@@ -50,45 +41,12 @@ async def _week(
     *,
     project_count: int = 2,
     grace_minutes: int = 0,
-) -> Week:
-    await service.configure_calendar(
-        db,
-        prof_scope,
-        timezone=TZ,
-        meeting_weekday=0,
-        week_start_weekday=0,
-        effective_from=date(2026, 9, 14),
-        grace_minutes=grace_minutes,
+) -> StudentWeek:
+    week = await make_week(
+        db, prof_scope, [student], projects=project_count, grace_minutes=grace_minutes
     )
-    projects = []
-    memberships = []
-    for index in range(project_count):
-        project = await projects_service.create_project(
-            db, prof_scope, title=f"Project {index}", stage="implementation"
-        )
-        await projects_service.update_project(db, prof_scope, project.id, status="active")
-        memberships.append(
-            await projects_service.add_member(
-                db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 14)
-            )
-        )
-        projects.append(project)
-
-    period = (await service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
-    await service.ensure_obligations(db, prof_scope, period.id)
-    return Week(period, projects, await identity_service.scope_for(db, student), memberships)
-
-
-def _entry(project_id: object, work: str = "Implemented the data loader") -> dict[str, object]:
-    return {
-        "project_id": project_id,
-        "stage": "implementation",
-        "work_performed": work,
-        "results": "The loader reproduces the published split sizes.",
-        "deviations": "",
-        "next_plan": {"items": [{"planned_outcome": "Run the baseline end to end"}]},
-        "questions": "",
-    }
+    scope = await identity_service.scope_for(db, student)
+    return StudentWeek(week.period, week.projects, week.memberships, scope=scope)
 
 
 async def test_one_package_carries_an_entry_for_every_required_project(
@@ -101,7 +59,7 @@ async def test_one_package_carries_an_entry_for_every_required_project(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id), _entry(week.projects[1].id)],
+        entries=[make_entry(week.projects[0].id), make_entry(week.projects[1].id)],
     )
 
     assert version.version_no == 1
@@ -116,7 +74,7 @@ async def test_a_package_missing_a_required_project_is_refused(
 
     with pytest.raises(ValidationError):
         await service.submit_report(
-            db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+            db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
         )
 
 
@@ -159,7 +117,7 @@ async def test_an_entry_with_every_box_empty_is_refused_by_name(
             week.scope,
             period_id=week.period.id,
             entries=[
-                _entry(week.projects[0].id),
+                make_entry(week.projects[0].id),
                 {"project_id": week.projects[1].id, "stage": "theory", "work_performed": ""},
             ],
         )
@@ -196,7 +154,7 @@ async def test_an_entry_with_nothing_written_does_not_discharge_its_obligation(
             week.scope,
             period_id=week.period.id,
             entries=[
-                _entry(week.projects[0].id),
+                make_entry(week.projects[0].id),
                 {"project_id": week.projects[1].id, "stage": "theory", **blank},
             ],
         )
@@ -215,7 +173,7 @@ async def test_an_entry_with_only_a_plan_counts_as_written(
         week.scope,
         period_id=week.period.id,
         entries=[
-            _entry(week.projects[0].id),
+            make_entry(week.projects[0].id),
             {
                 "project_id": week.projects[1].id,
                 "stage": "theory",
@@ -244,7 +202,7 @@ async def test_an_obligation_says_whether_its_entry_was_submitted(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id), _entry(week.projects[1].id)],
+        entries=[make_entry(week.projects[0].id), make_entry(week.projects[1].id)],
     )
 
     after = await service.list_obligations(db, week.scope, week.period.id)
@@ -260,7 +218,7 @@ async def test_an_excused_project_needs_no_entry(
     await service.excuse_obligation(db, prof_scope, excused.id, reason="Project paused for leave")
 
     version = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
     assert [e.project_id for e in version.entries] == [week.projects[0].id]
@@ -288,10 +246,10 @@ async def test_submission_creates_an_immutable_version(
     # REP-05: submission creates an immutable version.
     week = await _week(db, prof_scope, student_a, project_count=1)
     version = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
-    with pytest.raises(Exception, match="immutable"):
+    with pytest.raises(DBAPIError, match="immutable"):
         await db.execute(
             update(models.ReportVersion)
             .where(models.ReportVersion.id == version.id)
@@ -304,7 +262,7 @@ async def test_a_retried_submission_does_not_create_a_second_version(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
     week = await _week(db, prof_scope, student_a, project_count=1)
-    entries = [_entry(week.projects[0].id)]
+    entries = [make_entry(week.projects[0].id)]
 
     first = await service.submit_report(
         db, week.scope, period_id=week.period.id, entries=entries, idempotency_key="abc123"
@@ -322,7 +280,7 @@ async def test_the_original_submission_time_survives_later_versions(
     # REP-07 / AC-13: reminders and review status must not change the original submission time.
     week = await _week(db, prof_scope, student_a, project_count=1)
     await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
     report = await service.get_report(db, week.scope, period_id=week.period.id)
     first_submitted_at = report.first_submitted_at
@@ -334,7 +292,7 @@ async def test_the_original_submission_time_survives_later_versions(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id, work="Implemented the loader and the setup")],
+        entries=[make_entry(week.projects[0].id, work="Implemented the loader and the setup")],
     )
 
     after = await service.get_report(db, week.scope, period_id=week.period.id)
@@ -350,7 +308,7 @@ async def test_a_resubmission_keeps_the_unchanged_entry_pointing_at_its_old_vers
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id), _entry(week.projects[1].id)],
+        entries=[make_entry(week.projects[0].id), make_entry(week.projects[1].id)],
     )
     report = await service.get_report(db, week.scope, period_id=week.period.id)
     await service.request_revision(
@@ -366,8 +324,8 @@ async def test_a_resubmission_keeps_the_unchanged_entry_pointing_at_its_old_vers
         week.scope,
         period_id=week.period.id,
         entries=[
-            _entry(week.projects[0].id, work="Implemented the loader; compared against CNN-B"),
-            _entry(week.projects[1].id),
+            make_entry(week.projects[0].id, work="Implemented the loader; compared against CNN-B"),
+            make_entry(week.projects[1].id),
         ],
     )
 
@@ -398,7 +356,7 @@ async def test_leaving_a_project_does_not_make_the_week_unsubmittable(
     assert [o.project_id for o in still_owed] == [week.projects[1].id]
 
     version = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[1].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[1].id)]
     )
 
     assert [e.project_id for e in version.entries] == [week.projects[1].id]
@@ -419,8 +377,8 @@ async def test_a_resubmission_keeps_the_entry_for_a_project_since_left(
         week.scope,
         period_id=week.period.id,
         entries=[
-            _entry(week.projects[0].id, work="Ran the ablation over the 2019 split"),
-            _entry(week.projects[1].id),
+            make_entry(week.projects[0].id, work="Ran the ablation over the 2019 split"),
+            make_entry(week.projects[1].id),
         ],
     )
     await projects_service.end_membership(
@@ -431,7 +389,7 @@ async def test_a_resubmission_keeps_the_entry_for_a_project_since_left(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[1].id, work="Wrote the method section")],
+        entries=[make_entry(week.projects[1].id, work="Wrote the method section")],
     )
 
     carried = next(e for e in second.entries if e.project_id == week.projects[0].id)
@@ -454,13 +412,13 @@ async def test_the_version_number_counts_from_the_history_not_from_the_current_v
     """
     week = await _week(db, prof_scope, student_a, project_count=1)
     first = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
     second = await service.submit_report(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id, work="Second pass over the loader")],
+        entries=[make_entry(week.projects[0].id, work="Second pass over the loader")],
     )
     assert (first.version_no, second.version_no) == (1, 2)
 
@@ -476,7 +434,7 @@ async def test_the_version_number_counts_from_the_history_not_from_the_current_v
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id, work="Third pass, after the rollback")],
+        entries=[make_entry(week.projects[0].id, work="Third pass, after the rollback")],
     )
 
     assert third.version_no == 3, "one past the highest, not one past the current"
@@ -488,14 +446,14 @@ async def test_reported_hours_do_not_count_as_a_content_change(
     # Hours are optional self-reported context, never evidence of productivity (REP-03).
     week = await _week(db, prof_scope, student_a, project_count=1)
     first = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
     second = await service.submit_report(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[{**_entry(week.projects[0].id), "hours": 12}],
+        entries=[{**make_entry(week.projects[0].id), "hours": 12}],
     )
 
     entry = second.entries[0]
@@ -511,7 +469,7 @@ async def test_a_late_submission_keeps_its_real_timestamp_and_is_marked_late(
     started = now()
 
     version = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
     assert version.timing_status is models.TimingStatus.LATE
@@ -530,7 +488,7 @@ async def test_an_extension_makes_a_later_submission_on_time(
     )
 
     version = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
     assert version.timing_status is models.TimingStatus.ON_TIME
@@ -558,7 +516,7 @@ async def test_a_student_cannot_submit_for_someone_else(
 
     with pytest.raises(ValidationError):
         await service.submit_report(
-            db, other, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+            db, other, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
         )
 
 
@@ -571,7 +529,7 @@ async def test_a_student_cannot_read_another_students_report(
     # AC-02: access is denied in the API, search, downloads, and exports alike.
     week = await _week(db, prof_scope, student_a, project_count=1)
     await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
     other = await identity_service.scope_for(db, student_b)
 
@@ -584,7 +542,7 @@ async def test_the_professor_reads_every_report_in_the_workspace(
 ) -> None:
     week = await _week(db, prof_scope, student_a, project_count=1)
     await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
     report = await service.get_report(
@@ -603,7 +561,7 @@ async def test_a_revision_request_targets_one_project_entry(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id), _entry(week.projects[1].id)],
+        entries=[make_entry(week.projects[0].id), make_entry(week.projects[1].id)],
     )
     report = await service.get_report(db, week.scope, period_id=week.period.id)
 
@@ -626,7 +584,7 @@ async def test_only_the_professor_requests_a_revision(
 ) -> None:
     week = await _week(db, prof_scope, student_a, project_count=1)
     await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
     report = await service.get_report(db, week.scope, period_id=week.period.id)
 
@@ -649,7 +607,7 @@ async def test_an_entry_for_a_project_the_student_is_not_on_is_refused(
             db,
             week.scope,
             period_id=week.period.id,
-            entries=[_entry(week.projects[0].id), _entry(foreign.id)],
+            entries=[make_entry(week.projects[0].id), make_entry(foreign.id)],
         )
 
 
@@ -689,7 +647,7 @@ async def test_a_submission_inside_the_configured_grace_is_on_time(
     )
 
     version = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
     assert version.timing_status is models.TimingStatus.ON_TIME
@@ -706,7 +664,7 @@ async def test_a_submission_past_the_grace_is_still_late(
     )
 
     version = await service.submit_report(
-        db, week.scope, period_id=week.period.id, entries=[_entry(week.projects[0].id)]
+        db, week.scope, period_id=week.period.id, entries=[make_entry(week.projects[0].id)]
     )
 
     assert version.timing_status is models.TimingStatus.LATE
@@ -760,7 +718,7 @@ async def test_a_dead_embedding_provider_does_not_lose_the_submission(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id)],
+        entries=[make_entry(week.projects[0].id)],
     )
 
     assert version.version_no == 1, "the week is recorded even though nothing could be indexed"
@@ -790,7 +748,7 @@ async def test_the_failed_indexing_is_queued_rather_than_dropped(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id)],
+        entries=[make_entry(week.projects[0].id)],
     )
 
     # One for the assessment pipeline, one for the re-index: the second is what this fix adds.
@@ -816,7 +774,7 @@ async def test_the_entries_are_indexed_when_the_provider_comes_back(
         db,
         week.scope,
         period_id=week.period.id,
-        entries=[_entry(week.projects[0].id)],
+        entries=[make_entry(week.projects[0].id)],
     )
     monkeypatch.undo()
 
