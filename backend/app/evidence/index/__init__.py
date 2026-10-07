@@ -1,1 +1,1 @@
-"""Chunking and embeddings over evidence_chunks."""
+"""Chunking evidence text into evidence_chunks."""

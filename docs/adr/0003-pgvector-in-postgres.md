@@ -1,6 +1,6 @@
 # ADR 0003 — Full-text and vector search inside Postgres
 
-Status: accepted — 2026-09-11
+Status: superseded by [ADR 0024](0024-no-embeddings.md) — 2026-10-07 (accepted 2026-09-11). Nothing reads embeddings or the full-text column after ADR 0023; both are dropped with the extension.
 
 ## Context
 

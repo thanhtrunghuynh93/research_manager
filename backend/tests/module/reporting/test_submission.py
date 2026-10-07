@@ -689,10 +689,10 @@ async def test_the_missed_deadline_reminder_waits_for_the_grace_to_close(
     assert period.reminder_due_utc > period.deadline_utc + timedelta(minutes=30)
 
 
-# ------------------------------------------------- the submission survives a provider outage
+# ------------------------------------------------- the submission survives a failed index
 
 
-async def test_a_dead_embedding_provider_does_not_lose_the_submission(
+async def test_a_failure_while_indexing_does_not_lose_the_submission(
     db: AsyncSession,
     prof_scope: Scope,
     student_a: identity_models.User,
@@ -701,18 +701,18 @@ async def test_a_dead_embedding_provider_does_not_lose_the_submission(
     """AC-13: the submitted version is the thing that cannot be lost.
 
     Indexing the entries runs inside the submitting transaction so the chunks commit with the
-    version that cites them, and that puts one call to the embedding provider on the student's
-    critical path. `events.emit` runs handlers with no isolation, so a provider that is down, rate
-    limited or out of credit used to surface as a 500 — at 23:59, for every student at once.
+    version that cites them, which puts it on the student's critical path. `events.emit` runs
+    handlers with no isolation, so a failure there — once, an embedding provider out of credit —
+    used to surface as a 500, at 23:59, for every student at once.
     """
     from app.evidence import service as evidence_service
 
     week = await _week(db, prof_scope, student_a, project_count=1)
 
-    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
-        raise RuntimeError("429 insufficient_quota: you have no credits remaining")
+    def _indexing_fails(*args: object, **kwargs: object) -> list[object]:
+        raise RuntimeError("could not index")
 
-    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+    monkeypatch.setattr(evidence_service, "chunk_text", _indexing_fails)
 
     version = await service.submit_report(
         db,
@@ -738,10 +738,10 @@ async def test_the_failed_indexing_is_queued_rather_than_dropped(
 
     week = await _week(db, prof_scope, student_a, project_count=1)
 
-    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
-        raise RuntimeError("provider unavailable")
+    def _indexing_fails(*args: object, **kwargs: object) -> list[object]:
+        raise RuntimeError("could not index")
 
-    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+    monkeypatch.setattr(evidence_service, "chunk_text", _indexing_fails)
     before = len(db.info.get(PENDING_DEFERS, []))
 
     await service.submit_report(
@@ -755,7 +755,7 @@ async def test_the_failed_indexing_is_queued_rather_than_dropped(
     assert len(db.info.get(PENDING_DEFERS, [])) > before + 1
 
 
-async def test_the_entries_are_indexed_when_the_provider_comes_back(
+async def test_the_entries_are_indexed_when_the_retry_runs(
     db: AsyncSession,
     prof_scope: Scope,
     student_a: identity_models.User,
@@ -766,10 +766,10 @@ async def test_the_entries_are_indexed_when_the_provider_comes_back(
 
     week = await _week(db, prof_scope, student_a, project_count=1)
 
-    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
-        raise RuntimeError("provider unavailable")
+    def _indexing_fails(*args: object, **kwargs: object) -> list[object]:
+        raise RuntimeError("could not index")
 
-    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+    monkeypatch.setattr(evidence_service, "chunk_text", _indexing_fails)
     version = await service.submit_report(
         db,
         week.scope,
@@ -790,4 +790,4 @@ async def test_the_entries_are_indexed_when_the_provider_comes_back(
     hits = await evidence_service.evidence_for_sources(
         db, week.scope, source_kind=EvidenceSourceKind.REPORT_ENTRY, source_ids=list(entry_ids)
     )
-    assert hits, "the week is citable once the provider answers again"
+    assert hits, "the week is citable once the retry runs"

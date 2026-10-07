@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.20 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.12, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.21 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.13, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -52,6 +52,11 @@ access epoch that expired the cache. The overview computes the same numbers dire
 notification records nothing read — report submitted and resubmitted, and the professor's in-app
 summary of a missed deadline — are no longer written; the professor sees who is outstanding on the
 overview.
+
+**v0.21 removes embeddings** (requirements 0.13, ADR 0024, migration 0030). Every indexed chunk was
+embedded and nothing read the vectors after v0.20. No route or screen changes: indexing still
+happens when a report is submitted or an attachment is read, and is now chunking alone, with no
+call to a model provider.
 
 ## How to read the tables
 
@@ -486,7 +491,8 @@ to a project, read and trigger its sync, confirm developer identities, list attr
 contributions. None of it had a screen, and none of it was ever used; it was removed with its
 tables (ADR 0022). v0.19 left two ⚙️ routes here, searching the evidence index and opening one
 citable reference; both existed for the assistant and went with it in v0.20 (ADR 0023).
-Embeddings are still computed at index time, are read by nothing, and their removal is pending.
+The embeddings computed at index time, which nothing read after that, were removed in v0.21 (ADR
+0024).
 
 ### 2.8 The assistant — *withdrawn in v0.20*
 

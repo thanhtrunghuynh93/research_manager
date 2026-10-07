@@ -88,10 +88,7 @@ backend/
 │   │   ├── extraction.py      text from markdown, csv, pdf, docx, notebooks
 │   ├── evidence/              the evidence index only; no repository connector (ADR 0022)
 │   │   └── index/
-│   │       ├── chunking.py
-│   │       └── embeddings.py  Embedder protocol + registry; content-hash cache (ai registers the
-│   │                        gateway-backed one at start-up, so evidence never imports app.ai).
-│   │                        Computed at index time and read by nothing since ADR 0023; removal pending
+│   │       └── chunking.py    what an assessment cites; no embeddings since ADR 0024
 │   │   └── tasks.py           retries of report-entry and attachment indexing
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
@@ -122,7 +119,7 @@ backend/
 │   │   └── cli.py             dispatch-missed-deadline, send-queued-emails
 │   ├── ai/
 │   │   ├── gateway.py         AIGateway protocol, OpenAIGateway, prompt framing; the only OpenAI import
-│   │   ├── bootstrap.py       installs the gateway and the embedder at start-up
+│   │   ├── bootstrap.py       installs the gateway at start-up
 │   │   ├── models.py          ai_calls, the cost ledger
 │   │   ├── prompts/
 │   │   │   ├── registry.py    load(prompt_id, version) → Prompt(model, temperature, schema, text)
@@ -258,7 +255,7 @@ All read once by `core/config.py`. Prefix `RM_`.
 | `RM_DATABASE_URL` | api, worker | Postgres DSN |
 | `RM_PUBLIC_URL` | api, worker | Absolute links in emails |
 | `RM_S3_ENDPOINT`, `RM_S3_BUCKET`, `RM_S3_ACCESS_KEY`, `RM_S3_SECRET_KEY` | api, worker | MinIO |
-| `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL`, `RM_OPENAI_EMBED_MODEL` | worker | Gateway only |
+| `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL` | worker | Gateway only |
 | `RM_SMTP_HOST`, `RM_SMTP_PORT`, `RM_SMTP_USER`, `RM_SMTP_PASSWORD`, `RM_MAIL_FROM` | worker | Email |
 | `RM_UPLOAD_MAX_FILE_MB` | api | Default 25 |
 | `RM_LOG_LEVEL`, `RM_LOG_JSON` | all | Observability |
@@ -330,7 +327,7 @@ infra/
 ├── caddy/
 │   └── Caddyfile              TLS, serve frontend/dist, reverse_proxy /api/* api:8000, security headers
 ├── postgres/
-│   ├── init/01_extensions.sql  CREATE EXTENSION vector, pg_trgm
+│   ├── init/01_extensions.sql  CREATE EXTENSION pg_trgm
 │   └── postgresql.conf         tuned parameters for the VPS
 ├── backup/
 │   ├── Dockerfile              postgres client, age, rclone, cron

@@ -2,6 +2,11 @@
 
 Requirements AUTH-02, QA-02, QA-03, QA-06; architecture section 5.7.
 
+The embedding column and its HNSW index are created only when the pgvector extension is installed
+(0001 installs it where the server ships it). 0030 drops both with the extension (ADR 0024), so a
+fresh database on plain postgres:16 skips them here and reaches the same head. The column type is
+spelled locally rather than imported from the `pgvector` package, which is no longer a dependency.
+
 Revision ID: e1cbb35a878b
 Revises: 0008
 Create Date: 2026-09-11 18:54:18.606129+00:00
@@ -11,7 +16,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import pgvector.sqlalchemy
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
@@ -22,7 +26,28 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+class _Vector(sa.types.UserDefinedType[list[float]]):
+    """pgvector's `vector(n)`, without the package that used to supply it."""
+
+    cache_ok = True
+
+    def __init__(self, dim: int) -> None:
+        self.dim = dim
+
+    def get_col_spec(self, **_: object) -> str:
+        return f"vector({self.dim})"
+
+
+def _has_vector() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(sa.text("SELECT 1 FROM pg_extension WHERE extname = 'vector'"))
+        .scalar()
+    )
+
+
 def upgrade() -> None:
+    with_vector = _has_vector()
     op.create_table(
         "evidence_references",
         sa.Column("workspace_id", sa.UUID(), nullable=False),
@@ -100,7 +125,7 @@ def upgrade() -> None:
             sa.Computed("to_tsvector('simple', text)", persisted=True),
             nullable=False,
         ),
-        sa.Column("embedding", pgvector.sqlalchemy.vector.VECTOR(dim=1536), nullable=False),
+        *([sa.Column("embedding", _Vector(1536), nullable=False)] if with_vector else []),
         sa.Column("source_time", sa.DateTime(timezone=True), nullable=False),
         sa.Column(
             "created_at",
@@ -126,15 +151,16 @@ def upgrade() -> None:
             "evidence_ref_id", "chunk_no", name=op.f("uq_evidence_chunks_evidence_ref_id_chunk_no")
         ),
     )
-    op.create_index(
-        "ix_evidence_chunks_embedding",
-        "evidence_chunks",
-        ["embedding"],
-        unique=False,
-        postgresql_using="hnsw",
-        postgresql_with={"m": 16, "ef_construction": 64},
-        postgresql_ops={"embedding": "vector_cosine_ops"},
-    )
+    if with_vector:
+        op.create_index(
+            "ix_evidence_chunks_embedding",
+            "evidence_chunks",
+            ["embedding"],
+            unique=False,
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        )
     op.create_index(
         "ix_evidence_chunks_scope",
         "evidence_chunks",
@@ -149,13 +175,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_evidence_chunks_tsv", table_name="evidence_chunks", postgresql_using="gin")
     op.drop_index("ix_evidence_chunks_scope", table_name="evidence_chunks")
-    op.drop_index(
-        "ix_evidence_chunks_embedding",
-        table_name="evidence_chunks",
-        postgresql_using="hnsw",
-        postgresql_with={"m": 16, "ef_construction": 64},
-        postgresql_ops={"embedding": "vector_cosine_ops"},
-    )
+    op.execute("DROP INDEX IF EXISTS ix_evidence_chunks_embedding")
     op.drop_table("evidence_chunks")
     op.drop_index("ix_evidence_references_project_id_source_time", table_name="evidence_references")
     op.drop_table("evidence_references")

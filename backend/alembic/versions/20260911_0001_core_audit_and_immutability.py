@@ -20,7 +20,20 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # pgvector backed the embedding column 0009 created and 0030 dropped with the extension (ADR
+    # 0024). Created only where the server ships it, so a fresh database on plain postgres:16
+    # replays this history; 0009 adds the column only when the extension is here.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector') THEN
+                CREATE EXTENSION IF NOT EXISTS vector;
+            END IF;
+        END;
+        $$;
+        """
+    )
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
     # Shared trigger function used by every immutable table (architecture section 5.3).

@@ -542,10 +542,10 @@ async def test_an_upload_that_never_arrived_is_not_listed_as_an_attachment(
     assert [row.filename for row in rows] == []
 
 
-# ------------------------------------------- the attachment survives a provider outage (AC-13)
+# ------------------------------------------- the attachment survives a failed index (AC-13)
 
 
-async def test_a_dead_embedding_provider_does_not_lose_the_attachment(
+async def test_a_failure_while_indexing_does_not_lose_the_attachment(
     db: AsyncSession,
     prof_scope,
     student_a: identity_models.User,
@@ -555,18 +555,18 @@ async def test_a_dead_embedding_provider_does_not_lose_the_attachment(
     """The bytes arrived and the text was extracted before anything indexed it.
 
     Indexing runs inside the confirming transaction so the chunks commit with the version that
-    cites them, which puts the embedding provider on the student's upload path. A provider that is
-    down used to surface as a 500 and lose an attachment that was already stored.
+    cites them, which puts it on the student's upload path. A failure there — once, an embedding
+    provider that was down — used to surface as a 500 and lose an attachment already stored.
     """
     from app.evidence import service as evidence_service
 
     _period, project = await _project(db, prof_scope, student_a)
     scope = await identity_service.scope_for(db, student_a)
 
-    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
-        raise RuntimeError("429 insufficient_quota: you have no credits remaining")
+    def _indexing_fails(*args: object, **kwargs: object) -> list[object]:
+        raise RuntimeError("could not index")
 
-    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+    monkeypatch.setattr(evidence_service, "chunk_text", _indexing_fails)
 
     uploaded = await _upload(db, scope, store, project)
 
@@ -577,7 +577,7 @@ async def test_a_dead_embedding_provider_does_not_lose_the_attachment(
     )
 
 
-async def test_the_attachment_is_indexed_when_the_provider_comes_back(
+async def test_the_attachment_is_indexed_when_the_retry_runs(
     db: AsyncSession,
     prof_scope,
     student_a: identity_models.User,
@@ -590,10 +590,10 @@ async def test_the_attachment_is_indexed_when_the_provider_comes_back(
     _period, project = await _project(db, prof_scope, student_a)
     scope = await identity_service.scope_for(db, student_a)
 
-    async def _provider_is_down(*args: object, **kwargs: object) -> list[list[float]]:
-        raise RuntimeError("provider unavailable")
+    def _indexing_fails(*args: object, **kwargs: object) -> list[object]:
+        raise RuntimeError("could not index")
 
-    monkeypatch.setattr(evidence_service, "embed_texts", _provider_is_down)
+    monkeypatch.setattr(evidence_service, "chunk_text", _indexing_fails)
     uploaded = await _upload(db, scope, store, project)
     monkeypatch.undo()
 
@@ -607,7 +607,7 @@ async def test_the_attachment_is_indexed_when_the_provider_comes_back(
         source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
         source_ids=[uploaded.version_id],
     )
-    assert hits, "the attachment is citable once the provider answers again"
+    assert hits, "the attachment is citable once the retry runs"
 
 
 async def test_an_attachment_with_no_text_is_a_no_op_for_the_retry(
@@ -766,9 +766,10 @@ async def test_confirming_an_upload_does_not_read_the_file(
 ) -> None:
     """The upload returns as soon as the bytes are safe; nothing is read until the week is in.
 
-    Reading is what made attaching slow — unzipping a deck and embedding what comes out took the
-    better part of five seconds on the live stack — and a file attached and then removed before
-    submitting was never part of the report, so reading it would have been work done for nothing.
+    Reading is what made attaching slow — unzipping a deck and indexing what comes out (then with
+    an embedding call) took the better part of five seconds on the live stack — and a file
+    attached and then removed before submitting was never part of the report, so reading it would
+    have been work done for nothing.
     """
     period, project = await _project(db, prof_scope, student_a)
     scope = await identity_service.scope_for(db, student_a)

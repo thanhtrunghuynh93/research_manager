@@ -1,22 +1,26 @@
 """Architecture §10: a project marked `ai_restricted` sends nothing to a model provider.
 
-The restriction was enforced on the completion step only. Indexing is the other, larger door: it
-is the one place every report entry and every artifact's extracted text passes through, and it
-ran through the registered — that is, provider-backed — embedder for every project alike.
+Indexing is the one place every report entry and every attachment's extracted text passes
+through. It used to embed each chunk through the provider, and the restriction had to be enforced
+there as well as on the assessment step. Embeddings are gone (ADR 0024): indexing is chunking
+alone, and these tests hold it to reaching no provider for any project, restricted or not. The
+assessment side is `test_a_restricted_project_is_never_sent_to_a_provider` in
+tests/module/assessment/test_pipeline.py.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai import gateway as ai_gateway
 from app.core.authz import Scope
 from app.core.types import Visibility
 from app.evidence import models, service
-from app.evidence.index import embeddings
 from app.evidence.schemas import EvidenceReferenceOut
 from app.projects import service as projects_service
 from tests.factories import make_project
@@ -28,25 +32,23 @@ SECRET = "The unpublished protocol, in full, with the participant identifiers."
 
 
 class _Provider:
-    """Stands in for the registered, provider-backed embedder: records what it was asked to send."""
-
-    dimensions = embeddings.EMBEDDING_DIMENSIONS
+    """Stands in for the registered, provider-backed gateway: records anything it is asked."""
 
     def __init__(self) -> None:
-        self.sent: list[str] = []
+        self.calls: list[str] = []
 
-    async def embed(
-        self, texts: list[str], *, context: embeddings.EmbedContext | None = None
-    ) -> list[list[float]]:
-        self.sent.extend(texts)
-        return [[0.0] * self.dimensions for _ in texts]
+    def __getattr__(self, name: str) -> Any:
+        async def _called(*args: Any, **kwargs: Any) -> Any:
+            self.calls.append(name)
+            raise AssertionError(f"indexing reached the model provider through {name}")
+
+        return _called
 
 
 @pytest.fixture
 def provider(monkeypatch: pytest.MonkeyPatch) -> _Provider:
     recorder = _Provider()
-    monkeypatch.setattr(embeddings, "_embedder", recorder)
-    embeddings.clear_cache()
+    monkeypatch.setattr(ai_gateway, "_gateway", recorder)
     return recorder
 
 
@@ -82,18 +84,18 @@ async def test_a_restricted_project_is_not_sent_to_the_provider(
 
     await _index(db, prof_scope, project, SECRET)
 
-    assert provider.sent == []
+    assert provider.calls == []
 
 
-async def test_an_unrestricted_project_still_is(
+async def test_an_unrestricted_project_is_not_sent_either(
     db: AsyncSession, prof_scope: Scope, provider: _Provider
 ) -> None:
-    """The restriction is a per-project decision, not a way of switching the provider off."""
+    """Nothing about indexing needs a provider, so no project's text goes to one here."""
     project = await _project(db, prof_scope, restricted=False)
 
     await _index(db, prof_scope, project, "Ordinary work, indexable as usual.")
 
-    assert provider.sent
+    assert provider.calls == []
 
 
 async def test_a_restricted_project_is_still_indexed(
@@ -108,4 +110,5 @@ async def test_a_restricted_project_is_still_indexed(
     hits = await service.chunks_for_reference(db, reference.id)
 
     assert hits
-    assert provider.sent == []
+    assert hits[0].text.startswith("We reproduced the published baseline")
+    assert provider.calls == []

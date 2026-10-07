@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.8 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.12
+Version 0.9 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.13
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -10,10 +10,10 @@ This document turns the logical boundaries in section 10 of the requirements int
 | --- | --- | --- |
 | Backend | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 | Matches the team's existing FastAPI projects |
 | Frontend | React 18, Vite, TypeScript, TanStack Query, shadcn/ui | Same toolchain as the graph-digitizer frontend |
-| Database | PostgreSQL 16 with `pgvector` and built-in full-text search | One store for records, the evidence index, and the job queue |
+| Database | PostgreSQL 16, no extensions beyond `pg_trgm` (`pgvector` removed by ADR 0024) | One store for records, the evidence index, and the job queue |
 | Jobs | procrastinate (Postgres-backed queue) running periodic tasks in the worker | Transactional enqueue; no Redis to operate |
 | Files | MinIO (S3 API) on the same host | Presigned uploads, versioned bucket, easy offsite mirror |
-| LLM | OpenAI GPT API (responses + embeddings) behind one internal gateway module | Vendor isolated to one module; swappable |
+| LLM | OpenAI GPT API (structured completions for the assessment) behind one internal gateway module | Vendor isolated to one module; swappable |
 | Hosting | Single VPS, Docker Compose, Caddy for TLS | 50 students and 30 projects fit one host with headroom |
 
 Out of scope for this document: UI visual design, exact prompt texts, and institutional SSO (deferred per section 12 of the requirements).
@@ -50,7 +50,7 @@ flowchart TB
         CADDY[caddy: TLS, static SPA, /api proxy]
         API[api: uvicorn FastAPI]
         WRK[worker: procrastinate + periodic tasks]
-        PG[(postgres: pgvector image\nvolume pgdata)]
+        PG[(postgres 16\nvolume pgdata)]
         MINIO[(minio\nvolume objects)]
         BK[backup: nightly cron]
     end
@@ -72,7 +72,7 @@ Service notes:
 
 - **caddy** terminates TLS with automatic certificates, serves the built SPA, and proxies `/api/*` to `api`. No CORS because the SPA and API share an origin.
 - **api** and **worker** run the same image with different commands. The worker also runs the periodic tasks (section 12), so there is no separate scheduler container.
-- **postgres** uses the `pgvector/pgvector:pg16` image. One volume. `shared_buffers` and `work_mem` tuned for the host; the queue and the records share the instance.
+- **postgres** uses the `pgvector/pgvector:pg16` image until the switch to stock `postgres:16` that ADR 0024 allows (docs/runbooks/deploy.md). One volume. `shared_buffers` and `work_mem` tuned for the host; the queue and the records share the instance.
 - **minio** holds one versioned bucket per environment. The API never streams file bodies; it issues presigned PUT and GET URLs after an authorization check.
 - **backup** runs nightly `pg_dump -Fc`, encrypts with `age`, mirrors the MinIO bucket, and syncs both to an offsite bucket with `rclone`. Retention 30 daily and 12 monthly. A restore drill against a scratch Compose stack is part of the launch checklist (AC-16).
 - Health: `/api/healthz` (process up), `/api/readyz` (DB and MinIO reachable, queue lag under threshold). Compose `restart: unless-stopped`.
@@ -89,8 +89,8 @@ backend/
     identity/       users, invitations, sessions, break-glass CLI
     projects/       projects, memberships, plan_baselines
     reporting/      reporting_periods, obligations, weekly_reports, report_versions, entries, artifacts
-    evidence/       evidence_references, evidence_chunks, index/ (chunking, embeddings, fts); no repository
-                    connector since ADR 0022
+    evidence/       evidence_references, evidence_chunks, index/ (chunking); no repository connector
+                    since ADR 0022, no embeddings since ADR 0024
     assessment/     rubrics, snapshot.py, pipeline/ (claims, matching, rating), metrics.py, versions, review
     overview/       service.py: the professor overview's numbers (next deadline, missing reports, week
                     board, review queue, stalled runs); app.assistant was removed by ADR 0023
@@ -232,9 +232,9 @@ Bucket layout: `{workspace_id}/artifacts/{artifact_id}/{version_no}/{sha256}.{ex
 
 ### 5.7 Evidence index storage
 
-`evidence_chunks` — `id, workspace_id, evidence_ref_id, project_id, owner_student_id NULL, visibility, source_version, chunk_no, text, tsv tsvector GENERATED, embedding vector(1536), source_time`. Report entries are indexed on `ReportSubmitted`, attachments on `ArtifactExtracted`, and an attachment's chunks are dropped on `ArtifactRemoved`. Each chunk carries the access label of its source and resolves to a citation `(source_kind, source_id, source_version, locator)` through `evidence_references`. Two reads remain, both used by the assessment snapshot builder (9.2): the window read (`search_evidence_window`, a project's chunks within a time range) and the by-source read (`evidence_for_sources`, a week's own report entries by identity); both apply the `EvidenceChunk` visibility policy before returning anything. Index: B-tree on `(workspace_id, project_id, visibility, source_time)`.
+`evidence_chunks` — `id, workspace_id, evidence_ref_id, project_id, owner_student_id NULL, visibility, source_version, chunk_no, text, source_time`. Report entries are indexed on `ReportSubmitted`, attachments on `ArtifactExtracted`, and an attachment's chunks are dropped on `ArtifactRemoved`. Each chunk carries the access label of its source and resolves to a citation `(source_kind, source_id, source_version, locator)` through `evidence_references`. Two reads remain, both used by the assessment snapshot builder (9.2): the window read (`search_evidence_window`, a project's chunks within a time range) and the by-source read (`evidence_for_sources`, a week's own report entries by identity); both apply the `EvidenceChunk` visibility policy before returning anything. Index: B-tree on `(workspace_id, project_id, visibility, source_time)`.
 
-Hybrid retrieval — reciprocal-rank fusion of full-text rank and cosine distance — and the evidence search route it served were removed in 0.12 with the assistant ([ADR 0023](adr/0023-no-research-assistant.md)). Embeddings are still computed at index time, from an `Embedder` registered at start-up rather than a direct gateway call (which keeps `app.evidence` free of `app.ai`), but nothing reads them; removing them and `pgvector` is pending. The `tsv` column and its GIN index, and the HNSW index on `embedding`, are likewise unread.
+Hybrid retrieval — reciprocal-rank fusion of full-text rank and cosine distance — and the evidence search route it served were removed in 0.12 with the assistant ([ADR 0023](adr/0023-no-research-assistant.md)). The embeddings and the generated `tsv` column it ranked over were removed in 0.13 ([ADR 0024](adr/0024-no-embeddings.md)): indexing is chunking alone, it calls no model provider, and migration 0030 dropped `embedding`, `tsv`, their HNSW and GIN indexes, and the `vector` extension.
 
 ## 6 Authorization and confidentiality
 
@@ -464,7 +464,6 @@ Trends (ASSESS-10) are queries over `assessment_versions` joined to `assessment_
 class AIGateway:
     async def complete_structured(self, *, prompt_id: str, inputs: dict, schema: type[BaseModel],
                                   budget: Budget, context: CallContext) -> Result[BaseModel]: ...
-    async def embed(self, texts: list[str], context: CallContext) -> list[list[float]]: ...
 ```
 
 Responsibilities:
@@ -473,8 +472,8 @@ Responsibilities:
 - **Untrusted content framing.** Every retrieved text is inserted inside a delimited data block with a system instruction that the block is evidence to analyse, not instructions to follow, and that no tool or action is available. The gateway exposes no function-calling tools to the model at all; actions exist only as product endpoints (AC-12).
 - **Redaction.** Before sending, `redaction.py` strips strings matching credential patterns (tokens, keys, connection strings) and replaces emails other than the subject student's with placeholders. Credentials never reach the gateway anyway because they are not stored in the database.
 - **Cost ledger.** `ai_calls` — `(id, job_id, project_id, prompt_id, prompt_version, model, tokens_in, tokens_out, cost_usd, latency_ms, status, created_at)`. Budgets per project and per month live in `workspaces.ai_budgets`; when exceeded, the job records `delayed_budget` and the review queue shows "analysis delayed: budget" rather than a silent failure.
-- **Caching.** Embeddings are keyed by `sha256(text) + model` (computed at index time and unread since 0.12, 5.7); claim extraction is keyed by `content_hash` of the entry, so an unchanged entry is never re-embedded or re-extracted.
-- **Restriction flag.** `projects.ai_restricted = true` short-circuits every model step: the pipeline still builds the snapshot and metrics for the plan, produces a qualitative draft with `Not rated — restricted`, and the professor rates manually.
+- **Caching.** Claim extraction is keyed by `content_hash` of the entry, so an unchanged entry is never re-extracted. (The embedding cache went with embeddings, ADR 0024.)
+- **Restriction flag.** `projects.ai_restricted = true` short-circuits every model step — since ADR 0024 the assessment's are the only ones; indexing calls no provider for any project: the pipeline still builds the snapshot and metrics for the plan, produces a qualitative draft with `Not rated — restricted`, and the professor rates manually.
 - **Timeouts and partial state.** 60 s per call, two retries on transient errors, then the step fails and the run is `partial`. Logs carry ids, token counts, and status; never prompt or completion text.
 
 ## 11 Professor assistant
@@ -514,7 +513,7 @@ class EmailSender(Protocol):
 
 | Area | Mechanism | How it is measured |
 | --- | --- | --- |
-| Initial capacity | Single Postgres with HNSW and GIN indexes; chunk table partitioned by year when it passes 5 M rows | Seed script generates 50 students × 30 projects × 3 years and 100 k chunks; run the benchmark suite |
+| Initial capacity | Single Postgres; chunks read through the `(workspace_id, project_id, visibility, source_time)` B-tree; chunk table partitioned by year when it passes 5 M rows | Seed script generates 50 students × 30 projects × 3 years and 100 k chunks; run the benchmark suite |
 | Interactive performance | Indexed queries per aggregate; pagination; no file bodies through the API | k6 script at 10 concurrent sessions; p95 < 2 s on overview, report, review pages |
 | AI response time | *Withdrawn with the assistant in 0.12 (ADR 0023)*; assessment calls keep the 60 s call timeout | — |
 | Assessment latency | Pipeline steps as separate jobs; two worker processes | Pilot workload; 95 % of runs complete within 10 min of inputs available |
@@ -610,16 +609,12 @@ class EmailSender(Protocol):
 
 ## 16.1 Where the implementation refines this document
 
-Two corrections and one addition, each carried in
+One correction and one addition, each carried in
 [implementation_status.md](implementation_status.md) §4 with its reason:
 
 - §7.1's period formula derived `meeting_date` from `local_start`, which put the deadline the day
   before the period opened. It is derived from `local_end`: the meeting follows the week it
   discusses.
-- §5.7 has `evidence` obtaining vectors from a registered `Embedder` rather than calling the
-  gateway, because §4.1 forbids `app.evidence` importing `app.ai`. The index passes an
-  `EmbedContext` naming the workspace and project, so a gateway-backed embedder can still write the
-  `ai_calls` row that `app.evidence` cannot.
 - `app.exports` was a bounded context between `app.assistant` and `app.assessment` in the layer
   order (`app.assistant` itself was removed in 0.12, ADR 0023; `app.overview` now heads it). Use cases v0.4 retired exports and removed the module and its layer; the reasoning it
   recorded is kept here because it applies to the next context that spans modules: assembling a
@@ -636,4 +631,4 @@ Carried from section 14 of the requirements and from this design:
 4. OpenAI data-processing terms acceptable to the professor, and which projects need `ai_restricted`.
 5. VPS region and offsite backup destination.
 6. Whether to add Postgres Row-Level Security as defence in depth after the MVP.
-7. *Closed by ADR 0023:* there is no retrieval benchmark, because nothing retrieves by similarity; embeddings are computed and unread, and their removal is pending.
+7. *Closed by ADR 0023 and ADR 0024:* there is no retrieval benchmark, because nothing retrieves by similarity, and no embeddings to tune.

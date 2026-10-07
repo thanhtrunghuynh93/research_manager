@@ -13,18 +13,15 @@ from app.ai import bootstrap
 from app.ai.fake import FakeGateway
 from app.ai.gateway import OpenAIGateway, current_gateway, register_gateway
 from app.core.config import Settings
-from app.evidence.index import embeddings
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
 def _restore() -> object:
-    """Both registries are process-global; put them back so later tests are unaffected."""
-    saved_embedder = embeddings.current_embedder()
+    """The registry is process-global; put it back so later tests are unaffected."""
     yield
     register_gateway(FakeGateway())
-    embeddings.register_embedder(saved_embedder)
 
 
 def _settings(key: str) -> Settings:
@@ -36,7 +33,6 @@ def test_without_a_key_nothing_is_installed_and_the_fake_remains() -> None:
 
     assert installed is None
     assert isinstance(current_gateway(), FakeGateway)
-    assert isinstance(embeddings.current_embedder(), embeddings.DeterministicEmbedder)
 
 
 def test_with_a_key_the_provider_gateway_becomes_the_one_in_use() -> None:
@@ -44,15 +40,3 @@ def test_with_a_key_the_provider_gateway_becomes_the_one_in_use() -> None:
 
     assert isinstance(installed, OpenAIGateway)
     assert current_gateway() is installed
-
-
-def test_with_a_key_the_index_embeds_through_the_same_gateway() -> None:
-    """One provider seam, not two: repo_layout §3.1 wanted the index to embed through the gateway,
-    and §3.3 forbids evidence importing ai — so ai registers the embedder rather than being
-    imported (architecture §5.7)."""
-    installed = bootstrap.install(_settings("sk-test-not-a-real-key"))
-
-    embedder = embeddings.current_embedder()
-    assert not isinstance(embedder, embeddings.DeterministicEmbedder)
-    assert getattr(embedder, "gateway", None) is installed
-    assert embedder.dimensions == embeddings.EMBEDDING_DIMENSIONS

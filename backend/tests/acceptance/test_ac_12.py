@@ -162,7 +162,7 @@ async def test_ac_12_the_gateway_sends_the_readme_as_data_and_offers_no_action(
         parsed = ClaimList(claims=[])
         refusal = None
 
-    gateway = OpenAIGateway(client=_Client(), model="gpt-4.1", embed_model="text-embedding-3-small")
+    gateway = OpenAIGateway(client=_Client(), model="gpt-4.1")
     from app.ai.gateway import Budget, CallContext
 
     await gateway.complete_structured(

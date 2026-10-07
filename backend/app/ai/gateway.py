@@ -16,9 +16,7 @@ from __future__ import annotations
 import logging
 import re
 from asyncio import sleep
-from collections import OrderedDict
 from dataclasses import dataclass, field
-from hashlib import sha256
 from time import monotonic
 from typing import Any, Protocol, TypeVar
 
@@ -84,15 +82,6 @@ class AIGateway(Protocol):
         context: CallContext,
     ) -> Result[Schema]: ...
 
-    async def embed(
-        self,
-        texts: list[str],
-        *,
-        workspace_id: Any = None,
-        project_id: Any = None,
-        session: Any = None,
-    ) -> list[list[float]]: ...
-
 
 class RestrictedGateway:
     """The gateway a project marked `ai_restricted` gets: it calls nobody and says so.
@@ -119,18 +108,6 @@ class RestrictedGateway:
             error="restricted",
             notes=["this project does not send content to a model provider"],
         )
-
-    async def embed(
-        self,
-        texts: list[str],
-        *,
-        workspace_id: Any = None,
-        project_id: Any = None,
-        session: Any = None,
-    ) -> list[list[float]]:
-        from app.evidence.index.embeddings import DeterministicEmbedder
-
-        return await DeterministicEmbedder().embed(texts)
 
 
 # ------------------------------------------------------------------ the OpenAI implementation
@@ -239,13 +216,9 @@ class OpenAIGateway:
 
     client: Any
     model: str
-    embed_model: str
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     max_attempts: int = DEFAULT_MAX_ATTEMPTS
     backoff_seconds: float = 2.0
-    # Set once at start-up so `embed()`, which has no CallContext, can still be accounted for.
-    workspace_id: Any = None
-    session: Any = None
 
     async def complete_structured(
         self,
@@ -378,61 +351,6 @@ class OpenAIGateway:
             error=last_error or "the model call did not complete",
         )
 
-    async def embed(
-        self,
-        texts: list[str],
-        *,
-        workspace_id: Any = None,
-        project_id: Any = None,
-        session: Any = None,
-    ) -> list[list[float]]:
-        """Vectors for chunk text, keyed by content so an unchanged chunk is never re-embedded.
-
-        The caller says who to bill, because the index that asks for these vectors may not import
-        this module and so cannot write the ledger row itself (architecture §5.7).
-        """
-        from app.ai import cost as cost
-
-        # Assembled from hits and fresh vectors rather than read back out of the cache, so a
-        # batch larger than the cache limit cannot evict its own early entries before the read.
-        resolved: dict[str, list[float]] = {}
-        wanted: list[str] = []
-        for text in dict.fromkeys(texts):
-            key = _embedding_key(text, self.embed_model)
-            hit = _VECTORS.get(key)
-            if hit is None:
-                wanted.append(text)
-            else:
-                _VECTORS.move_to_end(key)
-                resolved[text] = hit
-
-        if wanted:
-            started = monotonic()
-            response = await self.client.embeddings.create(
-                model=self.embed_model, input=wanted, timeout=self.timeout_seconds
-            )
-            for text, item in zip(wanted, response.data, strict=True):
-                vector = list(item.embedding)
-                resolved[text] = vector
-                _remember(_embedding_key(text, self.embed_model), vector)
-            tokens_in, _ = _tokens(response)
-            await self._record(
-                CallContext(
-                    prompt_id="embed",
-                    prompt_version="",
-                    project_id=project_id,
-                    workspace_id=workspace_id,
-                    session=session,
-                ),
-                prompt_id="embed",
-                prompt_version="",
-                model=self.embed_model,
-                tokens_in=tokens_in,
-                latency_ms=int((monotonic() - started) * 1000),
-                status=cost.CallStatus.COMPLETED,
-            )
-        return [resolved[text] for text in texts]
-
     # -------------------------------------------------------------- internals
 
     def _messages(self, prompt_text: str, inputs: dict[str, Any]) -> list[dict[str, str]]:
@@ -454,8 +372,8 @@ class OpenAIGateway:
     async def _budget_state(self, context: CallContext) -> Any:
         from app.ai import cost as cost
 
-        session = context.session or self.session
-        workspace_id = context.workspace_id or self.workspace_id
+        session = context.session
+        workspace_id = context.workspace_id
         if session is None or workspace_id is None:
             return None
         return await cost.check_budget(
@@ -473,8 +391,8 @@ class OpenAIGateway:
             status=str(values.get("status", "unknown")),
         ).inc()
 
-        session = context.session or self.session
-        workspace_id = context.workspace_id or self.workspace_id
+        session = context.session
+        workspace_id = context.workspace_id
         if session is None or workspace_id is None:
             log.debug("no session or workspace on the call context; the ledger row is skipped")
             return
@@ -546,31 +464,6 @@ def _tokens(response: Any) -> tuple[int, int]:
     )
 
 
-_VECTORS: OrderedDict[str, list[float]] = OrderedDict()
-_VECTOR_CACHE_LIMIT = 10_000
-
-
-def _embedding_key(text: str, model: str) -> str:
-    return f"{model}:{sha256(text.encode()).hexdigest()}"
-
-
-def _remember(key: str, vector: list[float]) -> None:
-    """Least-recently-used eviction, one entry at a time.
-
-    Emptying the cache on overflow dropped vectors the current batch had already written and was
-    about to read back, so `embed` raised KeyError once a worker crossed the limit — after the
-    provider had been billed for the call.
-    """
-    _VECTORS[key] = vector
-    _VECTORS.move_to_end(key)
-    while len(_VECTORS) > _VECTOR_CACHE_LIMIT:
-        _VECTORS.popitem(last=False)
-
-
-def clear_embedding_cache() -> None:
-    _VECTORS.clear()
-
-
 def build_gateway(settings: Any) -> OpenAIGateway | None:
     """The real provider client, or None when no key is configured.
 
@@ -585,7 +478,6 @@ def build_gateway(settings: Any) -> OpenAIGateway | None:
     return OpenAIGateway(
         client=AsyncOpenAI(api_key=key, timeout=DEFAULT_TIMEOUT_SECONDS),
         model=settings.openai_model,
-        embed_model=settings.openai_embed_model,
     )
 
 

@@ -20,12 +20,13 @@ log = logging.getLogger(__name__)
 async def extract_artifact(version_id: str) -> None:
     """REP-04: read the text out of an attachment, just after the student attached it.
 
-    Off the upload path deliberately. Unzipping a deck and embedding what comes out took the better
-    part of five seconds on the live stack, and none of it is work the student has to wait through:
-    the bytes are stored and the checksum has already matched by the time this runs.
+    Off the upload path deliberately. Unzipping a deck and indexing what comes out (then with an
+    embedding call, since removed) took the better part of five seconds on the live stack, and none
+    of it is work the student has to wait through: the bytes are stored and the checksum has
+    already matched by the time this runs.
 
     Retried, because the alternative is an attachment that is on the record and not in the index —
-    present to its owner, invisible to search, and citing nothing.
+    present to its owner and citing nothing.
     """
     from app.reporting import artifacts
 

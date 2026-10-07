@@ -52,11 +52,6 @@ class _DelayedGateway:
             notes=["the workspace AI budget for this month is spent"],
         )
 
-    async def embed(self, texts: list[str], **billing: Any) -> list[list[float]]:
-        from app.evidence.index.embeddings import DeterministicEmbedder
-
-        return await DeterministicEmbedder().embed(texts)
-
 
 async def _submitted_week(
     db: AsyncSession, prof_scope: Scope, student: identity_models.User

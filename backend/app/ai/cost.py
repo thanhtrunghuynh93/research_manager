@@ -48,8 +48,6 @@ PRICES: dict[str, Price] = {
     "gpt-4.1-mini": Price(Decimal("0.40"), Decimal("1.60")),
     "gpt-4o": Price(Decimal("2.50"), Decimal("10.00")),
     "gpt-4o-mini": Price(Decimal("0.15"), Decimal("0.60")),
-    "text-embedding-3-small": Price(Decimal("0.02"), Decimal("0")),
-    "text-embedding-3-large": Price(Decimal("0.13"), Decimal("0")),
 }
 
 

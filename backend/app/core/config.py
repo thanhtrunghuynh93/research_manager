@@ -44,7 +44,6 @@ class Settings(BaseSettings):
 
     openai_api_key: SecretStr = SecretStr("")
     openai_model: str = "gpt-4.1"
-    openai_embed_model: str = "text-embedding-3-small"
 
     smtp_host: str = "localhost"
     smtp_port: int = 1025

@@ -1,4 +1,4 @@
-"""Evidence tables: the citable references and the chunks retrieval ranks.
+"""Evidence tables: the citable references and the chunks an assessment cites.
 
 A report entry or an attachment version becomes an `EvidenceReference`; its text is split into
 `EvidenceChunk` rows carrying the same access label, so retrieval filters on it without a join
@@ -9,12 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
 from uuid import UUID
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Computed,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
@@ -24,12 +21,10 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UUIDPrimaryKeyMixin
 from app.core.types import Visibility
-from app.evidence.index.embeddings import EMBEDDING_DIMENSIONS
 
 
 class EvidenceSourceKind(StrEnum):
@@ -86,10 +81,10 @@ class EvidenceReference(UUIDPrimaryKeyMixin, Base):
 
 
 class EvidenceChunk(UUIDPrimaryKeyMixin, Base):
-    """A retrievable piece of one evidence reference.
+    """A citable piece of one evidence reference.
 
-    The access label is denormalised onto the chunk so the filter is part of the ranking query
-    rather than a join the caller might forget (architecture §5.7).
+    The access label is denormalised onto the chunk so the filter is part of every read rather
+    than a join the caller might forget (architecture §5.7).
     """
 
     __tablename__ = "evidence_chunks"
@@ -107,14 +102,6 @@ class EvidenceChunk(UUIDPrimaryKeyMixin, Base):
             "visibility",
             "source_time",
         ),
-        Index("ix_evidence_chunks_tsv", "tsv", postgresql_using="gin"),
-        Index(
-            "ix_evidence_chunks_embedding",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_with={"m": 16, "ef_construction": 64},
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-        ),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
@@ -125,11 +112,5 @@ class EvidenceChunk(UUIDPrimaryKeyMixin, Base):
     source_version: Mapped[str] = mapped_column(Text, default="")
     chunk_no: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
-    # `simple` rather than `english`: reports are written in English and Vietnamese, and English
-    # stemming distorts the latter. Revisit with the retrieval benchmark (architecture §17).
-    tsv: Mapped[Any] = mapped_column(
-        TSVECTOR, Computed("to_tsvector('simple', text)", persisted=True)
-    )
-    embedding: Mapped[Any] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
     source_time: Mapped[datetime]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

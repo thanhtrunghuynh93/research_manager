@@ -24,10 +24,8 @@ from app.core.types import Visibility
 from app.evidence import policies  # noqa: F401  (policies register on import)
 from app.evidence import repository as repo
 from app.evidence.index.chunking import chunk_text
-from app.evidence.index.embeddings import EmbedContext, Embedder, embed_texts, local_embedder
 from app.evidence.models import EvidenceChunk, EvidenceSourceKind
 from app.evidence.schemas import EvidenceHit, EvidenceReferenceOut
-from app.projects import service as projects_service
 from app.reporting import artifacts as reporting_artifacts
 from app.reporting import service as reporting_service
 
@@ -57,6 +55,9 @@ async def index_evidence(
     The access label travels with the reference and onto every chunk, so retrieval filters on it
     without a join (requirements §9). Re-indexing the same source and version replaces its chunks
     rather than adding a second copy.
+
+    Indexing is chunking and nothing else: no text leaves the host here, for any project, so a
+    project marked `ai_restricted` needs no path of its own (ADR 0024).
     """
     at = source_time or now()
     reference = await repo.upsert_evidence_reference(
@@ -75,46 +76,22 @@ async def index_evidence(
 
     chunks = chunk_text(text)
     await repo.delete_chunks(session, reference.id)
-    if chunks:
-        vectors = await embed_texts(
-            [chunk.text for chunk in chunks],
-            embedder=await _embedder_for(session, workspace_id, project_id),
-            context=EmbedContext(workspace_id=workspace_id, project_id=project_id, session=session),
-        )
-        for chunk, vector in zip(chunks, vectors, strict=True):
-            session.add(
-                EvidenceChunk(
-                    workspace_id=workspace_id,
-                    evidence_ref_id=reference.id,
-                    project_id=project_id,
-                    owner_student_id=owner_student_id,
-                    visibility=visibility,
-                    source_version=source_version,
-                    chunk_no=chunk.chunk_no,
-                    text=chunk.text,
-                    embedding=vector,
-                    source_time=at,
-                )
+    for chunk in chunks:
+        session.add(
+            EvidenceChunk(
+                workspace_id=workspace_id,
+                evidence_ref_id=reference.id,
+                project_id=project_id,
+                owner_student_id=owner_student_id,
+                visibility=visibility,
+                source_version=source_version,
+                chunk_no=chunk.chunk_no,
+                text=chunk.text,
+                source_time=at,
             )
+        )
     await session.flush()
     return EvidenceReferenceOut.model_validate(reference)
-
-
-async def _embedder_for(
-    session: AsyncSession, workspace_id: UUID, project_id: UUID | None
-) -> Embedder | None:
-    """The local embedder for a restricted project, the registered one otherwise.
-
-    `ai_restricted` was enforced only on the completion step, so a restricted project's report
-    and attachment text still went to the provider at index time — the one place the whole corpus
-    passes through (architecture §10). Deciding it here rather than inside the gateway-backed
-    embedder keeps the two vector spaces on separate cache keys, and keeps `app.evidence` from
-    needing to know that a provider exists at all.
-    """
-    if project_id is None:
-        return None
-    restricted = await projects_service.ai_restricted_for_job(session, workspace_id, project_id)
-    return local_embedder() if restricted else None
 
 
 async def search_evidence_window(
@@ -217,9 +194,9 @@ async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
 
     Indexing runs inline because the chunks have to commit with the version that cites them: a job
     would let the assessment pipeline, which is also a job, read a snapshot missing the week it is
-    about. The cost is one call to the embedding provider on the student's critical path, and
-    `events.emit` runs handlers inside the submitting transaction with no isolation — so a provider
-    that is down, rate limited or out of credit used to surface as a 500 and lose the submission.
+    about. `events.emit` runs handlers inside the submitting transaction with no isolation, so any
+    failure while indexing — it once included a call to an embedding provider that could be down,
+    rate limited or out of credit — would surface as a 500 and lose the submission.
 
     It cannot. The submitted version is the thing that cannot be lost (requirements §10, AC-13), so
     a failure here is caught and the work handed to a retryable job. The same trade the assessment
@@ -332,9 +309,9 @@ async def _on_artifact_extracted(event: Any, session: AsyncSession) -> None:
 
     Inline for the same reason a submitted report is: the chunks commit with the version that
     cites them, so the week's assessment does not read a snapshot missing the file uploaded to
-    support it. That puts the embedding provider on the student's upload path, and a provider that
-    is down used to surface as a 500 — losing an attachment whose bytes were already stored and
-    whose text was already extracted.
+    support it. That puts indexing on the student's upload path, and a failure there used to surface
+    as a 500 — losing an attachment whose bytes were already stored and whose text was already
+    extracted.
 
     So the failure is caught and the work handed to a retryable job. The bytes and the text are
     both in the object store by the time this runs, which is what makes the retry possible without

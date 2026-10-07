@@ -255,11 +255,11 @@ async def confirm_upload(
 
     version.byte_size = len(data)
     version.uploaded = True
-    # Reading the file is the slow part — a PPTX to unzip and walk, then an embedding round trip,
-    # which together took the better part of five seconds on the live stack. It is not work the
-    # student needs to wait through: the bytes are safe, the checksum matched, and the attachment
-    # is on the record. So the version stays `pending` and a job picks it up; the badge beside it
-    # reads "Uploaded" until it does.
+    # Reading the file is the slow part — a PPTX to unzip and walk, then (at the time) an
+    # embedding round trip, which together took the better part of five seconds on the live
+    # stack. It is not work the student needs to wait through: the bytes are safe, the checksum
+    # matched, and the attachment is on the record. So the version stays `pending` and a job
+    # picks it up; the badge beside it reads "Uploaded" until it does.
     version.extraction_state = ExtractionState.PENDING
 
     artifact.current_version_no = version.version_no
@@ -482,8 +482,8 @@ async def read_attachments_for(session: AsyncSession, *, student_id: UUID, perio
     would have been work done for nothing.
 
     Queued rather than done here. Submission is the one action with a deadline attached, and the
-    reading involves unzipping documents and calling an embedding provider — an outage there took
-    submissions down once already, and it must not be able to again.
+    reading involves unzipping documents — a failure there (then, an embedding provider outage)
+    took submissions down once already, and it must not be able to again.
     """
     versions = (
         (

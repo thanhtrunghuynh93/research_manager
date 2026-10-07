@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.12 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.12, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.19
+Version 0.13 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.13, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.19
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -30,6 +30,21 @@ table that replaced it was checked by `scripts/check_docs.py` and cost an edit o
 0.10 dropped it. Section 6 says how to obtain the
 current figures, and CI enforces the 85 % gate rather than a sentence.
 
+**7 October 2026 — embeddings and pgvector are removed** ([ADR 0024](adr/0024-no-embeddings.md),
+requirements 0.13; [ADR 0003](adr/0003-pgvector-in-postgres.md) superseded). Every indexed chunk was
+embedded through the model provider and nothing had read a vector since the assistant went. Gone:
+`evidence/index/embeddings.py` (the `Embedder` registry, `EmbedContext`, the content-hash cache and
+the deterministic local embedder a restricted project used), the gateway's `embed` and its vector
+cache, `GatewayEmbedder` in `ai/bootstrap.py`, the embedding prices in `ai/cost.py`, the
+`RM_OPENAI_EMBED_MODEL` setting, `projects.service.ai_restricted_for_job` (its only caller chose the
+embedder), and the `pgvector` package. Migration 0030 drops `evidence_chunks.embedding` and its HNSW
+index, the generated `evidence_chunks.tsv` and its GIN index — no reader either — and the `vector`
+extension. Indexing is chunking alone and calls no provider for any project; `ai_restricted` still
+stops the assessment's calls. Migrations 0001 and 0009 now create the extension and the column only
+where pgvector is present, so a fresh database on plain `postgres:16` replays the history; the
+compose image switches to `postgres:16` in a separate change, deployed after 0030 has run
+(docs/runbooks/deploy.md).
+
 **7 October 2026 — the research assistant is removed** ([ADR 0023](adr/0023-no-research-assistant.md),
 requirements 0.12). Built in step 8, it was never used: migration 0029 dropped `conversations`,
 `messages`, `answer_cache` and `supervision_notes` — every one empty on the running deployment —
@@ -45,8 +60,8 @@ directly. Notifications now write only `missed_deadline` records (student, with 
 submission records and the professor's in-app summary nothing read are no longer written, and the
 professor sees who is outstanding on the overview. `retention_sweep` now only purges finished
 queue jobs. `evidence/` keeps indexing, the chunk access label (now a registered policy on
-`EvidenceChunk`) and the window and by-source reads the snapshot uses; embeddings are still
-computed at index time but nothing reads them — their removal is pending. QA-01..07 are withdrawn;
+`EvidenceChunk`) and the window and by-source reads the snapshot uses; embeddings, then still
+computed and unread, were removed next (ADR 0024). QA-01..07 are withdrawn;
 AC-10, AC-11, AC-12 and AC-15 are restated against the trajectory, the project's evidence and
 documents, and the overview.
 
@@ -246,7 +261,7 @@ The index stores citable references with their access label and chunks that carr
 permission predicate sat inside each ranking arm and a chunk outside the caller's scope was never
 scored. *Search over the index was removed in requirements 0.12 (ADR 0023); the label stays, as the
 registered policy on `EvidenceChunk` that the snapshot's window and by-source reads apply.
-Embeddings are still computed at index time and read by nothing; their removal is pending.*
+Embeddings and the full-text column were removed in 0.13 (ADR 0024); indexing is chunking.*
 
 ### Step 6 — `assessment/` (ASSESS-01..10)
 
@@ -443,12 +458,12 @@ produced something wrong. Each is reflected in the code and in the document it c
 | --- | --- |
 | `meeting_date` is derived from the period's end, not its start (architecture §7.1 corrected) | The formula as written placed the deadline the day before the period opened. The meeting follows the week it discusses |
 | `project_memberships.left_on` is exclusive | With an inclusive end, "remove this student now" left their access alive until midnight |
-| Embeddings come from a registered `Embedder`, not a direct gateway call (still computed; unread since ADR 0023, removal pending) | repo_layout §3.1 said otherwise, but §3.3 forbids `evidence` importing `ai`, and a restricted project must be able to index without a provider |
-| The index tells the embedder who to bill, through `EmbedContext` | Same contract: `evidence` cannot write an `ai_calls` row, but it can say which workspace a batch is for and leave the accounting to whoever makes the vectors |
+| ~~Embeddings come from a registered `Embedder`, not a direct gateway call~~ — removed with embeddings by ADR 0024 | repo_layout §3.1 said otherwise, but §3.3 forbids `evidence` importing `ai`, and a restricted project had to be able to index without a provider. Without embeddings, indexing needs no provider at all |
+| ~~The index tells the embedder who to bill, through `EmbedContext`~~ — removed by ADR 0024 | Same contract: `evidence` cannot write an `ai_calls` row, but it can say which workspace a batch is for and leave the accounting to whoever makes the vectors |
 | `plan_baselines` carries a targeted guard rather than the blanket immutability trigger (`repository_events` did too, until ADR 0022) | A proposed baseline had to be acceptable; the guard allows exactly that transition and nothing else |
 | Email delivery is a queued row drained by a periodic task, not one job per message | Same at-least-once behaviour, with the attempt count and the last error in one place |
 | Two import contracts scoped to direct imports | The API reaches models through `service.py` and the gateway through `assessment.service`; that is the intended arrangement, and the contracts now forbid what they meant to forbid |
-| Full-text search uses the `simple` configuration (the column is still generated; nothing queries it since ADR 0023) | Reports are written in English and Vietnamese; English stemming distorts the latter |
+| ~~Full-text search uses the `simple` configuration~~ — the column was dropped by migration 0030 (ADR 0024) | Reports are written in English and Vietnamese; English stemming distorts the latter |
 | Report entries and attachments are indexed by `evidence` reacting to events | Reporting stays unaware of evidence, which is the layer direction the architecture sets. `ArtifactExtracted` uses the same seam `ReportSubmitted` does |
 | Deadlines render as 23:59 rather than 11:59 PM | The requirement states the rule in 24-hour time, and the workspace's timezone convention matches |
 | ~~`app.exports` is a bounded context, not just a router~~ — retired in use cases v0.4 | A bundle spanned reporting, projects and assessment; assembling it through those modules' services is what made export authorization identical to interactive access rather than a second implementation of it. The module is gone; the reasoning applies to the next context that spans modules |
@@ -488,8 +503,8 @@ Carried from requirements §14 and architecture §17, narrowed to what is still 
 5. **VPS region and offsite backup destination**.
 6. **Whether to add Row-Level Security** as defence in depth after the MVP.
 7. ~~**Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.~~ Nothing
-   retrieves by similarity since ADR 0023; chunking feeds the assessment snapshot, and embeddings
-   are pending removal.
+   retrieves by similarity since ADR 0023, and there is no embedding model since ADR 0024; chunking
+   feeds the assessment snapshot.
 
 There is no repository provider left to choose: ADR 0022 withdrew the connector ADR 0005 chose.
 

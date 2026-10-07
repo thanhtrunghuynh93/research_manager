@@ -19,7 +19,6 @@ from app.ai import cost
 from app.ai.gateway import Budget, CallContext, OpenAIGateway
 from app.ai.schemas import ClaimList, ClaimVerdicts, RubricOutput, strict
 from app.core.authz import Scope
-from app.core.ids import uuid7
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 
@@ -92,37 +91,14 @@ class _Chat:
 
 
 @dataclass
-class _EmbeddingItem:
-    embedding: list[float]
-
-
-@dataclass
-class _EmbeddingResponse:
-    data: list[_EmbeddingItem]
-    usage: _Usage = field(default_factory=_Usage)
-
-
-@dataclass
-class _Embeddings:
-    parent: _StubClient
-
-    async def create(self, **kwargs: Any) -> _EmbeddingResponse:
-        self.parent.embed_requests.append(kwargs)
-        texts = list(kwargs["input"])
-        return _EmbeddingResponse(data=[_EmbeddingItem([0.1] * 1536) for _ in texts])
-
-
-@dataclass
 class _StubClient:
     parsed: Any = None
     refusal: str | None = None
     raises: list[Exception | None] = field(default_factory=list)
     requests: list[dict[str, Any]] = field(default_factory=list)
-    embed_requests: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.chat = _Chat(self)
-        self.embeddings = _Embeddings(self)
 
     @property
     def sent_text(self) -> str:
@@ -130,9 +106,7 @@ class _StubClient:
 
 
 def _gateway(client: _StubClient, **kwargs: Any) -> OpenAIGateway:
-    return OpenAIGateway(
-        client=client, model="gpt-4.1", embed_model="text-embedding-3-small", **kwargs
-    )
+    return OpenAIGateway(client=client, model="gpt-4.1", **kwargs)
 
 
 def _context(workspace_id: Any, session: AsyncSession, **kwargs: Any) -> CallContext:
@@ -342,42 +316,6 @@ async def test_a_spent_budget_stops_the_call_before_it_is_made(
     assert result.error == "delayed_budget"
     assert "budget" in " ".join(result.notes)
     assert str((await _rows(db, workspace))[-1].status) == "delayed_budget"
-
-
-# ------------------------------------------------------------------ embeddings
-
-
-async def test_embedding_asks_the_provider_once_for_each_distinct_text(
-    db: AsyncSession, workspace: identity_models.Workspace
-) -> None:
-    """Architecture §10: an unchanged chunk is never re-embedded."""
-    client = _StubClient()
-    gateway = _gateway(client)
-    gateway.workspace_id = workspace.id
-    gateway.session = db
-
-    first = await gateway.embed(["alpha", "beta"])
-    second = await gateway.embed(["alpha"])
-
-    assert len(first) == 2
-    assert len(second) == 1
-    assert client.embed_requests[-1]["input"] == ["alpha", "beta"]
-    assert len(client.embed_requests) == 1  # "alpha" came from the cache the second time
-
-
-async def test_embedding_records_its_tokens_on_the_same_ledger(
-    db: AsyncSession, workspace: identity_models.Workspace
-) -> None:
-    client = _StubClient()
-    gateway = _gateway(client)
-    gateway.workspace_id = workspace.id
-    gateway.session = db
-
-    await gateway.embed([f"unique text {uuid7()}"])
-
-    row = (await _rows(db, workspace))[-1]
-    assert row.model == "text-embedding-3-small"
-    assert row.prompt_id == "embed"
 
 
 # ------------------------------------------------------------------ helpers

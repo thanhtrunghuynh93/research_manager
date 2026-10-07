@@ -10,7 +10,7 @@ that silently stops is worse than no index — a reader takes the last row for t
 | --- | --- |
 | [0001](0001-modular-monolith.md) | Modular monolith with enforced module boundaries |
 | [0002](0002-postgres-job-queue.md) | Postgres-backed job queue (procrastinate) instead of Redis/Celery |
-| [0003](0003-pgvector-in-postgres.md) | Full-text and vector search inside Postgres |
+| [0003](0003-pgvector-in-postgres.md) | *Superseded by 0024* — full-text and vector search inside Postgres |
 | [0004](0004-application-level-authorization.md) | Authorization in one application policy layer; RLS deferred |
 | [0005](0005-github-app-connector.md) | *Withdrawn by 0022* — GitHub App as the first repository connector |
 | [0006](0006-deterministic-metrics.md) | Rubric arithmetic outside the language model |
@@ -31,3 +31,4 @@ that silently stops is worse than no index — a reader takes the last row for t
 | [0021](0021-the-read-set-is-one-workspace.md) | The read-set is one workspace; the spanning seam is removed (amends 0020) |
 | [0022](0022-no-repository-connector.md) | No repository connector: students link a repository and attach their evidence (withdraws 0005) |
 | [0023](0023-no-research-assistant.md) | No research assistant: the overview computes its own numbers; the access epoch goes with the cache (withdraws 0008, supersedes 0009) |
+| [0024](0024-no-embeddings.md) | No embeddings: indexing is chunking; pgvector and the full-text column are dropped (supersedes 0003) |
