@@ -590,8 +590,8 @@ async def remove_artifact(
     removed file keeps its rationale and loses the citation, which the professor can see and re-run.
 
     A real deletion, not a hidden row (requirements §11): the stored object, the extracted text
-    beside it, the evidence references indexed from every version, and the cached answers that
-    could still quote it. All of it inside one transaction, so a failure anywhere leaves the
+    beside it, and the evidence references indexed from every version. All of it inside one
+    transaction, so a failure anywhere leaves the
     attachment whole rather than half-gone.
     """
     artifact = await _require_artifact(session, scope, artifact_id)

@@ -153,8 +153,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove a file you attached, while the week is still a draft
-         * @description REP-04: the student's own correction. Refused once the week has been submitted.
+         * Remove a file you attached
+         * @description REP-04: the student's own correction, submitted week or not.
          */
         delete: operations["remove_artifact_api_v1_artifacts__artifact_id__delete"];
         options?: never;

@@ -3460,7 +3460,7 @@
     },
     "/api/v1/artifacts/{artifact_id}": {
       "delete": {
-        "description": "REP-04: the student's own correction. Refused once the week has been submitted.",
+        "description": "REP-04: the student's own correction, submitted week or not.",
         "operationId": "remove_artifact_api_v1_artifacts__artifact_id__delete",
         "parameters": [
           {
@@ -3489,7 +3489,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Remove a file you attached, while the week is still a draft",
+        "summary": "Remove a file you attached",
         "tags": [
           "artifacts"
         ]

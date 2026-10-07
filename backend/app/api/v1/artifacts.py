@@ -143,10 +143,10 @@ async def confirm_upload(
 @router.delete(
     "/{artifact_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remove a file you attached, while the week is still a draft",
+    summary="Remove a file you attached",
 )
 async def remove_artifact(artifact_id: UUID, scope: ScopeDep, session: SessionDep) -> None:
-    """REP-04: the student's own correction. Refused once the week has been submitted."""
+    """REP-04: the student's own correction, submitted week or not."""
     await service.remove_artifact(session, scope, artifact_id)
 
 
