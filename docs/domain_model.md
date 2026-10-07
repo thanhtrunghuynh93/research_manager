@@ -1,6 +1,6 @@
 # How professor, student, workspace, project and reports are organized
 
-Version 0.6 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.12, [architecture.md](architecture.md) v0.8, [use_cases.md](use_cases.md) v0.20, and the [ADRs](adr/)
+Version 0.7 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.14, [architecture.md](architecture.md), [use_cases.md](use_cases.md) and the [ADRs](adr/)
 
 This document is an orientation to the central relations: what belongs to what, which of those
 relations are plural, and where each one is enforced. It is derived from the documents above and
@@ -68,9 +68,7 @@ Four rules follow from the boundary rather than from taste:
 - **Moving an account is decided by the schema** (AUTH-06). Of the six tables keyed on
   `users(workspace_id, id)`, the four holding identity records — `invitations`, `sessions`,
   `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account; the two
-  holding research history — `project_memberships`, `weekly_reports` — do not
-  (`developer_identities` and `contributions` were two more until the repository connector went,
-  [ADR 0022](adr/0022-no-repository-connector.md)). So `POST /users/{user_id}/workspace` moves an
+  holding research history — `project_memberships`, `weekly_reports` — do not. So `POST /users/{user_id}/workspace` moves an
   account that has written nothing and Postgres refuses one that has. That is the rule, not a gap
   ([ADR 0014](adr/0014-joining-and-leaving-a-workspace.md), [use_cases.md](use_cases.md) §2.1).
 
@@ -89,13 +87,12 @@ Four rules follow from the boundary rather than from taste:
   a workspace with none.
 - **A role is fixed at acceptance.** Before acceptance a re-invitation may reissue at a different
   role, because the role travels on the user row; after acceptance there is no route to change one.
-- **Acting on someone does not span.** `POST /users/{id}/suspend` and `.../remove` resolve their
-  target through the caller's `workspace_id`, so a student listed under another workspace shows no
-  controls. Moving a student is the exception, because it names the destination explicitly.
+- **Acting on someone stays in the workspace.** `POST /users/{id}/deactivate`, `/reactivate` and
+  `/remove` resolve their target through the caller's `workspace_id`. Moving a student is the one
+  action that names another workspace, as its destination.
 - Reserved to the professor: the reporting calendar; a project's *standing* (status, whether it is
   open to joining, whether its text may reach a model provider); excusing and extending obligations;
-  approving or overriding an assessment. Supervision notes and the research assistant were reserved
-  here too until requirements 0.12 withdrew them ([ADR 0023](adr/0023-no-research-assistant.md)).
+  approving or overriding an assessment.
 
 ## 4 Student
 
@@ -122,8 +119,7 @@ Four rules follow from the boundary rather than from taste:
 `projects` holds title, description, `research_questions[]`, `intended_contributions[]`, `stage`,
 `status`, `start_on` and `target_on`, `venue_target`, `repo_url`, `shared_resources`,
 `ai_restricted`, `open_to_join`, `created_by`. `repo_url` is a pointer for the people on the project
-and nothing more: there is no repository connector (ADR 0022), nothing is ingested from it, and no
-work is attributed from it (PROJ-01).
+and nothing more: nothing is ingested or attributed from it (PROJ-01).
 
 - **Pinned to one workspace at creation, forever.** A student's projects are therefore the projects
   of their one workspace.
@@ -205,14 +201,11 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
 - **Plan baselines are the frozen half of the week** (PROJ-04). Last week's next-week plan freezes at
   period start as `frozen`, or as `empty` when there is none. Commitment completion is computed only
   against a frozen plan and is otherwise reported unavailable, and at most one is in effect per
-  membership and period. The plan is the student's own next-week plan, not a list of tasks; tasks and
-  the proposal flow were withdrawn in requirements 0.10.
+  membership and period. The plan is the student's own next-week plan.
 - **The missed-deadline email** reads obligation state at send time, so a submission at 23:59 gets
   none, and the unique key on recipient, period and kind makes a retried dispatch a no-op (REP-08,
-  AC-19). `missed_deadline` is the only notification kind written: the report submitted and
-  resubmitted records and the professor's in-app summary of a missed deadline stopped in
-  requirements 0.12, because nothing read them ([ADR 0023](adr/0023-no-research-assistant.md)). The
-  professor sees who is outstanding on the overview.
+  AC-19). `missed_deadline` is the only notification kind. The professor sees who is outstanding on
+  the overview.
 
 ## 7 The invariants that hold it together
 
@@ -221,36 +214,30 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
 | A membership cannot straddle two workspaces | Composite foreign keys onto `projects(workspace_id, id)` and `users(workspace_id, id)` |
 | History stays in the workspace it was written in | The two history foreign keys without `ON UPDATE CASCADE` |
 | Widening what a read may see is one diff | `Scope.within(column)`, called by every visibility predicate |
-| Ending a membership revokes access at once | `Scope.project_ids`, compiled from the memberships table on every request; nothing caches a read. `workspaces.access_epoch`, which expired the answer cache, went with it, and so did `evidence_snapshots.access_epoch`, which was written and never read (migration 0029, [ADR 0023](adr/0023-no-research-assistant.md)) |
+| Ending a membership revokes access at once | `Scope.project_ids`, compiled from the memberships table on every request; nothing caches a read |
 | Submitted and approved history is never rewritten | The immutability triggers, and one approved review per assessment version |
 | No private record follows a project | Everything confidential is keyed to a `student_id` |
 
 ## 8 Where the build diverges from the specification
 
-Recorded here because a reader of sections 2 to 6 would otherwise assume all of it is reachable;
-[implementation_status.md](implementation_status.md) §3 is the authority. The list is shorter than
-it was: requirements v0.7 amended UI-03, PROJ-01, PROJ-06, PROJ-07, AUTH-01 and REP-06 to say what
-the product does, so those are no longer divergences at all.
+[implementation_status.md](implementation_status.md) §2 and §3 are the authority; the ones that
+touch these relations:
 
 - Moving a student who has written anything is refused, by the constraint set rather than by a check
   (§2).
-- Milestones (requirements 0.8, migration 0026) and tasks, dated decisions, pre-deadline reminders
-  and correction requests (requirements 0.10, migration 0027) were withdrawn rather than left built
-  and unreachable. So was the research assistant (requirements 0.12, migration 0029,
-  [ADR 0023](adr/0023-no-research-assistant.md)): SupervisionNote, Conversation, Message and the
-  answer cache are gone from the schema with the routes that wrote them.
 - A finished project leaves a student's week silently: the obligation is filtered rather than
   excused, so nothing on `/me` names the project that stopped owing
   ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 - No student is reminded before a deadline: the missed-deadline email is the only reminder (REP-07,
   REP-08).
-- No code path authors professor feedback beyond the released assessment.
+- No code path authors professor feedback beyond the released assessment and revision requests.
 - Exports were withdrawn (UI-06), so a student cannot keep a copy of their own released records.
 
 ## 9 Keeping this document true
 
 Nothing here is checked by `scripts/check_docs.py`, because everything it says is a relation
-rather than a count. The load-bearing
-claims are pinned elsewhere: the foreign-key split by `backend/tests/module/identity/test_workspaces.py`,
-the visibility rules by the `authz`-marked tests, and the weekly chain by the acceptance scenarios.
-When one of those tests changes, this document is the second place to look.
+rather than a count. The load-bearing claims are pinned elsewhere: the foreign-key split by
+`backend/tests/module/identity/test_workspaces.py`, the visibility rules by
+`backend/tests/unit/test_authz.py`, `backend/tests/module/identity/test_user_visibility.py` and the
+acceptance scenarios AC-02 and AC-11, and the weekly chain by the other acceptance scenarios. When
+one of those tests changes, this document is the second place to look.

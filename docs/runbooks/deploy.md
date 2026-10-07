@@ -114,25 +114,54 @@ Record the deploy (tag, time, operator) in the operations log. There is no opera
 repository; if one is being kept, it is somewhere else, and if it is not, this line is the thing
 to fix rather than to follow.
 
-## Leaving the pgvector image (ADR 0024, migration 0030)
+## Pending: the October 2026 simplification (migrations 0027–0030)
 
-A one-time transition, in two deploys, in this order. Doing the second before the first leaves a
-database with a `vector` column on a server that cannot read the type.
+Commits a281a78 to 6497a7e remove tasks, decisions, reminder offsets and correction requests (0027),
+the GitHub connector (0028), the research assistant, supervision notes and the access epoch (0029),
+and embeddings and pgvector (0030), then move Postgres to the stock image. Every table they drop
+was empty on this deployment. Deploy them in **two** deploys, in this order — the image change
+must not go out before 0030 has run, or the database keeps a `vector` column on a server that
+cannot read the type.
 
-1. Deploy the commit that adds migration 0030 as usual (steps 1–9 above), still on
-   `pgvector/pgvector:pg16`. Confirm `docker compose ... exec api alembic current` shows `0030`
-   and that `docker compose ... exec postgres psql -U rm -d rm -c 'select extname from
-   pg_extension'` no longer lists `vector`.
-2. Only then deploy the commit that changes the postgres image to `postgres:16-bookworm`, take a
-   backup (step 4), and `docker compose ... up -d postgres`, then `up -d` for the rest. The data
-   directory is reused as it is: same PostgreSQL major version and build (16.15, pgdg12) on the
-   same Debian base the pgvector image was built from, and nothing left in it needs the extension.
-   Not the floating `postgres:16` tag, which is Debian trixie with a newer glibc and so a different
-   collation library under the existing indexes.
+**Deploy 1 — everything up to 58d12ec, still on `pgvector/pgvector:pg16`.**
 
-Rolling back the image after 0030 is harmless — the pgvector image runs the same server. Rolling
-back the *migration* (`alembic downgrade 0029`) needs the pgvector image again, because the
-downgrade recreates the extension and the `vector(1536)` column; the column comes back empty.
+1. Steps 1–4 above (pull, preflight, build, pre-deploy backup).
+2. Step 5: `up -d`, then `docker compose ... exec api alembic upgrade head`. That applies
+   0027, 0028, 0029 and 0030 in one run. Confirm `alembic current` shows `0030` and that
+   `docker compose ... exec postgres psql -U rm -d rm -c 'select extname from pg_extension'` no
+   longer lists `vector`.
+3. Delete the queued jobs whose tasks no longer exist, or the worker will fail each one as it
+   reaches it (and the periodic deferrer may have queued more before the restart):
+   ```bash
+   docker compose ... exec postgres psql -U rm -d rm -c "DELETE FROM procrastinate_jobs
+     WHERE task_name IN ('evidence.incremental_sync', 'evidence.sync_repository',
+                         'notifications.dispatch_due_reminders')
+       AND status = 'todo'"
+   ```
+   Their events go with them (`ON DELETE CASCADE`); finished rows for those tasks are purged by
+   `retention_sweep` after seven days.
+4. Steps 8–9 (attachments end to end, readiness, the seam check).
+
+**Deploy 2 — 6497a7e, the postgres image.** Take a backup (step 4), then
+`docker compose ... up -d postgres`, then `up -d` for the rest, and verify (step 9). The data
+directory is reused as it is: `postgres:16-bookworm` is the base the pgvector image was built from
+(same 16.15, pgdg12 build), and nothing left in it needs the extension. Not the floating
+`postgres:16` tag, which is Debian trixie with a newer glibc — a different collation library under
+the existing indexes.
+
+**Then tidy the host.**
+
+- `infra/.env` may still carry `RM_GITHUB_APP_ID`, `RM_GITHUB_APP_PRIVATE_KEY_PATH`,
+  `RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH`, `RM_GITHUB_WEBHOOK_SECRET` and `RM_OPENAI_EMBED_MODEL`.
+  Nothing reads them (settings ignore unknown keys, and preflight only fails on *missing* keys), so
+  they are harmless; delete them when convenient.
+- Once the new compose file is running, nothing mounts `infra/secrets/github-app.pem`; delete it.
+
+**Rollback.** Rolling back the image after 0030 is harmless — the pgvector image runs the same
+server. Rolling back a migration needs care: `alembic downgrade 0029` needs the pgvector image,
+because it recreates the extension and an empty `vector(1536)` column; 0029, 0028 and 0027
+downgrade to the earlier, empty table shapes, and the code that used them must be deployed with
+them.
 
 ## Loading a demo workspace
 

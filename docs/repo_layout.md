@@ -1,14 +1,14 @@
 # Research Management System — Repository Layout
 
-Version 0.5 — 7 October 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.10, and [use_cases.md](use_cases.md) v0.18
+Version 0.6 — 7 October 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.14 and [use_cases.md](use_cases.md)
 
-This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
+Where code lives, how modules are shaped, and which conventions every contributor follows. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure and workflow. `scripts/check_docs.py` checks that every path in the trees below exists and that every backend module, API router, frontend feature, hook and locale is named here.
 
 ## 1 Principles
 
 1. **One repository, three deployable parts.** `backend/` (api and worker share one image), `frontend/` (static SPA), `infra/` (Compose, Caddy, backup). One `git clone` gives a working local stack.
 2. **Directory equals bounded context.** A backend module is a directory with a fixed set of files (section 3.2). The import-linter contract in `backend/pyproject.toml` enforces the dependency direction from architecture section 4.1.
-3. **Same names in every layer.** A table `report_versions` maps to ORM class `ReportVersion`, Pydantic schema `ReportVersionOut`, TypeScript type `ReportVersion`, and API path `/api/reports/{id}/versions`. No synonyms.
+3. **Same names in every layer.** A table `report_versions` maps to ORM class `ReportVersion`, Pydantic schema `ReportVersionOut`, TypeScript type `ReportVersion`, and API path `/api/v1/reports/{id}/versions`. No synonyms.
 4. **Generated code is committed only where the build needs it.** The TypeScript API client is generated in CI and checked for drift; Alembic migrations are hand-reviewed and committed.
 5. **Docs live with the code.** `docs/` holds the specification, the architecture, this layout, and decision records. Changing a requirement ID or a table name updates the docs in the same pull request.
 
@@ -29,14 +29,14 @@ research_management/
 │   ├── research_management_requirements.md
 │   ├── architecture.md
 │   ├── repo_layout.md         this file
-│   ├── implementation_status.md  what is built, what is left, decisions taken (section 9)
-│   ├── use_cases.md           what each role can do, and which of it has a screen — compiled
-│   │                          from the routers and the screens that call them, not from the spec
-│   ├── domain_model.md        how professor, student, workspace, project and reports are organized
+│   ├── implementation_status.md  what is built, what was withdrawn, known gaps, open decisions
+│   ├── use_cases.md           what each role can do: the endpoint and the screen that calls it
+│   ├── domain_model.md        how professor, student, workspace, project and reports relate
+│   ├── overview.md            the product summary: problem, innovation, impact
 │   ├── adr/                   architecture decision records, one file each (section 7)
 │   ├── runbooks/              deploy.md, production-readiness.md, backup-restore.md, rotate-secrets.md, break-glass.md, incident.md
-│   ├── api/                   openapi.json exported by CI for review; changelog of breaking changes
-│   └── evaluation/            AI evaluation set description, rubric calibration protocol, pilot gates
+│   ├── api/                   openapi.json exported for review; README.md lists breaking changes
+│   └── evaluation/            assessment evaluation set, calibration protocol, pilot gates
 ├── backend/                   section 3
 ├── frontend/                  section 4
 ├── infra/                     section 5
@@ -84,11 +84,11 @@ backend/
 │   ├── identity/              module shape in 3.2
 │   ├── projects/
 │   ├── reporting/
-│   │   ├── artifacts.py       uploads, links, versions, download (REP-04)
+│   │   ├── artifacts.py       uploads, confirm, removal, versions, download, extraction hand-off (REP-04)
 │   │   ├── extraction.py      text from markdown, csv, pdf, docx, notebooks
-│   ├── evidence/              the evidence index only; no repository connector (ADR 0022)
+│   ├── evidence/              the access-labelled evidence index the assessment snapshot reads
 │   │   └── index/
-│   │       └── chunking.py    what an assessment cites; no embeddings since ADR 0024
+│   │       └── chunking.py    what an assessment cites
 │   │   └── tasks.py           retries of report-entry and attachment indexing
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
@@ -102,7 +102,7 @@ backend/
 │   │   ├── tasks.py           the pipeline as a worker job
 │   │   └── ops.py             model spend and budgets, for the professor-only admin routes
 │   ├── overview/              the professor overview's numbers (UI-01, REP-08, AC-15); no models,
-│   │   ├── __init__.py        no routes of its own, no AI (ADR 0023)
+│   │   ├── __init__.py        no routes of its own, no AI
 │   │   └── service.py         next_deadline, missing_reports, week_reports, review_queue,
 │   │                          stalled_analyses, display_name
 │   ├── notifications/
@@ -141,12 +141,12 @@ backend/
 │           ├── users.py       the roll, invitations, remove, deactivate/reactivate, and
 │           │                  moving a student to another workspace (AUTH-06)
 │           ├── workspaces.py  list, create, read, rename, join, leave, archive
-│           │                  (ADR 0012/14/15/16). Renaming and archiving are owner-only;
+│           │                  (ADR 0012/14/15/20). Renaming and archiving are owner-only;
 │           │                  entering and reading follow membership as well
 │           ├── projects.py    projects and members — membership has no router of its own
 │           ├── reports.py     calendar, periods, obligations, excuse/extend, draft, submit,
 │           │                  versions, revisions — there is no periods.py
-│           ├── artifacts.py   presigned upload, confirm, links, versions, download (REP-04)
+│           ├── artifacts.py   presigned upload, confirm, remove, versions, download (REP-04)
 │           ├── assessments.py  drafts, approve, withdraw, evidence, trends
 │           ├── overview.py    the professor's current week (UI-01), from app.overview
 │           ├── admin.py       assessment retry, AI usage and budgets — prof only
@@ -218,7 +218,7 @@ forbidden_modules = ["app.identity.models", "app.projects.models", "app.reportin
 backend/tests/
 ├── conftest.py               Postgres via testcontainers (postgres:16-bookworm), transactional session per test,
 │                             FakeAIGateway, frozen clock fixture, scope fixtures (prof, student_a, student_b)
-├── factories.py              factory_boy factories for every model
+├── factories.py              plain async row builders: make_project, make_week, make_entry, submit, login
 ├── unit/                     pure functions: metrics, calendar, redaction, chunking, validate_output
 │   └── test_metrics.py       includes the spec example: ratings 3,4,3,2 → 78.75 → 79
 ├── module/                   service-level tests per bounded context, real DB, fakes for AI
@@ -241,7 +241,7 @@ Conventions: test names state the behaviour (`test_late_submission_keeps_first_s
 | ruff | `[tool.ruff]` line length 100, rules E,F,I,B,UP,S,N | Lint and format |
 | mypy | strict, plugins for SQLAlchemy and Pydantic | Type check |
 | import-linter | section 3.3 | Module boundaries |
-| pytest | `-p no:cacheprovider`, `asyncio_mode = auto`, markers `unit`, `module`, `api`, `authz`, `acceptance`, `evaluation_contract`, `evaluation` | Tests |
+| pytest | `-p no:cacheprovider`, `asyncio_mode = auto`, markers `unit`, `module`, `api`, `acceptance`, `evaluation_contract`, `evaluation` | Tests |
 | alembic | autogenerate diff checked in CI (`migrate-check` job) | Schema drift |
 | gitleaks | pre-commit and CI | Secret scanning |
 
@@ -254,13 +254,15 @@ All read once by `core/config.py`. Prefix `RM_`.
 | `RM_ENV` | all | `dev`, `test`, `prod` |
 | `RM_DATABASE_URL` | api, worker | Postgres DSN |
 | `RM_PUBLIC_URL` | api, worker | Absolute links in emails |
-| `RM_S3_ENDPOINT`, `RM_S3_BUCKET`, `RM_S3_ACCESS_KEY`, `RM_S3_SECRET_KEY` | api, worker | MinIO |
+| `RM_S3_ENDPOINT`, `RM_S3_PUBLIC_ENDPOINT`, `RM_S3_BUCKET`, `RM_S3_ACCESS_KEY`, `RM_S3_SECRET_KEY` | api, worker | MinIO; the public endpoint is what browsers upload to |
 | `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL` | worker | Gateway only |
 | `RM_SMTP_HOST`, `RM_SMTP_PORT`, `RM_SMTP_USER`, `RM_SMTP_PASSWORD`, `RM_MAIL_FROM` | worker | Email |
 | `RM_UPLOAD_MAX_FILE_MB` | api | Default 25 |
 | `RM_LOG_LEVEL`, `RM_LOG_JSON` | all | Observability |
+| `RM_METRICS_TOKEN` | api | Bearer token for `/api/metrics`; required in production |
+| `RM_WORKER_CONCURRENCY` | worker | Concurrent jobs |
 
-`.env.example` at repository root lists every variable with a placeholder the api refuses in production; `infra/.env` is git-ignored.
+Compose and the backup container read a few more (`RM_DOMAIN`, `RM_ACME_EMAIL`, `RM_BACKEND_IMAGE`, `RM_CADDY_IMAGE`, `RM_AGE_RECIPIENTS_FILE`, `RM_RCLONE_CONF`, `RM_OFFSITE_REMOTE`). `.env.example` at the repository root is the complete list, with placeholders the api refuses in production; `infra/.env` is git-ignored. There are no `RM_GITHUB_*` or `RM_OPENAI_EMBED_MODEL` settings any more; a live `infra/.env` that still carries them is harmless (see the deploy runbook).
 
 ## 4 Frontend
 
@@ -291,16 +293,16 @@ frontend/
     │   │                      workspaces screen, because a calendar is a workspace setting (REP-01)
     │   ├── overview/          professor overview (UI-01)
     │   ├── me/                student overview, own progress, one released assessment (UI-02, UI-04)
-    │   ├── people/            the roll across every workspace the professor belongs to, grouped
-    │   │                      by workspace: invite, move, suspend, restore, remove (AUTH-01, UI-08)
+    │   ├── people/            the roll of the workspace being worked in: invite, resend, move,
+    │   │                      suspend, restore, remove (AUTH-01, UI-08)
     │   ├── projects/          the project list and the project workspace: create, activate,
     │                          assign a student, end a membership, documents (PROJ-01, UI-03)
     │   ├── students/          research profile (UI-04)
     │   ├── report/            weekly package editor: a tab per required project, EntryForm,
     │   │                      Attachments, AutosaveIndicator
     │   ├── review/            three-pane review workspace (UI-05)
-    │   └── workspaces/        the workspaces a professor belongs to or owns: work here, join,
-    │                          leave, create, archive (ADR 0012/14/15/16, UI-08)
+    │   └── workspaces/        the workspaces a professor belongs to or owns, and the header
+    │                          switcher: join, leave, create, archive (ADR 0012/14/15/20, UI-08)
     ├── components/
     │   ├── Failure.tsx        the shared error surface
     │   ├── ui/                placeholder
@@ -327,7 +329,7 @@ infra/
 ├── caddy/
 │   └── Caddyfile              TLS, serve frontend/dist, reverse_proxy /api/* api:8000, security headers
 ├── postgres/
-│   ├── init/01_extensions.sql  CREATE EXTENSION pg_trgm
+│   ├── init/01_extensions.sql  CREATE EXTENSION pg_trgm (no pgvector, ADR 0024)
 │   └── postgresql.conf         tuned parameters for the VPS
 ├── backup/
 │   ├── Dockerfile              postgres client, age, rclone, cron
@@ -350,13 +352,17 @@ scripts/
 │                          document or called by a screen is one the application serves, and
 │                          every ADR is in the index. Prose counts and versions are not checked
 ├── check_traceability.py      asserts every requirement ID in docs/research_management_requirements.md
-│                              appears in docs/architecture.md section 16 and in at least one test docstring
+│                              appears in docs/architecture.md section 16; warns on a standing AC-xx
+│                              with no acceptance test
+├── preflight.sh               compares infra/.env with .env.example and checks what a key diff cannot see
+├── guard_docker_volumes.py    refuses `docker compose down -v` (PreToolUse hook for agents)
+├── set-smtp-password.sh       writes the SMTP password into infra/.env
 └── restore_drill.sh           spins a scratch stack, restores latest backup, runs smoke checks
 ```
 
 ## 7 Documentation conventions
 
-- **ADRs** in `docs/adr/NNNN-<slug>.md` with Context, Decision, Consequences. 0001–0011 came from the architecture; 0012–0016 were written while building workspaces. `docs/adr/README.md` is the index and must list every file in the directory — `scripts/check_docs.py` asserts it.
+- **ADRs** in `docs/adr/NNNN-<slug>.md` with Context, Decision, Consequences; never edited after acceptance except to mark them superseded, withdrawn or amended. `docs/adr/README.md` is the index, with each ADR's status, and must list every file — `scripts/check_docs.py` asserts it.
 - **Runbooks** are imperative checklists; every runbook names the alert or event that triggers it.
 - **Requirement references** in code use the ID in a comment on the function that implements it, for example `# REP-08` above `dispatch_missed_deadline`, so `grep REP-08` finds spec, architecture, code, and tests.
 
@@ -366,19 +372,3 @@ scripts/
 - Pull request template asks for: requirement IDs touched, migration present yes/no, docs updated yes/no, screenshots for UI.
 - `ci.yml` jobs: `backend-lint` (ruff, mypy, import-linter), `backend-test` (pytest with testcontainers, coverage gate), `migrate-check` (alembic autogenerate produces no diff), `frontend` (eslint, tsc, vitest, build), `client-drift` (regenerate API client and fail on diff), `docs` (`scripts/check_traceability.py` and `scripts/check_docs.py`), `images` (build both images, Trivy scan).
 - `release.yml` on tag `v*`: build, push to the registry, generate SBOM, create release notes from commits.
-
-## 9 Bootstrap order
-
-Progress against this order, and the decisions taken while working through it, are recorded in
-[implementation_status.md](implementation_status.md).
-
-The first pull requests, in dependency order, so that the tree above fills in without dead directories:
-
-1. Repository skeleton: top-level files, `backend/pyproject.toml`, `core/`, `main.py`, health endpoints, `infra/` dev Compose, CI lint and test jobs.
-2. `identity/`: users, invitations, sessions, `authz.Scope`, first migration, authz test harness.
-3. `projects/` and `reporting/` with periods, obligations, drafts, submission, versions, artifacts; frontend report editor and student overview.
-4. `notifications/` with scheduler tasks and the missed-deadline email (REP-08) on the console sender; e2e for AC-19.
-5. `evidence/`: indexing and retrieval. (The repository connector built here was removed by ADR 0022, and search over the index by ADR 0023.)
-6. `assessment/`: snapshot, metrics with unit tests, pipeline on the fake gateway, review workspace.
-7. `ai/` gateway against OpenAI, prompt registry, cost ledger; evaluation harness.
-8. `assistant/`, professor overview polish, backup container and restore drill, release workflow. (The assistant was removed by ADR 0023; the overview's numbers moved to `overview/`.)

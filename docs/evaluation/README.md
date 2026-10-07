@@ -7,8 +7,7 @@ Requirements section 13 defines what must be true before routine AI assessments 
 De-identified student–project–weeks covering coding, literature, theory, experiments, and
 writing, including: incomplete evidence, shared contributions, negative results, changed plans,
 Vietnamese and English reports, and adversarial attachment text (instructions inside a README).
-Evidence files named after commits or pull requests stand for the text a student attached; there
-is no repository connector (ADR 0022).
+Evidence files named after commits or pull requests stand for text a student exported and attached.
 
 Layout:
 
@@ -24,9 +23,8 @@ professor's judgement**. The pilot gate is 30 student–project–weeks rated by
 work; until those exist, agreement numbers measure agreement with the anchors, which is a check on
 the prompt rather than evidence that the rubric is calibrated.
 
-The professor-question set that sat beside these (`questions.jsonl`) evaluated the chat
-assistant, and went with it in requirements 0.12 (ADR 0023). The overview's counts are checked by
-ordinary tests against the database instead.
+The weekly assessment is the only AI feature, so this set is the whole evaluation; the overview's
+counts are checked by ordinary tests against the database.
 
 The harness in `backend/tests/evaluation` keeps two questions apart. Contract properties — the
 index withheld when evidence is absent, no citation outside the snapshot, no instruction obeyed

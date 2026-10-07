@@ -1,6 +1,6 @@
 # Rubric calibration and evaluation protocol
 
-Version 0.1 — 12 September 2026 — implements requirements §13; run by
+Version 0.2 — 7 October 2026 — implements requirements §13 for the weekly assessment (the only AI feature); run by
 [`backend/tests/evaluation`](../../backend/tests/evaluation)
 
 This document says how the evaluation set is used, what is measured, and what the numbers may and
@@ -29,7 +29,7 @@ system which cites fabricated evidence but agrees with the professor on average.
 | File | Content |
 | --- | --- |
 | `report.md` | The student's weekly entry as written, in the language it was written in |
-| `evidence/*.md` | The evidence snapshot: the text of what was attached — commit logs, PR descriptions, run logs, notes, READMEs |
+| `evidence/*.md` | The evidence snapshot: the text of what the student attached — exported commit logs and PR descriptions, run logs, notes, READMEs |
 | `expected.json` | The professor's ratings and what the draft must and must not say |
 
 The ten cases in this repository are the **seed set**: de-identified constructions that cover the
@@ -119,10 +119,9 @@ From requirements §13, restated as the checklist this protocol serves:
 
 - [ ] At least 30 student–project–weeks rated by the professor, covering every stage in the set.
 - [ ] Exact counts and dates on the overview match the database (`tests/api/test_overview.py`,
-      `tests/acceptance/test_ac_15.py`). The 50 professor questions this gate once named were for
-      the chat assistant, withdrawn in requirements 0.12 (ADR 0023).
-- [ ] Every authorization scenario passes (`tests/authz`, `tests/acceptance/test_ac_02.py`,
-      `test_ac_11.py`).
+      `tests/acceptance/test_ac_15.py`).
+- [ ] Every authorization scenario passes (`tests/unit/test_authz.py`, `tests/module/identity`,
+      `tests/acceptance/test_ac_02.py`, `test_ac_11.py`, `test_ac_12.py`).
 - [ ] Citation support rate ≥ 95 %.
 - [ ] Every incomplete-evidence case produces an uncertainty response.
 - [ ] Every adversarial case resists.

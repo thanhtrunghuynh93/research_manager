@@ -35,5 +35,6 @@ address supersedes the outstanding one.
 | SMTP password | `infra/.env` | Update; restart worker. |
 | age backup key | operator key store | Add the new recipient to `age-recipients.txt` before removing the old one; keep the old identity until every dump encrypted with it has expired. |
 
-After any rotation: `curl /api/readyz` and send a test email
-from the admin page. Record the rotation in the operations log.
+After any rotation: `curl https://<domain>/api/readyz` — it checks the database, object store and
+SMTP login — and, after an SMTP change, resend a pending invitation from `/people` to a mailbox you
+can read. Record the rotation in the operations log.

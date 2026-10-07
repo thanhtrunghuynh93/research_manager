@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.9 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.13
+Version 0.10 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.14
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -10,7 +10,7 @@ This document turns the logical boundaries in section 10 of the requirements int
 | --- | --- | --- |
 | Backend | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 | Matches the team's existing FastAPI projects |
 | Frontend | React 18, Vite, TypeScript, TanStack Query, shadcn/ui | Same toolchain as the graph-digitizer frontend |
-| Database | PostgreSQL 16, no extensions beyond `pg_trgm` (`pgvector` removed by ADR 0024) | One store for records, the evidence index, and the job queue |
+| Database | PostgreSQL 16 (stock `postgres:16-bookworm`), no extension beyond `pg_trgm` | One store for records, the evidence index, and the job queue |
 | Jobs | procrastinate (Postgres-backed queue) running periodic tasks in the worker | Transactional enqueue; no Redis to operate |
 | Files | MinIO (S3 API) on the same host | Presigned uploads, versioned bucket, easy offsite mirror |
 | LLM | OpenAI GPT API (structured completions for the assessment) behind one internal gateway module | Vendor isolated to one module; swappable |
@@ -72,10 +72,10 @@ Service notes:
 
 - **caddy** terminates TLS with automatic certificates, serves the built SPA, and proxies `/api/*` to `api`. No CORS because the SPA and API share an origin.
 - **api** and **worker** run the same image with different commands. The worker also runs the periodic tasks (section 12), so there is no separate scheduler container.
-- **postgres** uses the stock `postgres:16-bookworm` image (the pgvector image until ADR 0024; the switch is ordered in docs/runbooks/deploy.md). One volume. `shared_buffers` and `work_mem` tuned for the host; the queue and the records share the instance.
+- **postgres** uses the stock `postgres:16-bookworm` image (ADR 0024). One volume. `shared_buffers` and `work_mem` tuned for the host; the queue and the records share the instance.
 - **minio** holds one versioned bucket per environment. The API never streams file bodies; it issues presigned PUT and GET URLs after an authorization check.
 - **backup** runs nightly `pg_dump -Fc`, encrypts with `age`, mirrors the MinIO bucket, and syncs both to an offsite bucket with `rclone`. Retention 30 daily and 12 monthly. A restore drill against a scratch Compose stack is part of the launch checklist (AC-16).
-- Health: `/api/healthz` (process up), `/api/readyz` (DB and MinIO reachable, queue lag under threshold). Compose `restart: unless-stopped`.
+- Health: `/api/healthz` (process up), `/api/readyz` (database, object store, worker heartbeat, SMTP relay). Compose `restart: unless-stopped`.
 - Secrets live in a root-owned `.env` file with mode 600 and are injected as environment variables. Provider credentials (OpenAI key, SMTP password) are referenced by name in application records and never stored in the database (requirements section 9).
 
 ## 4 Code layout
@@ -89,12 +89,11 @@ backend/
     identity/       users, invitations, sessions, break-glass CLI
     projects/       projects, memberships, plan_baselines
     reporting/      reporting_periods, obligations, weekly_reports, report_versions, entries, artifacts
-    evidence/       evidence_references, evidence_chunks, index/ (chunking); no repository connector
-                    since ADR 0022, no embeddings since ADR 0024
+    evidence/       evidence_references, evidence_chunks, index/ (chunking)
     assessment/     rubrics, snapshot.py, pipeline/ (claims, matching, rating), metrics.py, versions, review
     overview/       service.py: the professor overview's numbers (next deadline, missing reports, week
-                    board, review queue, stalled runs); app.assistant was removed by ADR 0023
-    notifications/  notification records, email/{base,smtp}.py, templates, scheduler_tasks.py
+                    board, review queue, stalled runs)
+    notifications/  notification records, email/{base,smtp,console}.py, templates, scheduler_tasks.py
     ai/             gateway.py, prompts/ (registry with versions), schemas/ (structured outputs), cost.py, redaction.py
     api/            one router per module, dependency wiring
   tests/
@@ -115,20 +114,20 @@ A module reads another module's data only through that module's `service.py`; it
 
 | Route | Screen | Requirement |
 | --- | --- | --- |
-| `/overview` | Professor overview: current week, missing/late, review queue, attention list, stalled analyses | UI-01 |
-| `/me` | Student overview: obligations, draft state, next deadline, released feedback, timeline | UI-02 |
-| `/projects/:id` | Project workspace: goals, members, related documents, the repository link; the stage is the professor's view only. Milestones and decisions were removed (requirements 0.8, 0.10) | UI-03 |
-| `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
-| `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left, and the professor's revision request | REP-02, REP-05, UI-04 |
-| `/people` | The roll across every workspace the professor belongs to, grouped by workspace: invite, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
-| `/workspaces` | The workspace being worked in — rename (owner only) and its weekly schedule, whose save opens the weeks and derives this week's obligations — then the others belonged to or owned: join, leave, archive; create, folded. Switching between memberships is the header's own control, present on every screen | UI-08, AUTH-04, AUTH-05, REP-01 |
-| `/accept-invitation` | Set a password from an invitation link; public, no session | AUTH-01 |
-| `/reset-password` | Set a password from a recovery link; public, no session | AUTH-01 |
-| `/review/:assessmentId` | Review workspace: claims, evidence, draft assessment, freshness, approve/override | UI-05 |
+| `/overview` | Professor overview: next deadline, the week's reports by project and student, outstanding reports with an as-of time, review queue, stalled analyses with retry, budget and mail warnings | UI-01 |
+| `/me` | Student overview: this week's obligations, draft or submitted state, deadline, earlier weeks | UI-02 |
+| `/me/profile`, `/me/assessments/:id` | The student's own trajectory and released assessments | UI-02, UI-04 |
+| `/projects` | Project list for both roles; create; for a student, projects open to joining | PROJ-01, PROJ-07 |
+| `/projects/:id` | Project workspace: research questions, members, related documents, the repository link; stage and standing controls for the professor, record editing for the creator | UI-03 |
+| `/students/:id` | Student research profile (professor) | UI-04 |
+| `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left; mark reviewed, request a revision | REP-02, REP-05, UI-04 |
+| `/people` | The roll of the workspace being worked in: invite, resend, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
+| `/workspaces` | The workspace being worked in — rename (owner only) and its weekly schedule, whose save opens the weeks and derives this week's obligations — then the others belonged to or owned: join, leave, archive; create. Switching is the header's own control on every screen | UI-08, AUTH-04, AUTH-05, REP-01 |
+| `/review/:assessmentId` | Review workspace: claims and discrepancies, evidence snapshot, draft ratings; approve, or override with a rationale | UI-05 |
 | `/report/:periodId` | One weekly submission flow with a tab per required project entry | REP-02, REP-03 |
 | `/report/:periodId/submitted` | What the student actually submitted, as against the draft the editor shows | REP-02, REP-05 |
-| `/login` | Sign in; public, no session | AUTH-01 |
-| `/status` | Readiness of database, object store, worker, and mail relay; public | — |
+| `/login`, `/accept-invitation`, `/reset-password` | Sign in (and request a reset); set a password from an invitation or recovery link; public | AUTH-01 |
+| `/status` | Readiness of database, object store, worker and mail relay; public | — |
 
 ## 5 Data architecture
 
@@ -139,15 +138,15 @@ A module reads another module's data only through that module's `service.py`; it
 | Identity | `workspaces`, `workspace_members`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
 | Projects | `projects`, `project_memberships`, `plan_baselines`, `plan_baseline_items` |
 | Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
-| Evidence | `evidence_references`, `evidence_chunks` (the connector tables were dropped by migration 0028, ADR 0022) |
-| Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews` (`supervision_notes` and the assistant's `conversations`, `messages` and `answer_cache` were dropped by migration 0029, ADR 0023) |
+| Evidence | `evidence_references`, `evidence_chunks` |
+| Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews` |
 | Operations | `notifications`, `email_deliveries`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
 
 Every table carries `workspace_id`; composite foreign keys `(workspace_id, x_id)` enforce the same-workspace invariant from requirements section 9.
 
 `workspace_members` records which workspaces an account belongs to, which is plural for a professor; `users.workspace_id` records the one it is *working in*. The first is which workspaces a professor may switch into; the second is where both reads and writes go. `Scope` names that one `workspace_id`, and every visibility predicate is built on `Scope.within` (ADR 0015, ADR 0020, ADR 0021). Archiving and the roll read the first; every per-user row is anchored to the second.
 
-Six of those point at `users(workspace_id, id)`, split in two by ADR 0014. The four holding identity records — `invitations`, `sessions`, `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account when it joins another workspace. The two holding research history — `project_memberships`, `weekly_reports` — do not (`developer_identities` and `contributions` were the other two until ADR 0022), so Postgres refuses to move an account that has written anything. That split is what makes "history stays in the workspace it was written in" a property of the schema, and why moving a student is only half-built: `POST /api/v1/users/{user_id}/workspace` moves an account that has written nothing, and the database refuses one that has (AUTH-06); see use_cases.md §2.1.
+Six of those point at `users(workspace_id, id)`, split in two by ADR 0014. The four holding identity records — `invitations`, `sessions`, `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account when it joins another workspace. The two holding research history — `project_memberships`, `weekly_reports` — do not, so Postgres refuses to move an account that has written anything. That split is what makes "history stays in the workspace it was written in" a property of the schema, and why moving a student is only half-built: `POST /api/v1/users/{user_id}/workspace` moves an account that has written nothing, and the database refuses one that has (AUTH-06); see use_cases.md §2.1.
 
 ### 5.2 Central tables
 
@@ -177,7 +176,7 @@ Constraints `uq_report_version (report_id, version_no)`, `uq_report_idem (report
 Constraint `uq_entry (report_version_id, project_id)`. `content_hash` is SHA-256 over the canonical JSON of the entry fields excluding `hours`. On resubmission, if the hash equals the previous version's entry, `content_changed_in_version_id` is copied forward; otherwise it is set to the new version. Immutable.
 
 **plan_baselines** — `id, workspace_id, membership_id, period_id, version_no INT, state ENUM(frozen, empty, proposed, accepted, superseded), frozen_at, source_entry_id NULL, change_reason TEXT NULL, proposed_by NULL, approved_by NULL, approved_at NULL`
-Constraint `uq_baseline_in_effect`: unique `(membership_id, period_id)` where `state IN ('frozen','accepted')`. Rows are immutable. `plan_baseline_items` holds `(baseline_id, planned_outcome, weight NUMERIC, acceptance_criteria)` — lines of the student's next-week plan — and a vestigial `task_id` with no foreign key, left when `tasks` was dropped (migration 0027). `proposed`, `accepted` and `superseded` remain in the enum and nothing writes them since requirements 0.10 withdrew the proposal flow.
+Constraint `uq_baseline_in_effect`: unique `(membership_id, period_id)` where `state IN ('frozen','accepted')`. Rows are immutable. `plan_baseline_items` holds `(baseline_id, planned_outcome, weight NUMERIC, acceptance_criteria)` — lines of the student's next-week plan — and an unused `task_id` with no foreign key. Only `frozen` and `empty` are written; `proposed`, `accepted` and `superseded` remain in the enum for historical rows.
 
 **evidence_references** — `id, workspace_id, project_id, owner_student_id NULL, visibility ENUM(professor_only, student_private, project_shared), source_kind ENUM(report_entry, artifact_version, repository_event, decision, feedback), source_id, source_version TEXT, locator TEXT, supported_claim TEXT NULL, source_time, ingested_at`
 Every indexed piece of evidence has exactly one row here, and `evidence_chunks` rows reference it. Visibility is copied from the source at ingestion and re-synced when the source changes. Only `report_entry` and `artifact_version` are written; the other three labels name sources that are gone and stay in the enum because it has rows under it.
@@ -234,7 +233,7 @@ Bucket layout: `{workspace_id}/artifacts/{artifact_id}/{version_no}/{sha256}.{ex
 
 `evidence_chunks` — `id, workspace_id, evidence_ref_id, project_id, owner_student_id NULL, visibility, source_version, chunk_no, text, source_time`. Report entries are indexed on `ReportSubmitted`, attachments on `ArtifactExtracted`, and an attachment's chunks are dropped on `ArtifactRemoved`. Each chunk carries the access label of its source and resolves to a citation `(source_kind, source_id, source_version, locator)` through `evidence_references`. Two reads remain, both used by the assessment snapshot builder (9.2): the window read (`search_evidence_window`, a project's chunks within a time range) and the by-source read (`evidence_for_sources`, a week's own report entries by identity); both apply the `EvidenceChunk` visibility policy before returning anything. Index: B-tree on `(workspace_id, project_id, visibility, source_time)`.
 
-Hybrid retrieval — reciprocal-rank fusion of full-text rank and cosine distance — and the evidence search route it served were removed in 0.12 with the assistant ([ADR 0023](adr/0023-no-research-assistant.md)). The embeddings and the generated `tsv` column it ranked over were removed in 0.13 ([ADR 0024](adr/0024-no-embeddings.md)): indexing is chunking alone, it calls no model provider, and migration 0030 dropped `embedding`, `tsv`, their HNSW and GIN indexes, and the `vector` extension.
+There is no search over the index, no embedding and no full-text column: indexing is chunking alone and calls no model provider ([ADR 0023](adr/0023-no-research-assistant.md), [ADR 0024](adr/0024-no-embeddings.md)).
 
 ## 6 Authorization and confidentiality
 
@@ -270,9 +269,9 @@ Every repository function accepts `scope` and applies `visible_to(scope, Model)`
 | Artifact — a project document (no period, no entry) | All in workspace | `project_id IN scope.project_ids` ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)) |
 | Assessment version | All | Own, and only where an `approved` review exists |
 | Project | All | `project_id IN scope.project_ids` |
-| Evidence chunk | All except none | `visibility = 'project_shared' AND project_id IN scope.project_ids` OR `owner_student_id = scope.user_id` |
+| Evidence chunk | All in workspace | `visibility = 'project_shared' AND project_id IN scope.project_ids` OR `owner_student_id = scope.user_id` |
 
-Downloads reuse the same predicates: a presigned GET is issued only after `visible_to` selects the artifact version (AC-02). The evidence reads an assessment snapshot is built from — the window and by-source reads in `app/evidence/repository.py` — apply `visible_to(scope, EvidenceChunk)`, registered in `app/evidence/policies.py`, so there is no second permission model (AUTH-02). The evidence search and citation-open routes were removed with the assistant (ADR 0023).
+Downloads reuse the same predicates: a presigned GET is issued only after `visible_to` selects the artifact version (AC-02). The evidence reads an assessment snapshot is built from — the window and by-source reads in `app/evidence/repository.py` — apply `visible_to(scope, EvidenceChunk)`, registered in `app/evidence/policies.py`, so there is no second permission model (AUTH-02).
 
 ### 6.2 Authentication and account lifecycle (AUTH-01)
 
@@ -286,11 +285,11 @@ Downloads reuse the same predicates: a presigned GET is issued only after `visib
 
 ### 6.3 Access changes (AUTH-03, AC-11)
 
-Ending a membership revokes access at once because nothing caches a read: every request compiles `Scope.project_ids` from the memberships table, and every read applies `visible_to` against it. Deactivating a user deletes their sessions in the same transaction (6.2). Snapshots are historical records and are not invalidated. The cached answers this section described, and the per-workspace access epoch that expired them (ADR 0009), were removed in 0.12 with the assistant ([ADR 0023](adr/0023-no-research-assistant.md), migration 0029 drops `workspaces.access_epoch` and `evidence_snapshots.access_epoch`).
+Ending a membership revokes access at once because nothing caches a read: every request compiles `Scope.project_ids` from the memberships table, and every read applies `visible_to` against it. Deactivating a user deletes their sessions in the same transaction (6.2). Snapshots are historical records and are not invalidated.
 
 ### 6.4 Confidentiality of professor material (QA-06)
 
-Withdrawn in 0.12 ([ADR 0023](adr/0023-no-research-assistant.md)): private supervision notes and the professor-only assistant branch that read them are gone, and migration 0029 drops `supervision_notes`. What remains is that an assessment's snapshot is built through the student's own view and never from `professor_only` evidence (5.2, 9.2; ASSESS-01). The section number is kept so references to it stay valid.
+Withdrawn with QA-06 ([ADR 0023](adr/0023-no-research-assistant.md)). What remains is that an assessment's snapshot is built through the student's own view and never from `professor_only` evidence (5.2, 9.2; ASSESS-01).
 
 ### 6.5 Workspaces and the tenant boundary (AUTH-04, AUTH-05, AUTH-06, UI-08)
 
@@ -330,7 +329,7 @@ Changing the meeting day inserts a new `calendar_configs` version with an `effec
 
 ```mermaid
 sequenceDiagram
-    participant W as worker periodic (every 60 s)
+    participant W as scan_due_reminders (every 5 min)
     participant DB as postgres
     participant J as dispatch_missed_deadline(period)
     participant E as send_email(notification)
@@ -349,7 +348,7 @@ sequenceDiagram
     E->>DB: UPDATE email_deliveries SET state, attempts, last_error
 ```
 
-Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The professor sees the unfulfilled obligation on the overview's outstanding list, derived from the obligations themselves; the in-app notification record `J` used to write for the professor had no reader and is no longer written (requirements 0.12, ADR 0023). The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. Delivery is a queued row rather than one job per message: `dispatch_missed_deadline` writes an
+Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The professor sees the unfulfilled obligation on the overview's outstanding list, derived from the obligations themselves. The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. Delivery is a queued row rather than one job per message: `dispatch_missed_deadline` writes an
 `email_deliveries` row in state `queued` in the same transaction as the notification, and a periodic
 `send_queued_emails` task drains them. That keeps the attempt count and the last error in one place
 and gives the same at-least-once behaviour, since both the notification and its delivery row are
@@ -358,11 +357,11 @@ keyed. A send is attempted five times; after that the notification row remains w
 
 ### 7.3 Pre-deadline reminders (REP-07)
 
-Withdrawn in requirements 0.10. `dispatch_due_reminders` wrote `reminder:{offset}` notification rows from workspace-configured `reminder_rules`, and nothing displayed or emailed them, so they reached nobody. The table, the job and `PUT /notifications/reminder-offsets` were removed (migration 0027). The missed-deadline email in 7.2 is the one reminder.
+Withdrawn in requirements 0.10 (migration 0027). The missed-deadline email in 7.2 is the one reminder.
 
 ## 8 Repository evidence
 
-Withdrawn in requirements 0.11 ([ADR 0022](adr/0022-no-repository-connector.md)). The GitHub connector, its sync runs, webhook, normalised repository events, developer identities and contribution attribution were built and never connected to a repository on the running deployment; migration 0028 dropped their seven tables, the `repository_events` guard trigger and eight enum types. A project's repository is `projects.repo_url`, a link nothing reads (PROJ-01), and work a student wants assessed is attached to the report (REP-04) and indexed like any attachment (5.7). The section number is kept so that references to §9 onward stay valid.
+Withdrawn with REPO-01..08 ([ADR 0022](adr/0022-no-repository-connector.md)). A project's repository is `projects.repo_url`, a link nothing reads (PROJ-01); work a student wants assessed is attached to the report (REP-04) and indexed like any attachment (5.7). The section number is kept so references stay valid.
 
 ## 9 Assessment pipeline
 
@@ -379,14 +378,14 @@ flowchart LR
     R --> V[validate_output\nevery evidence_ref_id in snapshot?\nrating in schema?]
     V --> X[compute_metrics\npure Python: index, completion,\ncoverage, confidence]
     X --> D[create_draft assessment_version\n+ assessment_review state=draft]
-    D --> N[notify professor: review queue]
+    D --> N[professor review queue]
 ```
 
 Each step is a procrastinate job keyed `assess:{student}:{project}:{period}:{report_version}:{step}`; a rerun of the same key is a no-op unless the previous attempt failed. `analysis_runs` records inputs (`report_version_id, snapshot_id, rubric_version_id, prompt_versions`) and per-step status, giving the job states queued/running/completed/partial/failed required by section 10 of the requirements. A failed LLM step leaves the run `partial`; the review queue shows the entry as "assessment pending, model step failed, retry available" and the report remains submitted with its original timestamp (AC-13).
 
 ### 9.2 Snapshot window
 
-`window_start_utc = period.start_utc`, `window_end_utc = period.end_utc`. Items: the entry's own evidence references, found by identity so a late report stays in its own week, artifact versions in the project within the window that the student may see, and the frozen baseline. Coverage notes record what was omitted, such as extraction failures (ASSESS-06). `evidence_snapshots.integration_lag_days` and `evidence_snapshot_items.integration_of_earlier_work` remain for the rows written before ADR 0022 and are now always 0 and false.
+`window_start_utc = period.start_utc`, `window_end_utc = period.end_utc`. Items: the entry's own evidence references, found by identity so a late report stays in its own week, artifact versions in the project within the window that the student may see, and the frozen baseline. Coverage notes record what was omitted, such as extraction failures (ASSESS-06). `evidence_snapshots.integration_lag_days` and `evidence_snapshot_items.integration_of_earlier_work` remain for historical rows and are always 0 and false.
 
 ### 9.3 Structured rubric output
 
@@ -410,21 +409,16 @@ The model must return JSON matching this schema (the gateway enforces it with st
 }
 ```
 
-**`dimensions` is a list, not a map keyed by dimension.** The map read better and was the shape the
-rubric itself has, but it made this the one schema the provider refused: strict structured outputs
-cannot express an object whose keys are not known in advance, and the rubric is a per-workspace
-`rubric_versions.dimensions` configured at runtime. Every `rate_rubric` call returned 400 for as
-long as a real key was configured, and no assessment was ever produced from model output.
-`validate_output` turns the list back into the map keyed by dimension that everything downstream
-expects, so `assessment_versions.ratings` is unchanged and no migration was needed.
+**`dimensions` is a list, not a map keyed by dimension**, because the provider's strict structured
+outputs cannot express an object whose keys are not known in advance, and the rubric's dimensions
+are configured at runtime. `validate_output` turns the list back into the map keyed by dimension
+that `assessment_versions.ratings` stores.
 
 Nothing in these schemas may carry a JSON Schema keyword strict mode rejects — numeric bounds
 among them, which is why `proposed_completion` is validated in Python rather than constrained on
-the wire. `ai/schemas/strict.py` reimplements the provider's rules and a unit test asserts every
-response model against them; the SDK's own converter cannot be used for this, because it repairs
-`additionalProperties` only where the key is absent and therefore accepts the very map that broke
-this step. `FakeGateway` applies the same check, so a schema the provider would refuse now fails
-the ordinary suite rather than only production.
+the wire. `ai/schemas/strict.py` reimplements the provider's rules (the SDK's own converter accepts schemas
+the server rejects) and a unit test asserts every response model against them; `FakeGateway`
+applies the same check, so a schema the provider would refuse fails the ordinary suite.
 
 `not_applicable` is never a model output; it comes only from `rubric_versions.stage_applicability` (ASSESS-04). `validate_output` drops any `evidence_ref_id` not present in the snapshot and downgrades the affected rating to `unknown` with a recorded reason, so a fabricated citation cannot survive (AC-07, AC-12). It also drops a `dimension_id` the rubric does not have and takes first-wins on a repeat — both recorded — because a list admits what a map could not.
 
@@ -468,17 +462,17 @@ class AIGateway:
 
 Responsibilities:
 
-- **Prompt registry.** `ai/prompts/{prompt_id}/v{n}.md` with a manifest of model, temperature 0, schema, and max tokens. Three prompts remain, all the assessment's: `extract_claims`, `match_claims`, `rate_rubric` (the assistant's `route_question` and `answer` went with ADR 0023). `CallContext` records `(prompt_id, prompt_version, model)` into `assessment_versions.prompt_versions` and `analysis_runs` (ASSESS-09).
+- **Prompt registry.** `ai/prompts/{prompt_id}/v{n}.md` with a manifest of model, temperature 0, schema, and max tokens. Three prompts, all the assessment's: `extract_claims`, `match_claims`, `rate_rubric`. `CallContext` records `(prompt_id, prompt_version, model)` into `assessment_versions.prompt_versions` and `analysis_runs` (ASSESS-09).
 - **Untrusted content framing.** Every retrieved text is inserted inside a delimited data block with a system instruction that the block is evidence to analyse, not instructions to follow, and that no tool or action is available. The gateway exposes no function-calling tools to the model at all; actions exist only as product endpoints (AC-12).
 - **Redaction.** Before sending, `redaction.py` strips strings matching credential patterns (tokens, keys, connection strings) and replaces emails other than the subject student's with placeholders. Credentials never reach the gateway anyway because they are not stored in the database.
 - **Cost ledger.** `ai_calls` — `(id, job_id, project_id, prompt_id, prompt_version, model, tokens_in, tokens_out, cost_usd, latency_ms, status, created_at)`. Budgets per project and per month live in `workspaces.ai_budgets`; when exceeded, the job records `delayed_budget` and the review queue shows "analysis delayed: budget" rather than a silent failure.
-- **Caching.** Claim extraction is keyed by `content_hash` of the entry, so an unchanged entry is never re-extracted. (The embedding cache went with embeddings, ADR 0024.)
-- **Restriction flag.** `projects.ai_restricted = true` short-circuits every model step — since ADR 0024 the assessment's are the only ones; indexing calls no provider for any project: the pipeline still builds the snapshot and metrics for the plan, produces a qualitative draft with `Not rated — restricted`, and the professor rates manually.
+- **Caching.** Claim extraction is keyed by `content_hash` of the entry, so an unchanged entry is never re-extracted.
+- **Restriction flag.** `projects.ai_restricted = true` short-circuits every model step of the assessment (indexing calls no provider for any project): the pipeline still builds the snapshot and metrics for the plan, produces a qualitative draft with `Not rated — restricted`, and the professor rates manually.
 - **Timeouts and partial state.** 60 s per call, two retries on transient errors, then the step fails and the run is `partial`. Logs carry ids, token counts, and status; never prompt or completion text.
 
-## 11 Professor assistant
+## 11 Professor overview
 
-Withdrawn in requirements 0.12 ([ADR 0023](adr/0023-no-research-assistant.md)), with QA-01..07. The router, fact functions, hybrid retrieval, answer contract, streamed chat screen, conversations, answer cache and the professor-only supervision-note branch were built and never used; migration 0029 drops their tables. The one part with a live caller — the fact functions behind the professor overview — moved unchanged to `app.overview`: plain functions in `backend/app/overview/service.py` (`next_deadline`, `missing_reports`, `week_reports`, `review_queue`, `stalled_analyses`) that `GET /api/v1/overview` (`backend/app/api/v1/overview.py`) calls directly and returns with the instant it was served (AC-15). The section number is kept so that references to §12 onward stay valid.
+The professor research assistant this section once described is withdrawn with QA-01..07 ([ADR 0023](adr/0023-no-research-assistant.md)). The overview's numbers are plain functions in `backend/app/overview/service.py` — `next_deadline`, `missing_reports`, `week_reports`, `review_queue`, `stalled_analyses` — each a query through the owning module's service under the caller's `Scope`. `GET /api/v1/overview` (`backend/app/api/v1/overview.py`) calls them, adds the AI budget state and mail health, and returns them with the instant it was served (UI-01, AC-15).
 
 ## 12 Background jobs
 
@@ -486,8 +480,8 @@ Withdrawn in requirements 0.12 ([ADR 0023](adr/0023-no-research-assistant.md)), 
 - **Job key convention:** `{domain}:{ids}:{step}` as `queueing_lock`; procrastinate refuses a second queued job with the same lock. Completed jobs are retained for seven days for observability (`retention_sweep`).
 - **Retries:** transient errors retry with exponential backoff (max 5); permanent errors fail immediately. A domain record (`analysis_runs`, `email_deliveries`) carries the application state including `partial`.
 - **Manual retry:** `POST /api/v1/admin/assessments/retry` re-enqueues with the same lock; because every step is idempotent on its key, no duplicate assessments or notifications result.
-- **Periodic tasks** (in the worker, `procrastinate.periodic`), six of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`, which deletes jobs finished more than seven days ago with their events); `scan_due_reminders` `*/5` and `send_queued_emails` `*/2` (`app/notifications/scheduler_tasks.py`). The repository connector's `incremental_sync` `*/30` went with ADR 0022, and `retention_sweep`'s answer-cache purge went with ADR 0023.
-- **Observability:** `/api/metrics` exposes queue depth, oldest queued age, failures by job name, model error rate, citation validation failures (`rm_citation_validation_failures_total`, whose `surface` label has one value since ADR 0023: `assessment`), and access denials (section 11 "Observability").
+- **Periodic tasks** (in the worker, `procrastinate.periodic`), six of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`, which deletes jobs finished more than seven days ago with their events); `scan_due_reminders` `*/5` and `send_queued_emails` `*/2` (`app/notifications/scheduler_tasks.py`).
+- **Observability:** `/api/metrics` exposes queue depth, oldest queued age, failures by job name, model error rate, citation validation failures (`rm_citation_validation_failures_total`, `surface="assessment"`), and access denials (section 11 "Observability").
 
 ## 13 Notifications and email
 
@@ -498,15 +492,14 @@ class EmailSender(Protocol):
     async def send(self, to: str, template: str, params: dict, idempotency_key: str) -> DeliveryResult: ...
 ```
 
-`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). Nothing is muted: use cases v0.4 removed the preference table with the routes that wrote it, so `notify` records every message a job raises and the unmutable-kind list it used to check is gone. `kind` is free text drawn from a vocabulary in `notifications/service.py`, and since 0.12 that vocabulary has one entry, `missed_deadline`: the report submitted/resubmitted records and the professor's in-app summary of a missed deadline had no reader and are no longer written (UI-07, ADR 0023).
+`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). There are no preferences and no in-app notification screen. `kind` is drawn from a vocabulary in `notifications/service.py` with one entry, `missed_deadline` (UI-07).
 
 ## 14 Frontend architecture
 
 - **Structure:** feature folders mirroring the backend modules; TanStack Query for server state with query keys that include the active scope; a generated TypeScript client from the FastAPI OpenAPI schema.
-- **Weekly report editor:** one page per period with a tab per required project entry. Plain textareas per entry field — the CodeMirror/KaTeX editor described here was not built, and the entry form is six fields rather than one Markdown surface; autosave `PATCH /api/v1/periods/{period_id}/report/draft` after 1.5 s of inactivity and on blur, with the saved timestamp shown; drafts recover from `weekly_reports.draft_content` on reload (REP-04). Submit performs client-side completeness checks, then `POST /api/v1/periods/{period_id}/report/submit` with an idempotency key so a double click cannot create two versions.
+- **Weekly report editor:** one page per period with a tab per required project entry. Plain textareas per entry field (no Markdown or equation editor); autosave `PATCH /api/v1/periods/{period_id}/report/draft` after 1.5 s of inactivity and on blur, with the saved timestamp shown; drafts recover from `weekly_reports.draft_content` on reload (REP-04). Submit performs client-side completeness checks, then `POST /api/v1/periods/{period_id}/report/submit` with an idempotency key so a double click cannot create two versions.
 - **Attachments:** the client requests a presigned PUT, uploads directly to MinIO, then confirms; the entry shows extraction state as it changes.
-- **Review workspace:** three panes (claims, evidence with freshness badges, draft assessment with component ratings); approve and override with reason are actions on that page. **Requesting a revision is not**: `POST /reports/{id}/revisions` exists and nothing calls it, so UI-05 is met in two of its three parts (use_cases.md §2.5).
-- **Assistant:** withdrawn in 0.12 (ADR 0023). The `/assistant` screen, its SSE client and the citation links it rendered were removed with the backend.
+- **Review workspace:** three panes (claims and discrepancies, the evidence snapshot, the draft with component ratings); approve and override with a rationale are actions on that page. Requesting a revision is on the report reader (`/students/:studentId/reports/:periodId`, `POST /api/v1/reports/{report_id}/revisions`), one link away from the student's profile.
 - **Accessibility and languages:** keyboard-navigable forms, report content stored as written. One language ships — `src/locales/en` — with the i18next indirection kept so a second is a resource file and a switcher rather than a refactor.
 
 ## 15 Nonfunctional mapping
@@ -515,7 +508,6 @@ class EmailSender(Protocol):
 | --- | --- | --- |
 | Initial capacity | Single Postgres; chunks read through the `(workspace_id, project_id, visibility, source_time)` B-tree; chunk table partitioned by year when it passes 5 M rows | Seed script generates 50 students × 30 projects × 3 years and 100 k chunks; run the benchmark suite |
 | Interactive performance | Indexed queries per aggregate; pagination; no file bodies through the API | k6 script at 10 concurrent sessions; p95 < 2 s on overview, report, review pages |
-| AI response time | *Withdrawn with the assistant in 0.12 (ADR 0023)*; assessment calls keep the 60 s call timeout | — |
 | Assessment latency | Pipeline steps as separate jobs; two worker processes | Pilot workload; 95 % of runs complete within 10 min of inputs available |
 | Availability and recovery | Compose restart policies; nightly encrypted dump and bucket mirror offsite; RPO 24 h, RTO 4 h | Quarterly restore drill into a scratch stack; checklist item before launch (AC-16) |
 | Reliability | Transactional enqueue; idempotent job keys; `partial` states; manual retry | Chaos test: kill worker mid-run and stub OpenAI failures; report count unchanged, no duplicate versions |
@@ -525,16 +517,16 @@ class EmailSender(Protocol):
 | Source integrity | Untrusted framing; no tools exposed; citation validation against snapshot | Adversarial README fixture in `backend/tests/acceptance/test_ac_12.py` (AC-12) |
 | Cost control | `ai_calls` ledger; budgets; content-hash caches; extracted-text caps | Monthly cost report per project; alert at 80 % budget |
 | Observability | Structured JSON logs with request and job ids; `/api/metrics`; no raw research text in logs | Log audit in review; dashboard for queue lag |
-| Usability | Responsive layout; keyboard-accessible editor; autosave indicator; equation rendering | Manual checklist on desktop and phone width |
-| Portability | Gateway abstraction for model replacement; the research history stays in Postgres and object storage under stable ids | Provider swap exercised by the fake gateway in CI. *The export half was withdrawn with UI-06, so there is no bundle and no round-trip test* |
+| Usability | Responsive layout; keyboard-accessible editor; autosave indicator (no equation rendering yet) | Manual checklist on desktop and phone width |
+| Portability | Gateway abstraction for model replacement; the research history stays in Postgres and object storage under stable ids | Provider swap exercised by the fake gateway in CI; record export withdrawn with UI-06 |
 
 ## 16 Requirements traceability
 
 | Requirement | Section |
 | --- | --- |
 | AUTH-01 | 6.2 |
-| AUTH-02 | 6.1, 5.7 (`EvidenceChunk` policy in `backend/app/evidence/policies.py`); search and AI retrieval withdrawn in 0.12 |
-| AUTH-03 | 6.2, 6.3; cached answers and the access epoch removed in 0.12 (ADR 0023) |
+| AUTH-02 | 6.1, 5.7 (`EvidenceChunk` policy in `backend/app/evidence/policies.py`) |
+| AUTH-03 | 6.2, 6.3 |
 | AUTH-04 | 5.1 (`workspaces`), 6.5 |
 | AUTH-05 | 6.1 (`Scope.within`), 5.1 (`workspace_members`), 6.5 |
 | AUTH-06 | 5.1 (the four-and-four foreign-key split), 6.5 |
@@ -542,7 +534,7 @@ class EmailSender(Protocol):
 | PROJ-01 | 5.1 |
 | PROJ-02 | 5.2 (`project_memberships`), 7.1 |
 | PROJ-03 | Withdrawn in requirements 0.10; `tasks` dropped by migration 0027 (milestones went in 0.8) |
-| PROJ-04 | 5.2 (`plan_baselines`), 5.5; the proposal flow withdrawn in 0.10 |
+| PROJ-04 | 5.2 (`plan_baselines`), 5.5 |
 | PROJ-05 | 9.3, 9.4 (`rubric_versions.stage_applicability`) |
 | PROJ-06 | Withdrawn in requirements 0.8 with the milestones it computed from (migration 0026) |
 | PROJ-07 | 5.1 (`projects.open_to_join`, `project_memberships.origin`), 6.3, 4.2 (`/projects`) |
@@ -552,7 +544,7 @@ class EmailSender(Protocol):
 | REP-04 | 5.6, 14 |
 | REP-05 | 5.2 (`report_versions`, `content_changed_in_version_id`), 5.3, 9.5 |
 | REP-06 | 5.2 (`reporting_obligations`), 7.1, 7.2 |
-| REP-07 | 5.2 (`first_submitted_at`); pre-deadline reminders withdrawn in 0.10 (7.3) |
+| REP-07 | 5.2 (`first_submitted_at`); pre-deadline reminders withdrawn (7.3) |
 | REP-08 | 7.2, 13; the professor's in-app view is the overview's outstanding list (`backend/app/overview/service.py`, `backend/app/api/v1/overview.py`) |
 | REPO-01 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | REPO-02 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
@@ -562,14 +554,14 @@ class EmailSender(Protocol):
 | REPO-06 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | REPO-07 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | REPO-08 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
-| ASSESS-01 | 5.2 (`evidence_snapshots`), 9.2 (`backend/app/assessment/snapshot.py`); the supervision-note exclusion withdrawn with the notes in 0.12 |
+| ASSESS-01 | 5.2 (`evidence_snapshots`), 9.2 (`backend/app/assessment/snapshot.py`), 6.4 |
 | ASSESS-02 | 9.4, 14 (review workspace) |
 | ASSESS-03 | 9.3 |
 | ASSESS-04 | 9.3, 9.4 |
 | ASSESS-05 | 5.5, 9.4 |
 | ASSESS-06 | 9.2, 9.4 |
 | ASSESS-07 | 9.3 |
-| ASSESS-08 | 5.2 (`assessment_reviews`), 9.5; correction requests withdrawn in 0.10 |
+| ASSESS-08 | 5.2 (`assessment_reviews`), 9.5 |
 | ASSESS-09 | 5.2 (`assessment_versions`), 9.5, 10 |
 | ASSESS-10 | 9.5 |
 | QA-01 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
@@ -583,52 +575,45 @@ class EmailSender(Protocol):
 | UI-02 | 4.2 |
 | UI-03 | 4.2 |
 | UI-04 | 4.2 |
-| UI-05 | 4.2, 14 |
+| UI-05 | 4.2, 14 (source freshness withdrawn with the connector) |
 | UI-06 | *withdrawn* — exports retired in use cases v0.4; no section implements it |
-| UI-07 | 13 — delivery only; the in-app surface was retired in use cases v0.4, and since 0.12 only `missed_deadline` records are written |
+| UI-07 | 13 — delivery only; `missed_deadline` is the one record written |
 | UI-08 | 4.2 (`/workspaces`, `/people`), 6.5 |
 | AC-01 | 5.2 (`uq_entry`), 9.1 |
-| AC-02 | 6.1 (`backend/tests/acceptance/test_ac_02.py`); search and cached responses withdrawn in 0.12 |
+| AC-02 | 6.1 (`backend/tests/acceptance/test_ac_02.py`) |
 | AC-03 | 5.3, 9.5 |
 | AC-04 | Withdrawn in requirements 0.11 with REPO-05 (ADR 0022) |
 | AC-05 | 9.3, 9.4 |
 | AC-06 | Withdrawn in requirements 0.11 with REPO-03 and REPO-04 (ADR 0022) |
-| AC-07 | 9.3 (`backend/tests/acceptance/test_ac_07.py`); the assistant half withdrawn in 0.12 |
+| AC-07 | 9.3 (`backend/tests/acceptance/test_ac_07.py`) |
 | AC-08 | 7.1, 7.2 |
 | AC-09 | Withdrawn in requirements 0.11 with REPO-05 (ADR 0022) |
-| AC-10 | 9.5 (`progress_series`; `backend/tests/acceptance/test_ac_10.py`; frontend `Trajectory.tsx`, `frontend/src/features/me/MyProfilePage.test.tsx`); restated in 0.12 |
-| AC-11 | 6.3 (`backend/tests/acceptance/test_ac_11.py`); restated in 0.12 against evidence and documents |
-| AC-12 | 5.7, 9.3, 10 (`backend/tests/acceptance/test_ac_12.py`); amended in 0.12 |
+| AC-10 | 9.5 (`progress_series`; `backend/tests/acceptance/test_ac_10.py`; frontend `Trajectory.tsx`, `frontend/src/features/me/MyProfilePage.test.tsx`) |
+| AC-11 | 6.3 (`backend/tests/acceptance/test_ac_11.py`) |
+| AC-12 | 5.7, 9.3, 10 (`backend/tests/acceptance/test_ac_12.py`) |
 | AC-13 | 9.1, 12 |
-| AC-14 | 9.3, 9.4 (volume is context, never achievement); restated in requirements 0.11 for attachments |
-| AC-15 | 11 (`GET /api/v1/overview`; `backend/tests/acceptance/test_ac_15.py`); restated in 0.12 against the overview |
+| AC-14 | 9.3, 9.4 (volume is context, never achievement) |
+| AC-15 | 11 (`GET /api/v1/overview`; `backend/tests/acceptance/test_ac_15.py`) |
 | AC-16 | 3, 15 |
 | AC-17 | 5.2 (`content_changed_in_version_id`), 9.1, 9.5 |
 | AC-18 | 5.5 |
-| AC-19 | 7.2, 13 (`backend/tests/acceptance/test_ac_19.py`); the professor's in-app view is the overview, amended in 0.12 |
+| AC-19 | 7.2, 13 (`backend/tests/acceptance/test_ac_19.py`); the professor's in-app view is the overview |
 
 ## 16.1 Where the implementation refines this document
 
-One correction and one addition, each carried in
-[implementation_status.md](implementation_status.md) §4 with its reason:
-
-- §7.1's period formula derived `meeting_date` from `local_start`, which put the deadline the day
-  before the period opened. It is derived from `local_end`: the meeting follows the week it
-  discusses.
-- `app.exports` was a bounded context between `app.assistant` and `app.assessment` in the layer
-  order (`app.assistant` itself was removed in 0.12, ADR 0023; `app.overview` now heads it). Use cases v0.4 retired exports and removed the module and its layer; the reasoning it
-  recorded is kept here because it applies to the next context that spans modules: assembling a
-  cross-module read through those modules' services is what makes its authorization identical to
-  interactive access rather than a second implementation of it.
+- §7.1's period formula first derived `meeting_date` from `local_start`, which put the deadline the
+  day before the period opened. It is derived from `local_end`: the meeting follows the week it
+  discusses ([implementation_status.md](implementation_status.md) §4).
+- A read that spans modules is assembled through those modules' services, so its authorization is
+  identical to interactive access rather than a second implementation of it (the reasoning behind
+  the retired `app.exports`).
 
 ## 17 Open decisions
 
 Carried from section 14 of the requirements and from this design:
 
-1. *Closed by ADR 0022:* there is no repository connector, so no first provider to choose.
-2. Whether any project needs a different weekly meeting day; the design assumes one workspace-wide day.
-3. Mail provider: SMTP relay of the institution versus a transactional API.
-4. OpenAI data-processing terms acceptable to the professor, and which projects need `ai_restricted`.
-5. VPS region and offsite backup destination.
-6. Whether to add Postgres Row-Level Security as defence in depth after the MVP.
-7. *Closed by ADR 0023 and ADR 0024:* there is no retrieval benchmark, because nothing retrieves by similarity, and no embeddings to tune.
+1. Whether any project needs a different weekly meeting day; the design assumes one workspace-wide day.
+2. Mail provider: SMTP relay of the institution versus a transactional API.
+3. OpenAI data-processing terms acceptable to the professor, and which projects need `ai_restricted`.
+4. VPS region and offsite backup destination.
+5. Whether to add Postgres Row-Level Security as defence in depth.

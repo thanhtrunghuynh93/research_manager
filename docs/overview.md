@@ -1,255 +1,139 @@
 # The Research Management Framework — Problem, Innovation, Impact
 
-Version 0.4 — 7 October 2026 — an overview of what this framework is for and what is new in it.
-It summarises [research_management_requirements.md](research_management_requirements.md) v0.12,
-[architecture.md](architecture.md) v0.8, the [ADRs](adr/), and
-[implementation_status.md](implementation_status.md); those documents remain authoritative where
-this one abbreviates them.
+Version 0.5 — 7 October 2026 — a short account of what this framework is for and what is new in it.
+It summarises [research_management_requirements.md](research_management_requirements.md) v0.14,
+[architecture.md](architecture.md), the [ADRs](adr/) and
+[implementation_status.md](implementation_status.md); those documents are authoritative where this
+one abbreviates them.
 
 ## Abstract
 
 Research supervision is an evidence problem before it is a management problem: a professor meeting
 ten students each week must reconstruct, from memory and from prose, what was actually done and
-what supports it. However, the instruments available for this are either administrative — task
-trackers and learning-management systems that record activity but not research reasoning — or
-generative: a language model handed the week's material, which will produce a plausible account of
-progress whether or not the evidence exists. To this end, we propose a supervision framework whose
-unit of record is one student, on one project, in one reporting week, assessed against a plan frozen
-before the week began and a permission-labelled snapshot of the evidence available for it. The
-framework separates what a model may do from what only code may do: a model rates and explains,
-while every number, every count and every date is computed deterministically in SQL or in Python,
-and a citation that is not in the snapshot cannot reach the professor. Assessments are drafts until
-a professor approves them, and every published figure carries the rubric, prompt, model, report and
-evidence versions it was produced from. In essence, our idea is to make absence of evidence
-representable — as `unknown`, as withheld coverage, as a stated gap — so that a supervision record
-can be trusted precisely because it declines to answer.
+what supports it. The available instruments are either administrative — trackers that record
+activity but not research reasoning — or generative: a language model handed the week's material,
+which will produce a plausible account of progress whether or not the evidence exists. This
+framework's unit of record is one student, on one project, in one reporting week, assessed against
+a plan frozen before the week began and a permission-labelled snapshot of the evidence available for
+it. A model rates and explains; every number, count and date is computed in SQL or Python; a
+citation that is not in the snapshot cannot reach the professor; and nothing is published to a
+student until a professor approves it. Absence of evidence is representable — as `unknown`, as
+withheld coverage, as a stated gap — so the record can be trusted because it declines to answer.
 
 ## 1 The problem
 
-A professor supervising a research group must answer four questions every week: what did each
-student accomplish, what evidence supports that account, where is the research blocked, and what
-should be discussed next (requirements §1). Answering them well is expensive, and answering them
-badly is invisible. Four gaps make the existing instruments unsuitable.
+A professor must answer four questions every week: what did each student accomplish, what evidence
+supports that account, where is the research blocked, and what should be discussed next
+(requirements §1). Four gaps make existing instruments unsuitable.
 
-**(1) Activity is not progress.** Commit counts, lines changed and report length are the signals
-that are easy to collect, and they are the signals least related to research value. A literature
-review week, a theory week and a rigorous negative result all produce little or no code, and each
-can be the most valuable week of a term. Conversely, repetitive commits, piles of attachments and
-verbose prose can be produced without new substantive evidence (AC-14). Any framework that scores
-what it can count will reward the wrong weeks, and it will do so consistently enough that students
-learn to produce them.
-
-**(2) Plans are reconstructed after the fact.** Without a plan frozen before the week, "did the
-student do what was agreed?" is answered from whatever the student now says was agreed. Retrofitted
-agreement is unfalsifiable, and it quietly erases missed commitments as scope is restated.
-
-**(3) A confident wrong answer is worse than a missing one.** This is the gap that motivates most of
-the design. A language model asked how many reports are missing will answer, and it will usually be
-right; nothing in the answer distinguishes the usual case from the exception, and the professor acts
-on it either way ([ADR 0008](adr/0008-facts-outside-the-model.md)). The same holds for fabricated
-citations and for an index computed from missing evidence. Each of these fails by producing something plausible, which is the worst available failure
-mode for a record that a person's standing depends on.
-
-**(4) Supervision records are confidential in a way that is easy to leak.** One student's private
-report and another's individual assessment sit in the same store and feed the same evidence index.
-Access changes retroactively: a membership ends, and anything read or built under the old
-membership is a fresh disclosure the next time it is served (AC-11). Retrieved text is itself untrusted — a README can contain instructions addressed to the
-model that reads it (AC-12).
-
-Against this background, the framework treats supervision as a records problem with an AI component
-bounded inside it, rather than as an AI application with records attached.
+1. **Activity is not progress.** Report length and file counts are easy to collect and least related
+   to research value. A literature week, a theory week and a rigorous negative result produce little
+   output and can be the most valuable weeks of a term; verbose prose and piles of attachments can be
+   produced without new evidence (AC-14).
+2. **Plans are reconstructed after the fact.** Without a plan frozen before the week, "did the
+   student do what was agreed?" is answered from whatever the student now says was agreed.
+3. **A confident wrong answer is worse than a missing one.** A model asked to score a week will
+   score it; fabricated citations and an index computed from missing evidence look exactly like
+   correct ones.
+4. **Supervision records are confidential and easy to leak.** One student's private report and
+   another's assessment sit in the same store; access changes when a membership ends (AC-11); and an
+   attached file can contain instructions addressed to the model that reads it (AC-12).
 
 ## 2 The framework in brief
 
-**Unit of record.** One student × one project × one reporting week. A student submits a single weekly
-package containing one entry per project they owe (REP-02); assessments remain separate per
-student–project–week, and the framework does not collapse different projects into one ranking score
-(ASSESS-01, ASSESS-02).
+**People and workspaces.** Professors and students meet in a workspace, the tenant boundary. A
+professor may belong to several and works in one at a time; a student belongs to exactly one.
+Professors are co-equal ([ADR 0011](adr/0011-co-equal-professors.md)). Students may start projects
+and join ones a professor has opened; ending a membership is the professor's
+([ADR 0017](adr/0017-students-own-their-projects.md), [ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 
-**Weekly cycle.** Obligations are derived from membership dates, project status and exemptions; the
-plan submitted last week freezes as this week's baseline; the package is accepted and versioned
-immutably; attachments are ingested; a permission-labelled, time-bounded
-evidence snapshot is built; claims are extracted and matched to that snapshot; the rubric is applied
-and the metrics computed; a draft assessment enters the professor's review queue; approval publishes
-it to the student (requirements §10, architecture §9.1).
+**Weekly cycle.** A versioned weekly schedule derives each week's obligations from membership dates,
+project status and exemptions; last week's next-week plan freezes as this week's baseline; the
+student submits one package with an entry per project and attached files; a missed deadline sends one
+email at 00:00 on the meeting day; the submission is versioned immutably, its attachments extracted
+and indexed; an evidence snapshot is built through the student's own view; claims are extracted and
+matched; the rubric is applied and metrics computed; a draft enters the professor's review queue;
+approval publishes it to the student (requirements §10, architecture §9).
 
 **Rubric.** Four dimensions — progress toward agreed outcomes (30%), research learning and reasoning
 (30%), rigor and evidence quality (25%), usable research artifacts (15%) — each rated 0–4 against
-stage-specific anchors, with a 0–100 progress index as a supervision aid rather than a grade
-(ASSESS-03, ASSESS-04). Commitment completion against the frozen plan is reported separately,
-because it measures promises kept, not scientific value (ASSESS-05).
+stage-specific anchors, with a 0–100 progress index as a supervision aid, not a grade
+(ASSESS-03, ASSESS-04). Commitment completion against the frozen plan is reported separately
+(ASSESS-05).
 
 **Overview.** The professor's week — next deadline, who is outstanding, the week's reports, the
-review queue and stalled analyses — is computed from the records with an explicit as-of instant
-(UI-01, REP-08). A chat assistant over the same records was specified, built and withdrawn unused
-([ADR 0023](adr/0023-no-research-assistant.md)).
+review queue and stalled analyses — computed from the records with an explicit as-of instant
+(UI-01, REP-08, AC-15).
 
-**Implementation.** A modular monolith — FastAPI, PostgreSQL 16,
-a Postgres-backed job queue, MinIO for files, React SPA — on a single host, sized for fifty students
-and thirty active projects per workspace (architecture §1, §3, requirements §11). The model provider
-is reachable from exactly one module.
+**Implementation.** A modular monolith — FastAPI, PostgreSQL 16, a Postgres-backed job queue, MinIO,
+a React SPA — on a single host, sized for fifty students and thirty active projects per workspace.
+The model provider is reachable from exactly one module, and only the assessment calls it.
 
 ## 3 Innovation
 
-What is new here is not any single component but the boundary drawn between deterministic records
-and generative interpretation, and the fact that the boundary is enforced by schema and by tests
-rather than by prompt instructions. Seven decisions carry most of that novelty.
+The novelty is the boundary between deterministic records and generative interpretation, enforced by
+schema and tests rather than by prompt instructions.
 
-**I1 — Facts are computed in SQL; the model never produces a number.** Counts, dates, deadlines,
-memberships and scores are computed through the owning module's service layer, so they compile the
-same permission predicate as every other read. The overview's figures are plain functions the
-endpoint calls directly, and the AC-15 test checks its outstanding count against the obligations
-table after exemptions and deadline rules, with its as-of instant. In an assessment the model
-returns ratings, rationales and evidence ids, and every figure is derived from them (I2). The
-assistant that once rendered the same functions into answers
-([ADR 0008](adr/0008-facts-outside-the-model.md)) was withdrawn with ADR 0023; the rule outlived it.
-
-**I2 — Rubric arithmetic lives outside the model, and unknown is not zero.** The model returns only
-per-dimension ratings, rationales and evidence reference ids through a structured-output schema;
-`metrics.py` computes the index, completion, coverage and confidence in `Decimal` with round-half-up
-([ADR 0006](adr/0006-deterministic-metrics.md)). A 0 requires evidence that the criterion was not
-met; unavailable evidence is `unknown`, and if any applicable dimension is `unknown` the index is
-withheld with *Not rated — insufficient evidence* rather than computed over what happens to be
-present (ASSESS-04). The specification's worked example — ratings 3, 4, 3, 2 giving 78.75 and
-displaying 79 — is a unit test, not an illustration.
-
-**I3 — Fabricated citations cannot survive validation.** `validate_output` drops every evidence id
-not present in the snapshot and downgrades the affected rating to `unknown` with a recorded reason
-(architecture §9.3). The gateway exposes no function-calling tools to the model at all, and every
-retrieved text is framed as a delimited data block that is evidence to analyse rather than
-instructions to follow, so an injection attempt inside a README is text (AC-12). Put it altogether,
-a claim can reach the professor only as supported, partially supported, unsupported or
-unverifiable — never as verified because the model said so (REPO-08, ASSESS-07).
-
-**I4 — Coverage and confidence are first-class outputs with rule-based reasons.** Each dimension
-records its evidence sufficiency; coverage is the percentage of applicable rubric weight supported
-well enough to rate; confidence is high/medium/low from a small versioned rule table with its
-reasons named, not an unexplained model probability (ASSESS-06). A project with no code can
-reach full coverage through its report and other artifacts (AC-05). Similarly, file extraction has three outcomes rather than two —
-`ok`, `unsupported`, `failed` — so that a figure is evidence whether or not OCR exists, and only a
-genuine read failure reduces coverage ([ADR 0010](adr/0010-presigned-uploads-verified-after-the-fact.md)).
-This is the unfairness nobody would have noticed: a week recorded as empty when it was merely
-unreadable.
-
-**I5 — Access is compiled on every request, so revocation needs no invalidation.** The caller's
-readable projects are compiled from the memberships table on each request and nothing caches a
-read, so a membership that ends is out of every read the moment it is written (AC-11). An earlier
-design cached assistant answers and expired them with a per-workspace access epoch
-([ADR 0009](adr/0009-access-epoch-for-cached-answers.md)); the cache was never used, and both were
-removed ([ADR 0023](adr/0023-no-research-assistant.md)). What carries over is the rule: a cache must
-bring its own invalidation, and over-invalidation is the right failure mode.
-
-**I6 — Approval, immutability and reproducible provenance are the publication contract.** Generated
-assessments are drafts visible only to the professor; approval publishes, an override records its
-reason, and the original model output is retained beside it (ASSESS-08). Every assessment version
-stores the rubric version, prompt and model versions, evidence references, report version and
-timestamp, and a new report version re-assesses only the entries whose content changed
-(ASSESS-09, AC-17). Trends are grouped by rubric version, so a rubric change appears as a labelled
-break rather than as a comparable series (AC-10). It is worth noting what this forecloses: the model
-has no path to publishing anything, because publication is a product action taken by a person.
-
-**I7 — Evidence belongs to whoever supplied it, and a week is the week it is about.** An attachment
-is indexed as private to the student who attached it, so a project-mate cannot retrieve through
-search what they could not open directly (AUTH-02, AC-02), and a report entry belongs to the week it
-describes even when it was sent after the deadline (ASSESS-01). The repository connector, which
-attributed commits by author, reviewer and merger and told integration apart from new work, was
-built and never connected, and is withdrawn ([ADR 0022](adr/0022-no-repository-connector.md));
-a student attaches what they want read.
-
-Two further design commitments are worth naming because they shape day-to-day use rather than the
-assessment contract. Professors are co-equal, and a professor may belong to several workspaces at
-once, reading and writing in the one they are working in and switching between them — a student belongs
-to exactly one, and a project belongs to the workspace it was created in, so a student's projects
-are the projects of their workspace and a membership cannot straddle two
-([ADR 0011](adr/0011-co-equal-professors.md), [ADR 0020](adr/0020-reads-follow-the-workspace-you-are-in.md)); and
-students own the projects they report on — a student may start a project, join one a professor has
-opened to joining, and edit the record of what they started, while ending a membership is the
-professor's, because whether research is finished is a supervision judgement rather than a
-student's to record — and no private record follows a project, because reports and assessments
-are keyed to a student ([ADR 0017](adr/0017-students-own-their-projects.md),
-[ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
+- **I1 — The model never produces a number.** Counts, dates, deadlines and memberships come from the
+  owning module's queries under the same permission predicate as every other read; in an assessment
+  the model returns ratings, rationales and evidence ids, and every figure is derived from them.
+- **I2 — Rubric arithmetic lives outside the model, and unknown is not zero.** `metrics.py` computes
+  index, completion, coverage and confidence in `Decimal` with round-half-up
+  ([ADR 0006](adr/0006-deterministic-metrics.md)). If any applicable dimension is `unknown` the
+  index is withheld (*Not rated — insufficient evidence*). The specification's worked example —
+  3, 4, 3, 2 giving 78.75, displayed 79 — is a unit test.
+- **I3 — Fabricated citations cannot survive validation.** Every evidence id not in the snapshot is
+  dropped and the affected rating downgraded to `unknown` with a reason. The gateway offers the model
+  no tools, and every attached text is framed as data, so an injection attempt is text (AC-12). A
+  claim reaches the professor only as supported, partially supported, unsupported or unverifiable
+  (ASSESS-07).
+- **I4 — Coverage and confidence are first-class, with rule-based reasons** (ASSESS-06). A project
+  with no code can reach full coverage (AC-05). Extraction has three outcomes — `ok`, `unsupported`,
+  `failed` — so only a genuine read failure reduces coverage
+  ([ADR 0010](adr/0010-presigned-uploads-verified-after-the-fact.md)).
+- **I5 — Access is compiled on every request.** The readable projects come from the memberships
+  table per request and nothing caches a read, so an ended membership is out of every read at once
+  (AC-11).
+- **I6 — Approval, immutability and provenance are the publication contract.** Drafts are visible
+  only to the professor; an override records its reason beside the original output (ASSESS-08).
+  Every version stores rubric, prompt, model, report and evidence versions; a resubmission
+  re-assesses only changed entries (ASSESS-09, AC-17); trends break at a rubric change (AC-10).
+- **I7 — Evidence belongs to whoever supplied it, and a week is the week it is about.** An attachment
+  is indexed private to its student (AUTH-02, AC-02), and a late entry still belongs to the week it
+  describes (ASSESS-01).
 
 ## 4 Impact
 
-**For the professor.** The review workspace presents the student's claims, the evidence, the draft
-assessment and source freshness together, so that the weekly act becomes reviewing a cited draft
-rather than reconstructing a week. The overview's answer to "which reports are missing" is the
-obligations table after exemptions and deadline rules, with an explicit as-of instant. A trajectory
-that spans a rubric change shows the break rather than pretending the scores are comparable.
+**For the professor.** Reviewing a cited draft replaces reconstructing a week; "who is missing" is
+the obligations table after exemptions, with an as-of instant; a trajectory across a rubric change
+shows the break.
 
-**For the student.** The framework makes the basis of an assessment inspectable: the frozen plan, the
-component ratings with rationales, the cited evidence and the stated limitations. A student who
-disputes a rating raises it with the professor, who can adjust it with a recorded reason; the
-in-product correction request was withdrawn in requirements 0.10 (ASSESS-08). Negative and theoretical results are creditable
-without code (AC-05), and unavailable evidence never becomes a zero.
+**For the student.** The basis of an assessment is inspectable: the frozen plan, the ratings with
+rationales, the cited evidence and the stated limitations. A student who disputes a rating raises it
+with the professor, who can override it with a recorded reason. Negative and theoretical results are
+creditable without code, and unavailable evidence never becomes a zero.
 
-**For the group as a research record.** Reports, plans, attachments and assessments
-accumulate as versioned, permission-labelled records independent of chat history, which makes the
-history of a project answerable years later — why direction changed, what was tried and abandoned,
-who contributed what. The record is designed to outlive the model that currently reads it:
-provider replacement does not migrate the authoritative history (requirements §11, Portability).
+**For the group.** Reports, plans, attachments and assessments accumulate as versioned,
+permission-labelled records that outlive the model reading them (requirements §11, Portability).
 
-**What it deliberately does not do.** Automatic grading, leaderboards, plagiarism judgments,
-authorship decisions, arbitrary code execution and institutional administration are out of scope
-(requirements §1). Reading a diff or a CI result does not prove scientific correctness, and the
-framework says so wherever it reports evidence (REPO-08). Hours worked may be recorded and are never
-treated as verified productivity (REP-03).
+**Deliberately not done.** Automatic grading, leaderboards, plagiarism or authorship judgments, code
+execution and institutional administration (requirements §1). Several features were built and
+withdrawn unused — a repository connector, a chat assistant, embeddings, tasks and milestones; the
+list is in [implementation_status.md](implementation_status.md) §2.
 
-## 5 How the impact is to be measured
+## 5 How the impact is measured
 
-The framework's claims are testable, and the evaluation protocol separates two questions that are
-routinely conflated ([evaluation/protocol.md](evaluation/protocol.md)).
+The [evaluation protocol](evaluation/protocol.md) separates two questions. **Contract properties** —
+the index withheld when evidence is absent, no citation outside the snapshot, an instruction inside an
+attachment treated as text — are pass/fail and run on every CI pass against a deterministic gateway.
+**Agreement with the professor** is a calibration question: it needs the real provider and the
+professor's ratings, and is reported, not asserted — per-dimension exact and within-one agreement,
+material correction rate, citation support, uncertainty behaviour, injection resistance, run-to-run
+variation. Pilot gates: at least 30 professor-rated student–project–weeks, exact counts and dates
+matching the database, all authorization scenarios passing, citation support ≥ 95 %, an uncertainty
+response on every incomplete-evidence case, and an agreement threshold agreed with the professor.
 
-**Contract properties** — the index withheld when evidence is absent, no citation outside the
-snapshot, joint work kept joint, an instruction inside a README treated as text — are pass/fail
-properties of the system. They run on every CI pass against a deterministic gateway, because they
-must never regress.
-
-**Agreement with the professor** is a calibration question about the rubric and the prompts. It needs
-the real provider and the professor's own ratings, and it is *reported rather than asserted*:
-per-dimension exact and within-one agreement, material correction rate, citation support rate,
-uncertainty behaviour, injection resistance, and run-to-run variation of the index. This is because
-asserting a threshold nobody has agreed to would turn calibration into a test that gets tuned until
-it passes. The pilot gates are explicit: at least 30 student–project–weeks rated by the professor on
-real work, every exact count and date matching the database, every
-authorisation and adversarial scenario passing, citation support at or above 95%, every
-incomplete-evidence case producing an uncertainty response, and an agreement threshold agreed with
-the professor and recorded with its date. Approval remains a required publication step whatever the
-numbers say.
-
-**Limitations.** The ten evaluation cases in this repository are a de-identified seed set whose
-ratings are the specification's anchors applied by the set's author, not the professor's judgement;
-until the pilot weeks exist, agreement numbers check the prompt rather than the rubric. The default
-weights and anchors are proposals, not validated measures of research productivity. The interactive
-and assessment-latency targets in requirements §11 have not yet been benchmarked against
-the 100,000-chunk corpus, and the rubric's construct validity — whether these four dimensions
-capture research progress across stages — is a question the pilot opens rather than settles.
-
-## 6 What building it taught
-
-This document deliberately carries no account of how much is built. That belongs in
-[implementation_status.md](implementation_status.md) — §1 for the state, §3 for the gaps and their
-reasons, §5 for the decisions still owed by the professor. A count here would be a number nothing
-checks, and the first version of this document had one that was wrong within the week.
-What remains before a pilot is calibration and operation rather than construction.
-
-Three lessons from building it are recorded there and are worth repeating here, because they
-generalise beyond this framework.
-
-First, **a step marked done means its module is done**, and the separate question worth asking is
-what calls it: three seams between finished modules were missing while every module-level test was
-green. The same shape recurs one layer up, between the product and the people using it — an
-endpoint that works, is tested, and that no screen calls is a capability nobody has.
-
-Second, **wrong numbers look like numbers** — commitment completion computed with every fraction
-hardcoded to zero, coverage taking its denominator from the model's own output, a snapshot carrying
-a fortnight of already-assessed evidence. None of these failed; each produced a plausible figure,
-which for an assessment system is the outcome that matters most to prevent.
-
-Third, **a test double that is more permissive than the thing it stands in for is not a test**. The
-rating step was rejected by the model provider on every call for as long as a real key was
-configured, because its response schema used a map where the provider's strict mode requires fixed
-keys; no assessment was ever produced from model output. The whole suite passed throughout, because
-the deterministic gateway used in tests never built a JSON schema at all. The provider's own SDK
-would not have caught it either — it repairs the adjacent defect and walks past this one. The fake
-now refuses any schema the provider would refuse.
+**Limitations.** The ten seed cases carry the specification's anchors applied by the set's author, not
+the professor's judgement, so agreement numbers check the prompt rather than the rubric. The weights
+and anchors are proposals. The latency targets have not been benchmarked, and the rubric's construct
+validity is a question the pilot opens rather than settles.

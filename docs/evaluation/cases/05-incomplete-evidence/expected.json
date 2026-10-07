@@ -27,5 +27,5 @@
     "did not work",
     "zero progress"
   ],
-  "notes": "AC-04 and AC-07: a failed connector is stale evidence, never an absence of work. Every rating must be unknown and the index must be withheld, not set to zero."
+  "notes": "AC-07: evidence the student could not attach is missing evidence, never an absence of work. Every rating must be unknown and the index must be withheld, not set to zero."
 }

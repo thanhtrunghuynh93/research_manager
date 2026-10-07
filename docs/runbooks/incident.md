@@ -15,8 +15,8 @@ suspected data exposure.
 | --- | --- | --- |
 | `database: fail` | Postgres down or disk full | `df -h`; `docker compose ... logs postgres`; restart postgres; if disk full, prune Docker and old local backups |
 | `object_storage: fail` | MinIO down | Restart minio; uploads fail but report text submission still works |
-| Assessments stuck in `queued` | Worker down or OpenAI budget/timeouts | Check worker logs; `/api/metrics` queue depth; retry from the admin jobs page after the cause is fixed |
-| Missed-deadline emails not sent | SMTP failure | `email_deliveries.state = failed` rows; fix SMTP; the in-app notification is already visible; resend from admin |
+| Assessments stuck or missing | Worker down, budget spent, or model errors | Check worker logs and `/api/metrics` queue depth; the overview's stalled analyses say which, and its Retry button re-runs one after the cause is fixed (`POST /api/v1/admin/assessments/retry`) |
+| Missed-deadline or invitation emails not sent | SMTP failure (`readyz` shows `smtp: fail`; the overview shows a mail warning) | Fix `RM_SMTP_*` (`scripts/set-smtp-password.sh`); then `app.cli notifications send-queued-emails`, and `app.cli notifications dispatch-missed-deadline --period <id>` if a deadline passed meanwhile (deploy.md). Re-invite anyone whose invitation failed from `/people` |
 | Suspected data exposure | Authorization bug | Disable the affected endpoint at Caddy (`respond /api/v1/<path>* 503`), export `audit_events` and access logs for the window, fix, then notify the professor with the scope of what was visible |
 
 ## After

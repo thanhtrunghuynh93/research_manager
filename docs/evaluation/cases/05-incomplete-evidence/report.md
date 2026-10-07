@@ -12,11 +12,11 @@ Deduplication removes 11.4 % of documents. The near-duplicate threshold of 0.85 
 that matched manual inspection best.
 
 ## Evidence
-The work is on a private branch that the connector could not read this week; the sync failed with
-an authorization error on Thursday.
+The work is on the lab cluster, which I could not reach from Thursday because my access had
+expired, so I could not export the logs or the branch to attach them.
 
 ## Deviations and blockers
-The repository connection needs reauthorising.
+My cluster access needs renewing.
 
 ## Next-week plan
-Reauthorise the connection and report the duplicate rate per source.
+Renew the cluster access, attach the run logs, and report the duplicate rate per source.
