@@ -112,7 +112,7 @@ export const projectsListKey = (status?: string) => ["projects", "list", status 
 
 /**
  * The project list, which is what finally gives `/projects/:id` a way in: until it existed the
- * screen was reachable only by typing a UUID or following an assistant citation.
+ * screen was reachable only by typing a UUID or following a link that happened to name one.
  *
  * `GET /projects` is signed-in rather than professor-only, so a student sees the projects they are
  * on. The create form on the page is what is gated, not the list.

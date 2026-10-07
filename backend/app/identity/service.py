@@ -1,7 +1,6 @@
 """Identity use cases: the only entry point other modules may import (docs/repo_layout.md §3.2).
 
-Every mutation writes its audit row in the caller's transaction (architecture §5.3), and every
-change to who may see what advances the workspace access epoch (AUTH-03).
+Every mutation writes its audit row in the caller's transaction (architecture §5.3).
 """
 
 from __future__ import annotations
@@ -99,7 +98,6 @@ async def scope_for(session: AsyncSession, user: User) -> Scope:
         user_id=user.id,
         role=user.role,
         project_ids=project_ids,
-        access_epoch=await repository.access_epoch(session, user.workspace_id),
     )
 
 
@@ -124,20 +122,6 @@ async def list_users(
     return Page(
         items=[UserOut.model_validate(row) for row in rows], next_cursor=next_cursor, limit=size
     )
-
-
-async def advance_access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
-    """AUTH-03: call after any change elsewhere that narrows what someone may see.
-
-    The projects module calls it when a membership ends; cached answers and snapshots built under
-    the previous epoch stop being served (architecture §6.3).
-    """
-    return await repository.bump_access_epoch(session, workspace_id)
-
-
-async def access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
-    """Job-level read: the epoch a snapshot or cached answer was built under (AUTH-03)."""
-    return await repository.access_epoch(session, workspace_id)
 
 
 async def ai_budgets(session: AsyncSession, workspace_id: UUID) -> dict[str, Any]:
@@ -200,7 +184,6 @@ async def system_scope(session: AsyncSession, workspace_id: UUID) -> Scope:
         user_id=professors[0] if professors else workspace_id,
         role=Role.PROF,
         project_ids=frozenset(),
-        access_epoch=await repository.access_epoch(session, workspace_id),
         is_system=True,
     )
 
@@ -370,8 +353,6 @@ async def move_student(
     # Their visibility changed and they did not ask for it, so every session ends (AUTH-03). A
     # professor moving themselves keeps theirs; this is somebody else's account.
     await repository.revoke_sessions_for_user(session, student.id, at)
-    await repository.bump_access_epoch(session, source_id)
-    await repository.bump_access_epoch(session, target.id)
     write_audit(
         session,
         scope=scope,
@@ -461,7 +442,6 @@ async def leave_workspace(session: AsyncSession, scope: Scope, workspace_id: UUI
     if user.workspace_id == workspace_id:
         await _move_anchor(session, scope, user, destination=destination, action="workspace.left")
     else:
-        await repository.bump_access_epoch(session, workspace_id)
         write_audit(
             session,
             scope=scope,
@@ -496,13 +476,9 @@ async def _move_anchor(
     to the new workspace. Ending the session instead would sign a professor out for the ordinary
     act of creating a workspace, to protect them from a move they just asked for.
 
-    Both access epochs advance, which is the part AUTH-03 actually needs: cached answers and
-    evidence snapshots were built under an access this account no longer has.
     """
     source_id = user.workspace_id
     user.workspace_id = destination.id
-    await repository.bump_access_epoch(session, source_id)
-    await repository.bump_access_epoch(session, destination.id)
     write_audit(
         session,
         scope=scope,
@@ -954,7 +930,7 @@ def _audit_session_revoked(session: AsyncSession, revoked: Session | None) -> No
 
 
 async def deactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) -> UserOut:
-    """AUTH-03: deactivation ends every session and advances the epoch in one transaction.
+    """AUTH-03: deactivation ends every session and open invitation in one transaction.
 
     Suspension, not removal: `reactivate_user` undoes it and project memberships are untouched.
     To take a student off the roll, use `remove_student`.
@@ -980,7 +956,6 @@ async def deactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) ->
     await repository.revoke_sessions_for_user(session, user.id, at)
     # An open invitation is a credential too: accepting one sets a password and starts a session.
     await repository.revoke_pending_invitations(session, user.id, at)
-    await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,
         scope=scope,
@@ -1017,7 +992,6 @@ async def reactivate_user(session: AsyncSession, scope: Scope, user_id: UUID) ->
     # unchanged. The anchor names the workspace because that is where this account's history is
     # pinned; here it equals `scope.workspace_id`, which `_require_user` resolved through.
     await repository.add_membership(session, user.workspace_id, user.id)
-    await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,
         scope=scope,
@@ -1069,7 +1043,6 @@ async def remove_student(session: AsyncSession, scope: Scope, user_id: UUID) -> 
     # removed student must not keep a workspace occupied (ADR 0015). The account row stays where
     # it is — `users.workspace_id` anchors their history and cannot move once they have any.
     await repository.remove_membership(session, scope.workspace_id, user.id)
-    await repository.bump_access_epoch(session, scope.workspace_id)
     write_audit(
         session,
         scope=scope,
@@ -1295,7 +1268,6 @@ async def demote_professor(session: AsyncSession, *, email: str) -> UserOut:
 
     before = {"role": user.role.value}
     user.role = Role.STUDENT
-    await repository.bump_access_epoch(session, user.workspace_id)
     write_audit(
         session,
         workspace_id=user.workspace_id,
@@ -1329,7 +1301,6 @@ async def deactivate_professor(session: AsyncSession, *, email: str) -> UserOut:
     user.deactivated_at = at
     await repository.revoke_sessions_for_user(session, user.id, at)
     await repository.revoke_pending_invitations(session, user.id, at)
-    await repository.bump_access_epoch(session, user.workspace_id)
     write_audit(
         session,
         workspace_id=user.workspace_id,
@@ -1392,7 +1363,6 @@ async def recover_professor(session: AsyncSession, *, email: str) -> RecoveryLin
     user.role = Role.PROF
     user.state = UserState.ACTIVE
     user.deactivated_at = None
-    await repository.bump_access_epoch(session, user.workspace_id)
     write_audit(
         session,
         workspace_id=user.workspace_id,
@@ -1462,7 +1432,6 @@ async def transfer_professor(
     workspace = await session.get(Workspace, workspace_id)
     if workspace is not None and workspace.owner_id == previous.id:
         workspace.owner_id = successor.id
-    await repository.bump_access_epoch(session, workspace_id)
 
     for target, before, after in (
         (

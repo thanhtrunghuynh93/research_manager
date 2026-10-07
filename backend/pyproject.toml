@@ -110,7 +110,7 @@ include_external_packages = true  # needed to forbid the external `openai` packa
 name = "Layered bounded contexts"
 type = "layers"
 layers = [
-  "app.assistant",
+  "app.overview",
   "app.assessment",
   "app.evidence",
   "app.reporting",
@@ -120,7 +120,7 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Only assessment and assistant use the AI gateway"
+name = "Only assessment uses the AI gateway"
 type = "forbidden"
 # Direct imports only: the API calls assessment.service, which is exactly the module allowed to
 # reach the gateway. What this forbids is any other module importing it itself.
@@ -131,6 +131,7 @@ source_modules = [
   "app.reporting",
   "app.evidence",
   "app.notifications",
+  "app.overview",
   "app.api",
   "app.core",
 ]
@@ -148,7 +149,7 @@ unmatched_ignore_imports_alerting = "none"
 name = "Notifications depend on reporting and core only"
 type = "forbidden"
 source_modules = ["app.notifications"]
-forbidden_modules = ["app.evidence", "app.assessment", "app.assistant"]
+forbidden_modules = ["app.evidence", "app.assessment", "app.overview"]
 
 [[tool.importlinter.contracts]]
 name = "API never touches ORM models directly"
@@ -163,6 +164,5 @@ forbidden_modules = [
   "app.reporting.models",
   "app.evidence.models",
   "app.assessment.models",
-  "app.assistant.models",
   "app.notifications.models",
 ]

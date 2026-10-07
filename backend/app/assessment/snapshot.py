@@ -2,7 +2,7 @@
 
 The snapshot is the honest boundary of an assessment: it says exactly what was looked at, and
 records what was left out and why. It is built from a student's own view of the evidence, because
-the approved assessment is published to them and every citation in it has to open (QA-06).
+the approved assessment is published to them and every citation in it has to open.
 """
 
 from __future__ import annotations
@@ -43,18 +43,17 @@ class SnapshotDraft:
     coverage_notes: dict[str, Any] = field(default_factory=dict)
 
 
-def student_view(scope_owner_id: UUID, workspace_id: UUID, project_id: UUID, epoch: int) -> Scope:
+def student_view(scope_owner_id: UUID, workspace_id: UUID, project_id: UUID) -> Scope:
     """The student's own scope, which is the only lens a snapshot is built through.
 
     Using the professor's scope here would let professor-only material into an assessment that is
-    later published to the student (ASSESS-01, QA-06).
+    later published to the student (ASSESS-01).
     """
     return Scope(
         workspace_id=workspace_id,
         user_id=scope_owner_id,
         role=Role.STUDENT,
         project_ids=frozenset({project_id}),
-        access_epoch=epoch,
     )
 
 

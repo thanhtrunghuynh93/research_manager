@@ -1,6 +1,6 @@
 # How professor, student, workspace, project and reports are organized
 
-Version 0.5 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.11, [architecture.md](architecture.md) v0.7, [use_cases.md](use_cases.md) v0.19, and the [ADRs](adr/)
+Version 0.6 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.12, [architecture.md](architecture.md) v0.8, [use_cases.md](use_cases.md) v0.20, and the [ADRs](adr/)
 
 This document is an orientation to the central relations: what belongs to what, which of those
 relations are plural, and where each one is enforced. It is derived from the documents above and
@@ -83,8 +83,7 @@ Four rules follow from the boundary rather than from taste:
   comparison lives in `Scope.within` ([`backend/app/core/authz.py`](../backend/app/core/authz.py)),
   which every visibility predicate calls, so changing what a read may see is one diff.
 - **Co-equal inside a workspace** ([ADR 0011](adr/0011-co-equal-professors.md)): every professor
-  there sees every student, report, assessment and supervision note, and any professor may invite a
-  student, invite a colleague as a professor, and remove a student.
+  there sees every student, report and assessment, and any professor may invite a student, invite a colleague as a professor, and remove a student.
 - **No professor may demote, deactivate or remove another through the API.** That is break-glass,
   run from the host shell, and every command that could reduce the professor count refuses to leave
   a workspace with none.
@@ -95,7 +94,8 @@ Four rules follow from the boundary rather than from taste:
   controls. Moving a student is the exception, because it names the destination explicitly.
 - Reserved to the professor: the reporting calendar; a project's *standing* (status, whether it is
   open to joining, whether its text may reach a model provider); excusing and extending obligations;
-  approving or overriding an assessment; supervision notes; the research assistant.
+  approving or overriding an assessment. Supervision notes and the research assistant were reserved
+  here too until requirements 0.12 withdrew them ([ADR 0023](adr/0023-no-research-assistant.md)).
 
 ## 4 Student
 
@@ -111,9 +111,8 @@ Four rules follow from the boundary rather than from taste:
   ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)): joining adds work to a student's
   week and ending one removes an obligation, and only the second is a supervision decision.
 - **Reads:** their own reports and drafts; their own assessments, and only once a review has
-  approved them; the projects they are a member of; the evidence they or their project may
-  see, through search.
-- **Never reads:** another student's report or assessment, supervision notes, or the assistant, which is professor-facing by decision rather than by omission.
+  approved them, with the evidence snapshot each was built from; the projects they are a member of.
+- **Never reads:** another student's report or assessment, or another student's private evidence.
 - **Removal** ends every open project membership and deactivates the account in one transaction,
   which is what stops obligations deriving. Deactivation alone is suspension and leaves memberships
   open.
@@ -159,7 +158,7 @@ work is attributed from it (PROJ-01).
   following week, so joining on a Saturday is not a report due that Sunday for a week spent off the
   project (PROJ-02).
 - **What a membership does not reach:** reports, versions, attachments, obligations, assessments,
-  reviews, supervision notes, evidence snapshots and plan baselines are keyed
+  reviews, evidence snapshots and plan baselines are keyed
   to a `student_id`, never to a `project_id`. Joining a project tells you about the work and nothing
   about how anyone on it is doing.
 
@@ -198,7 +197,7 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
   has three outcomes — `ok`, `unsupported`, `failed` — so an unreadable figure is not a week
   recorded as empty, and extraction runs when the report is submitted rather than as each file
   arrives. The student who attached a file may remove it, submitted week or not, and removal reaches
-  the stored object, the extracted text, the index and the cached answers; an assessment written
+  the stored object, the extracted text and the index; an assessment written
   against a removed file keeps its rationale and loses the citation.
 - **Lifecycle** is draft, submitted, revision requested, resubmitted, reviewed, with timing — on
   time, late, missing, excused — tracked separately. A missing report is a condition recorded on the
@@ -210,16 +209,19 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
   the proposal flow were withdrawn in requirements 0.10.
 - **The missed-deadline email** reads obligation state at send time, so a submission at 23:59 gets
   none, and the unique key on recipient, period and kind makes a retried dispatch a no-op (REP-08,
-  AC-19).
+  AC-19). `missed_deadline` is the only notification kind written: the report submitted and
+  resubmitted records and the professor's in-app summary of a missed deadline stopped in
+  requirements 0.12, because nothing read them ([ADR 0023](adr/0023-no-research-assistant.md)). The
+  professor sees who is outstanding on the overview.
 
 ## 7 The invariants that hold it together
 
 | Invariant | Where it lives |
 | --- | --- |
 | A membership cannot straddle two workspaces | Composite foreign keys onto `projects(workspace_id, id)` and `users(workspace_id, id)` |
-| History stays in the workspace it was written in | The four history foreign keys without `ON UPDATE CASCADE` |
+| History stays in the workspace it was written in | The two history foreign keys without `ON UPDATE CASCADE` |
 | Widening what a read may see is one diff | `Scope.within(column)`, called by every visibility predicate |
-| A cached answer dies when access changes | `workspaces.access_epoch`, incremented in the same transaction as any membership end, deactivation, role change or visibility change |
+| Ending a membership revokes access at once | `Scope.project_ids`, compiled from the memberships table on every request; nothing caches a read. `workspaces.access_epoch`, which expired the answer cache, went with it, and so did `evidence_snapshots.access_epoch`, which was written and never read (migration 0029, [ADR 0023](adr/0023-no-research-assistant.md)) |
 | Submitted and approved history is never rewritten | The immutability triggers, and one approved review per assessment version |
 | No private record follows a project | Everything confidential is keyed to a `student_id` |
 
@@ -234,7 +236,9 @@ the product does, so those are no longer divergences at all.
   (§2).
 - Milestones (requirements 0.8, migration 0026) and tasks, dated decisions, pre-deadline reminders
   and correction requests (requirements 0.10, migration 0027) were withdrawn rather than left built
-  and unreachable.
+  and unreachable. So was the research assistant (requirements 0.12, migration 0029,
+  [ADR 0023](adr/0023-no-research-assistant.md)): SupervisionNote, Conversation, Message and the
+  answer cache are gone from the schema with the routes that wrote them.
 - A finished project leaves a student's week silently: the obligation is filtered rather than
   excused, so nothing on `/me` names the project that stopped owing
   ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
@@ -242,8 +246,6 @@ the product does, so those are no longer divergences at all.
   REP-08).
 - No code path authors professor feedback beyond the released assessment.
 - Exports were withdrawn (UI-06), so a student cannot keep a copy of their own released records.
-- The student has no assistant, which is recorded as next-release work rather than a gap in the
-  permission model: the retrieval path and the predicate are already shared.
 
 ## 9 Keeping this document true
 

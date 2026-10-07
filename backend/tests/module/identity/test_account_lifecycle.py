@@ -1,7 +1,7 @@
-"""AUTH-01/AUTH-03: suspension, removal, profiles, and the access epoch.
+"""AUTH-01/AUTH-03: suspension, removal, and profiles.
 
-AUTH-03 requires that removing access invalidates subsequent access, including cached answers.
-The epoch on the workspace is what later modules compare their cached answers against.
+AUTH-03 requires that removing access invalidates subsequent access: sessions end with the
+deactivation that ends the access.
 
 Roles do not change here any more: a role is fixed at acceptance and moves afterwards only through
 break-glass, which `test_breakglass.py` covers (ADR 0011).
@@ -23,14 +23,6 @@ from tests.factories import DEFAULT_PASSWORD
 pytestmark = pytest.mark.module
 
 
-async def _epoch(db: AsyncSession, workspace_id: object) -> int:
-    return (
-        await db.execute(
-            select(models.Workspace.access_epoch).where(models.Workspace.id == workspace_id)
-        )
-    ).scalar_one()
-
-
 async def test_deactivation_revokes_existing_sessions_immediately(
     db: AsyncSession, prof_scope: Scope, student_a: models.User
 ) -> None:
@@ -40,16 +32,6 @@ async def test_deactivation_revokes_existing_sessions_immediately(
     await service.deactivate_user(db, prof_scope, student_a.id)
 
     assert await service.resolve_session(db, token=logged_in.token) is None
-
-
-async def test_deactivation_advances_the_access_epoch(
-    db: AsyncSession, workspace: models.Workspace, prof_scope: Scope, student_a: models.User
-) -> None:
-    before = await _epoch(db, workspace.id)
-
-    await service.deactivate_user(db, prof_scope, student_a.id)
-
-    assert await _epoch(db, workspace.id) == before + 1
 
 
 async def test_deactivation_records_the_state_and_time(
@@ -65,12 +47,14 @@ async def test_deactivating_an_already_deactivated_user_is_idempotent(
     db: AsyncSession, workspace: models.Workspace, prof_scope: Scope, student_a: models.User
 ) -> None:
     await service.deactivate_user(db, prof_scope, student_a.id)
-    epoch = await _epoch(db, workspace.id)
 
     user = await service.deactivate_user(db, prof_scope, student_a.id)
 
     assert user.state is models.UserState.DEACTIVATED
-    assert await _epoch(db, workspace.id) == epoch, "no second epoch bump, no second audit storm"
+    audited = (
+        await db.execute(select(AuditEvent).where(AuditEvent.action == "user.deactivated"))
+    ).scalars()
+    assert len(list(audited)) == 1, "no second audit row for a change that did not happen"
 
 
 async def test_a_student_cannot_deactivate_another_student(

@@ -1,8 +1,8 @@
 """AC-07 — A report claims a result for which accessible evidence is incomplete | The assessment
-labels the claim and uncertainty; the assistant does not present it as independently verified.
+labels the claim and uncertainty and does not present it as independently verified.
 
-The assistant half arrives with that module. What is provable now is that the assessment refuses to
-carry a claim it could not check, and says so.
+Restated in 0.12: the assistant half went with the assistant (ADR 0023). What is proved is that the
+assessment refuses to carry a claim it could not check, and says so.
 """
 
 from __future__ import annotations

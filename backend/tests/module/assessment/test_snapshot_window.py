@@ -68,8 +68,7 @@ async def test_only_evidence_inside_the_window_is_collected(
         db, prof_scope, project, at=start - timedelta(days=8), text="The loader notes, last week."
     )
 
-    epoch = await identity_service.access_epoch(db, prof_scope.workspace_id)
-    scope = snapshot.student_view(student_a.id, prof_scope.workspace_id, project.id, epoch)
+    scope = snapshot.student_view(student_a.id, prof_scope.workspace_id, project.id)
     draft = await snapshot.collect(
         db,
         scope=scope,

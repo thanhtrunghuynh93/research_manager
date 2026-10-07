@@ -29,7 +29,6 @@ const HERE = {
   id: "w1",
   name: "Ecomind Lab",
   timezone: "Asia/Ho_Chi_Minh",
-  access_epoch: 1,
   owner_id: "u1",
   archived_at: null,
   joined: true,

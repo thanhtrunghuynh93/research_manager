@@ -1,10 +1,10 @@
-"""AC-15 — The professor asks for the number of missing reports | The answer matches structured
-obligations after exemptions and deadline rules, with an explicit as-of time.
+"""AC-15 — The professor reads the number of missing reports on the overview | The count matches
+structured obligations after exemptions and deadline rules, with an explicit as-of time.
 
-The failure this guards against is quiet. A language model handed a week of reports will produce a
-number, and it will often be the right one, and there is no way to tell from the answer which time
-it was. So the number never passes through the model: the obligations table is read at a stated
-instant and the result is rendered.
+Restated in 0.12: the number is read on the overview (UI-01), not asked of a chat assistant. The
+failure this guards against is still quiet — a count that is often right and cannot say when it
+was true. So the obligations table is read at the instant the overview is served, and that instant
+is part of the response.
 """
 
 from __future__ import annotations
@@ -13,20 +13,17 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.fake import FakeGateway
-from app.ai.schemas import AnswerDraft, RoutePlan
-from app.assistant import service as assistant_service
 from app.core.authz import Scope
 from app.identity import models as identity_models
 from app.reporting import service as reporting_service
-from tests.factories import Week, make_entry, make_week, submit
+from tests.factories import Week, login, make_entry, make_week, submit
 
 pytestmark = pytest.mark.acceptance
 
 AFTER_THE_DEADLINE = datetime(2026, 9, 21, 3, 0, tzinfo=UTC)
-QUESTION = "How many reports are missing this week?"
 
 
 @pytest.fixture(autouse=True)
@@ -34,8 +31,8 @@ def _one_week_open(monkeypatch: pytest.MonkeyPatch, frozen_now: Callable[[dateti
     """The world these tests describe: the week of 14 September is the only one open.
 
     Saving a calendar opens the weeks ahead of today, as the nightly job always has. Left to the
-    wall clock that opened the week of the 21st too, and `missing_reports` then answered for the
-    week just begun instead of the one whose deadline had passed. What is under test is the
+    wall clock that opened the week of the 21st too, and the overview then counted the week just
+    begun instead of the one whose deadline had passed. What is under test is the
     arithmetic on one week's obligations, so the clock is pinned inside that week and nothing is
     opened past it.
     """
@@ -56,63 +53,66 @@ async def _submit(db: AsyncSession, student: identity_models.User, week: Week) -
     await submit(db, student, week, entry)
 
 
-def _misleading_gateway() -> FakeGateway:
-    """Scripted to answer with the wrong number.
+async def _outstanding(
+    client: AsyncClient, prof: identity_models.User, frozen_now: Callable[[datetime], None]
+) -> dict[str, object]:
+    """The overview's outstanding section, read just after the deadline has passed."""
+    frozen_now(AFTER_THE_DEADLINE)
+    await login(client, prof)
+    response = await client.get("/api/v1/overview")
+    assert response.status_code == 200
+    outstanding: dict[str, object] = response.json()["outstanding"]
+    return outstanding
 
-    A test that passes with this in place has proved the generation step was not consulted.
-    """
-    return FakeGateway(
-        responses={
-            "route_question": RoutePlan(intent="fact", fact_functions=["missing_reports"]),
-            "answer": AnswerDraft(answer="Seven reports are missing."),
-        }
-    )
 
-
-async def test_ac_15_the_count_comes_from_the_obligations_not_from_the_model(
+async def test_ac_15_the_count_comes_from_the_obligations(
+    client: AsyncClient,
     db: AsyncSession,
+    prof: identity_models.User,
     prof_scope: Scope,
     student_a: identity_models.User,
     student_b: identity_models.User,
+    frozen_now: Callable[[datetime], None],
 ) -> None:
     week = await _week(db, prof_scope, [student_a, student_b])
     await _submit(db, student_a, week)
 
-    answer = await assistant_service.ask(
-        db, prof_scope, question=QUESTION, as_of=AFTER_THE_DEADLINE, gateway=_misleading_gateway()
-    )
+    outstanding = await _outstanding(client, prof, frozen_now)
 
-    assert "Seven" not in answer.answer
-    fact = next(fact for fact in answer.facts if fact.name == "missing_reports")
-    assert fact.value == 1
-    assert fact.rows[0]["student_id"] == str(student_b.id)
+    assert outstanding["count"] == 1
+    entries = outstanding["entries"]
+    assert isinstance(entries, list)
+    assert [entry["student_id"] for entry in entries] == [str(student_b.id)]
 
 
-async def test_ac_15_the_answer_states_the_instant_the_count_was_true(
+async def test_ac_15_the_count_states_the_instant_it_was_true(
+    client: AsyncClient,
     db: AsyncSession,
+    prof: identity_models.User,
     prof_scope: Scope,
     student_a: identity_models.User,
     student_b: identity_models.User,
+    frozen_now: Callable[[datetime], None],
 ) -> None:
     """Without an as-of, "one missing" is not a fact — it is a fact about a moment nobody named."""
     week = await _week(db, prof_scope, [student_a, student_b])
     await _submit(db, student_a, week)
 
-    answer = await assistant_service.ask(
-        db, prof_scope, question=QUESTION, as_of=AFTER_THE_DEADLINE, gateway=_misleading_gateway()
-    )
+    outstanding = await _outstanding(client, prof, frozen_now)
 
-    fact = next(fact for fact in answer.facts if fact.name == "missing_reports")
-    assert fact.as_of == AFTER_THE_DEADLINE
-    assert AFTER_THE_DEADLINE.isoformat() in answer.answer
-    assert answer.time_range
+    # The pinned clock ticks forward from where it was set, as a real one would.
+    as_of = datetime.fromisoformat(str(outstanding["as_of"]))
+    assert AFTER_THE_DEADLINE <= as_of < AFTER_THE_DEADLINE + timedelta(minutes=1)
 
 
 async def test_ac_15_an_exemption_and_an_extension_both_reduce_the_count(
+    client: AsyncClient,
     db: AsyncSession,
+    prof: identity_models.User,
     prof_scope: Scope,
     student_a: identity_models.User,
     student_b: identity_models.User,
+    frozen_now: Callable[[datetime], None],
 ) -> None:
     """AC-08: an approved exception must not surface as a missed report."""
     week = await _week(db, prof_scope, [student_a, student_b])
@@ -131,25 +131,24 @@ async def test_ac_15_an_exemption_and_an_extension_both_reduce_the_count(
                 reason="conference travel",
             )
 
-    answer = await assistant_service.ask(
-        db, prof_scope, question=QUESTION, as_of=AFTER_THE_DEADLINE, gateway=_misleading_gateway()
-    )
+    outstanding = await _outstanding(client, prof, frozen_now)
 
-    fact = next(fact for fact in answer.facts if fact.name == "missing_reports")
-    assert fact.value == 0
-    assert "exemptions and extensions" in fact.note
+    assert outstanding["count"] == 0
+    assert "exemptions and extensions" in str(outstanding["note"])
 
 
 async def test_ac_15_a_submission_just_before_the_deadline_is_not_missing(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    frozen_now: Callable[[datetime], None],
 ) -> None:
-    """The obligation is evaluated at the instant asked about, not when the period was created."""
+    """The obligation is evaluated at the instant the overview is served."""
     week = await _week(db, prof_scope, [student_a])
     await _submit(db, student_a, week)
 
-    answer = await assistant_service.ask(
-        db, prof_scope, question=QUESTION, as_of=AFTER_THE_DEADLINE, gateway=_misleading_gateway()
-    )
+    outstanding = await _outstanding(client, prof, frozen_now)
 
-    fact = next(fact for fact in answer.facts if fact.name == "missing_reports")
-    assert fact.value == 0
+    assert outstanding["count"] == 0

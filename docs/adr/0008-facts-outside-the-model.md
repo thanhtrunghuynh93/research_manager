@@ -1,6 +1,6 @@
 # ADR 0008 — The assistant computes facts in SQL, never through the model
 
-Status: accepted — 2026-09-12
+Status: withdrawn by [ADR 0023](0023-no-research-assistant.md) — 2026-10-07 (accepted 2026-09-12). The overview's numbers are still computed in SQL, in `app.overview`.
 
 ## Context
 

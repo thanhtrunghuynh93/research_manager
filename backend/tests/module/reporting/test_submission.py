@@ -782,7 +782,12 @@ async def test_the_entries_are_indexed_when_the_provider_comes_back(
     indexed = await evidence_service.index_report_entries(db, version.id)
 
     assert indexed == 1
-    hits = await evidence_service.search_evidence(
-        db, week.scope, query="loader reproduces the published split"
+    from app.evidence.models import EvidenceSourceKind
+
+    entry_ids = await service.entry_ids_for_period(
+        db, student_id=student_a.id, project_id=week.projects[0].id, period_id=week.period.id
+    )
+    hits = await evidence_service.evidence_for_sources(
+        db, week.scope, source_kind=EvidenceSourceKind.REPORT_ENTRY, source_ids=list(entry_ids)
     )
     assert hits, "the week is citable once the provider answers again"

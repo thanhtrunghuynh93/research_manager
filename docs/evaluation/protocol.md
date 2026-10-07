@@ -118,8 +118,9 @@ exercise into a test that gets tuned until it passes.
 From requirements §13, restated as the checklist this protocol serves:
 
 - [ ] At least 30 student–project–weeks rated by the professor, covering every stage in the set.
-- [ ] 50 professor questions answered (`questions.jsonl`), with exact counts and dates matching the
-      database.
+- [ ] Exact counts and dates on the overview match the database (`tests/api/test_overview.py`,
+      `tests/acceptance/test_ac_15.py`). The 50 professor questions this gate once named were for
+      the chat assistant, withdrawn in requirements 0.12 (ADR 0023).
 - [ ] Every authorization scenario passes (`tests/authz`, `tests/acceptance/test_ac_02.py`,
       `test_ac_11.py`).
 - [ ] Citation support rate ≥ 95 %.

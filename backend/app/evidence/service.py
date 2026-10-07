@@ -1,8 +1,8 @@
-"""Evidence use cases: indexing report entries and attachments, and retrieving them.
+"""Evidence use cases: indexing report entries and attachments, and reading them back.
 
 Reporting emits; evidence reacts. A submitted report and an extracted attachment become citable
-references with chunks under the same access label, so the snapshot builder and the assistant can
-retrieve them without a join that could forget the filter (architecture §5.7). The repository
+references with chunks under the same access label, so the snapshot builder reads them without a
+join that could forget the filter (architecture §5.7). The repository
 connector that once fed this index is gone (ADR 0022).
 """
 
@@ -13,22 +13,19 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz import Scope, visible_to
+from app.core.authz import Scope
 from app.core.clock import now
-from app.core.errors import NotFoundError
 from app.core.jobs import defer_after_commit
 from app.core.jobs import key as job_key
 from app.core.storage import ObjectStore
 from app.core.types import Visibility
 from app.evidence import policies  # noqa: F401  (policies register on import)
 from app.evidence import repository as repo
-from app.evidence.index import retrieval
 from app.evidence.index.chunking import chunk_text
 from app.evidence.index.embeddings import EmbedContext, Embedder, embed_texts, local_embedder
-from app.evidence.models import EvidenceChunk, EvidenceReference, EvidenceSourceKind
+from app.evidence.models import EvidenceChunk, EvidenceSourceKind
 from app.evidence.schemas import EvidenceHit, EvidenceReferenceOut
 from app.projects import service as projects_service
 from app.reporting import artifacts as reporting_artifacts
@@ -120,60 +117,6 @@ async def _embedder_for(
     return local_embedder() if restricted else None
 
 
-async def search_evidence(
-    session: AsyncSession,
-    scope: Scope,
-    *,
-    query: str,
-    mode: retrieval.Mode = "hybrid",
-    project_id: UUID | None = None,
-    since: datetime | None = None,
-    until: datetime | None = None,
-    limit: int = 10,
-) -> list[EvidenceHit]:
-    """QA-02: permission-filtered retrieval over report text and attachments."""
-    text = query.strip()
-    if not text:
-        return []
-
-    embedding = None
-    if mode in ("hybrid", "semantic"):
-        [embedding] = await embed_texts(
-            [text],
-            embedder=await _embedder_for(session, scope.workspace_id, project_id),
-            context=EmbedContext(
-                workspace_id=scope.workspace_id, project_id=project_id, session=session
-            ),
-        )
-
-    hits = await retrieval.search(
-        session,
-        scope,
-        query=text,
-        embedding=embedding,
-        mode=mode,
-        project_id=project_id,
-        since=since,
-        until=until,
-        limit=limit,
-    )
-    return [
-        EvidenceHit(
-            chunk_id=hit.chunk_id,
-            evidence_ref_id=hit.evidence_ref_id,
-            text=hit.text,
-            score=hit.score,
-            source_kind=hit.source_kind,
-            source_id=hit.source_id,
-            source_version=hit.source_version,
-            locator=hit.locator,
-            project_id=hit.project_id,
-            source_time=hit.source_time,
-        )
-        for hit in hits
-    ]
-
-
 async def search_evidence_window(
     session: AsyncSession,
     scope: Scope,
@@ -194,7 +137,6 @@ def _window_hit(chunk: Any, reference: Any) -> EvidenceHit:
         chunk_id=chunk.id,
         evidence_ref_id=chunk.evidence_ref_id,
         text=chunk.text,
-        score=0.0,
         source_kind=reference.source_kind,
         source_id=reference.source_id,
         source_version=reference.source_version,
@@ -221,34 +163,6 @@ async def evidence_for_sources(
         session, scope, source_kind=source_kind, source_ids=source_ids
     )
     return [_window_hit(chunk, reference) for chunk, reference in rows]
-
-
-async def unreachable_sources(
-    session: AsyncSession, scope: Scope, sources: list[tuple[str, UUID]]
-) -> set[tuple[str, UUID]]:
-    """Which of these (source_kind, source_id) pairs the caller can no longer open (ADR 0009).
-
-    A source counts as reachable only if at least one of its references passes the reference
-    policy now, so a relabelled source and a removed one both come back unreachable. One query,
-    and the same predicate the citation-open endpoint uses, so the cache cannot disagree with it.
-    Kinds that are not evidence source kinds are not this module's to judge and are ignored.
-    """
-    kinds = {kind.value for kind in EvidenceSourceKind}
-    wanted = {(kind, source_id) for kind, source_id in sources if kind in kinds}
-    if not wanted:
-        return set()
-    rows = await session.execute(
-        select(EvidenceReference.source_kind, EvidenceReference.source_id)
-        .where(
-            visible_to(scope, EvidenceReference),
-            tuple_(EvidenceReference.source_kind, EvidenceReference.source_id).in_(
-                [(EvidenceSourceKind(kind), source_id) for kind, source_id in wanted]
-            ),
-        )
-        .distinct()
-    )
-    reachable = {(str(kind), source_id) for kind, source_id in rows}
-    return wanted - reachable
 
 
 async def chunks_for_reference(session: AsyncSession, evidence_ref_id: UUID) -> list[EvidenceChunk]:
@@ -466,11 +380,11 @@ def _defer_reindex_artifact(session: AsyncSession, version_id: UUID) -> None:
 async def _on_artifact_removed(event: Any, session: AsyncSession) -> None:
     """Take the withdrawn attachment out of the evidence index (requirements §11).
 
-    Not best-effort, unlike indexing: a reference left behind is a file the assistant can still
-    quote and cite after the student removed it, which is the failure this handler exists to
+    Not best-effort, unlike indexing: a reference left behind is a file the next assessment can
+    still quote and cite after the student removed it, which is the failure this handler exists to
     prevent. Reporting deletes the objects and the rows in the same transaction, so if this raises
-    the whole removal is refused and the attachment stays — visible and searchable together,
-    rather than gone from one and answerable from the other.
+    the whole removal is refused and the attachment stays — visible and indexed together, rather
+    than gone from one and citable from the other.
     """
     forgotten = await repo.forget_sources(
         session,
@@ -491,13 +405,3 @@ def register_subscriptions() -> None:
 
 
 register_subscriptions()
-
-
-async def get_reference(
-    session: AsyncSession, scope: Scope, reference_id: UUID
-) -> EvidenceReferenceOut:
-    """QA-03: a citation has to open something. This is the other end of the link."""
-    reference = await repo.get_evidence_reference(session, scope, reference_id)
-    if reference is None:
-        raise NotFoundError("evidence reference not found")
-    return EvidenceReferenceOut.model_validate(reference)

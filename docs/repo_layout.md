@@ -89,9 +89,9 @@ backend/
 │   ├── evidence/              the evidence index only; no repository connector (ADR 0022)
 │   │   └── index/
 │   │       ├── chunking.py
-│   │       ├── embeddings.py  Embedder protocol + registry; content-hash cache (ai registers the
-│   │       │                gateway-backed one at start-up, so evidence never imports app.ai)
-│   │       └── retrieval.py   hybrid SQL (permission predicate first, then rank fusion)
+│   │       └── embeddings.py  Embedder protocol + registry; content-hash cache (ai registers the
+│   │                        gateway-backed one at start-up, so evidence never imports app.ai).
+│   │                        Computed at index time and read by nothing since ADR 0023; removal pending
 │   │   └── tasks.py           retries of report-entry and attachment indexing
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
@@ -104,13 +104,10 @@ backend/
 │   │   ├── events.py          subscribes to ReportSubmitted; enqueues one job per changed entry
 │   │   ├── tasks.py           the pipeline as a worker job
 │   │   └── ops.py             model spend and budgets, for the professor-only admin routes
-│   ├── assistant/
-│   │   ├── router.py          intent + entity extraction → plan
-│   │   ├── facts/             one file per fact function group: reports.py, obligations.py, scores.py, members.py
-│   │   ├── retrieval.py       scope-filtered semantic retrieval
-│   │   ├── answer.py          generation, citation validation, answer contract
-│   │   ├── stream.py          SSE event writer
-│   │   └── cache.py           answer_cache, keyed to the workspace and the digest of its epoch
+│   ├── overview/              the professor overview's numbers (UI-01, REP-08, AC-15); no models,
+│   │   ├── __init__.py        no routes of its own, no AI (ADR 0023)
+│   │   └── service.py         next_deadline, missing_reports, week_reports, review_queue,
+│   │                          stalled_analyses, display_name
 │   ├── notifications/
 │   │   ├── email/
 │   │   │   ├── base.py        EmailSender protocol
@@ -131,10 +128,8 @@ backend/
 │   │   │   ├── registry.py    load(prompt_id, version) → Prompt(model, temperature, schema, text)
 │   │   │   ├── extract_claims/v1.md + manifest.toml
 │   │   │   ├── match_claims/v1.md + manifest.toml
-│   │   │   ├── rate_rubric/v1.md, v2.md, v3.md + manifest.toml
-│   │   │   ├── route_question/v1.md + manifest.toml
-│   │   │   └── answer/v1.md + manifest.toml
-│   │   ├── schemas/           Pydantic models for every structured output (RubricOutput, ClaimList, RoutePlan, Answer)
+│   │   │   └── rate_rubric/v1.md, v2.md, v3.md + manifest.toml
+│   │   ├── schemas/           Pydantic models for every structured output (ClaimList, ClaimVerdicts, RubricOutput)
 │   │   │                      and strict.py, which asserts each is one the provider's strict mode accepts
 │   │   ├── cost.py            ledger writes, published prices, budget checks
 │   │   ├── redaction.py
@@ -155,10 +150,8 @@ backend/
 │           ├── reports.py     calendar, periods, obligations, excuse/extend, draft, submit,
 │           │                  versions, revisions — there is no periods.py
 │           ├── artifacts.py   presigned upload, confirm, links, versions, download (REP-04)
-│           ├── evidence.py    evidence search and the citation-open reference (QA-02, QA-03)
-│           ├── assessments.py  drafts, approve, withdraw, evidence, supervision notes, trends
-│           ├── assistant.py   ask, ask/stream (SSE), conversations
-│           ├── overview.py    the professor's current week (UI-01)
+│           ├── assessments.py  drafts, approve, withdraw, evidence, trends
+│           ├── overview.py    the professor's current week (UI-01), from app.overview
 │           ├── admin.py       assessment retry, AI usage and budgets — prof only
 │           └── health.py      /api/healthz, /api/readyz, /api/metrics
 └── tests/                     section 3.4
@@ -191,13 +184,13 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Layered bounded contexts"
 type = "layers"
-layers = ["app.assistant", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
+layers = ["app.overview", "app.assessment", "app.evidence", "app.reporting", "app.projects", "app.identity", "app.core"]
 
 [[tool.importlinter.contracts]]
-name = "Only assessment and assistant use the AI gateway"
+name = "Only assessment uses the AI gateway"
 type = "forbidden"
 allow_indirect_imports = "true"   # the API calls assessment.service, which may reach the gateway
-source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.api", "app.core"]
+source_modules = ["app.identity", "app.projects", "app.reporting", "app.evidence", "app.notifications", "app.overview", "app.api", "app.core"]
 forbidden_modules = ["app.ai"]
 
 [[tool.importlinter.contracts]]
@@ -212,14 +205,14 @@ unmatched_ignore_imports_alerting = "none"
 name = "Notifications depend on reporting and core only"
 type = "forbidden"
 source_modules = ["app.notifications"]
-forbidden_modules = ["app.evidence", "app.assessment", "app.assistant"]
+forbidden_modules = ["app.evidence", "app.assessment", "app.overview"]
 
 [[tool.importlinter.contracts]]
 name = "API never touches ORM models directly"
 type = "forbidden"
 allow_indirect_imports = "true"   # the API reaches models through service.py by design
 source_modules = ["app.api"]
-forbidden_modules = ["app.identity.models", "app.projects.models", "app.reporting.models", "app.evidence.models", "app.assessment.models", "app.assistant.models", "app.notifications.models"]
+forbidden_modules = ["app.identity.models", "app.projects.models", "app.reporting.models", "app.evidence.models", "app.assessment.models", "app.notifications.models"]
 ```
 
 ### 3.4 Tests
@@ -232,9 +225,9 @@ backend/tests/
 ├── unit/                     pure functions: metrics, calendar, redaction, chunking, validate_output
 │   └── test_metrics.py       includes the spec example: ratings 3,4,3,2 → 78.75 → 79
 ├── module/                   service-level tests per bounded context, real DB, fakes for AI
-│   ├── identity/  projects/  reporting/  evidence/  assessment/  assistant/  notifications/
+│   ├── identity/  projects/  reporting/  evidence/  assessment/  overview/  notifications/  ai/
 │                             (identity/test_user_visibility.py: one predicate decides every read of a user record;
-│                             the access scenarios AC-02, AC-11, QA-06 live in acceptance/, Scope.within in unit/test_authz.py)
+│                             the access scenarios AC-02 and AC-11 live in acceptance/, Scope.within in unit/test_authz.py)
 ├── api/                      HTTP tests through the ASGI app; OpenAPI schema snapshot
 ├── jobs/                     idempotency and retry: periodic tasks, the defer seam, killed worker (AC-13)
 ├── acceptance/               test_ac_01.py … test_ac_19.py, each named after the requirements scenario it proves (04, 06, 09 withdrawn)
@@ -265,7 +258,7 @@ All read once by `core/config.py`. Prefix `RM_`.
 | `RM_DATABASE_URL` | api, worker | Postgres DSN |
 | `RM_PUBLIC_URL` | api, worker | Absolute links in emails |
 | `RM_S3_ENDPOINT`, `RM_S3_BUCKET`, `RM_S3_ACCESS_KEY`, `RM_S3_SECRET_KEY` | api, worker | MinIO |
-| `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL`, `RM_OPENAI_EMBED_MODEL` | worker, api (assistant) | Gateway only |
+| `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL`, `RM_OPENAI_EMBED_MODEL` | worker | Gateway only |
 | `RM_SMTP_HOST`, `RM_SMTP_PORT`, `RM_SMTP_USER`, `RM_SMTP_PASSWORD`, `RM_MAIL_FROM` | worker | Email |
 | `RM_UPLOAD_MAX_FILE_MB` | api | Default 25 |
 | `RM_LOG_LEVEL`, `RM_LOG_JSON` | all | Observability |
@@ -289,12 +282,10 @@ frontend/
     ├── main.tsx               providers: QueryClient, Router, I18n, Theme
     ├── app/
     │   ├── router.tsx         routes from architecture 4.2; role guards
-    │   └── layout/            AppShell, Sidebar, TopBar, ScopeBadge (assistant scope display)
+    │   └── layout/            AppShell
     ├── api/
     │   ├── client.ts          fetch wrapper: credentials include, problem-details errors, idempotency header helper
-    │   ├── generated/         openapi-typescript output; regenerated by `npm run gen:api`; drift checked in CI
-    │   └── sse.ts             EventSource helper. Written, and imported by nothing: the assistant
-    │                          screen posts and renders the completed answer
+    │   └── generated/         openapi-typescript output; regenerated by `npm run gen:api`; drift checked in CI
     ├── features/              one folder per backend module or screen
     │   ├── assessments/       shared by the professor's review and the student's own reading:
     │   │                      types, queries, Trajectory, RatingList
@@ -311,14 +302,13 @@ frontend/
     │   ├── report/            weekly package editor: a tab per required project, EntryForm,
     │   │                      Attachments, AutosaveIndicator
     │   ├── review/            three-pane review workspace (UI-05)
-    │   ├── assistant/         question, answer, citations
     │   └── workspaces/        the workspaces a professor belongs to or owns: work here, join,
     │                          leave, create, archive (ADR 0012/14/15/16, UI-08)
     ├── components/
     │   ├── Failure.tsx        the shared error surface
     │   ├── ui/                placeholder
     │   ├── markdown/          placeholder
-    │   ├── evidence/          Badges.tsx (Badge, ConfidenceBadge, ProgressIndex), CitationLink.tsx
+    │   ├── evidence/          Badges.tsx (Badge, ConfidenceBadge, ProgressIndex)
     │   └── forms/             placeholder
     ├── hooks/                 useAutosave, useTheme. `useScope` and `useIdempotencyKey` were never
     │                          built: scope is resolved server-side and the idempotency header is
@@ -391,7 +381,7 @@ The first pull requests, in dependency order, so that the tree above fills in wi
 2. `identity/`: users, invitations, sessions, `authz.Scope`, first migration, authz test harness.
 3. `projects/` and `reporting/` with periods, obligations, drafts, submission, versions, artifacts; frontend report editor and student overview.
 4. `notifications/` with scheduler tasks and the missed-deadline email (REP-08) on the console sender; e2e for AC-19.
-5. `evidence/`: indexing and retrieval. (The repository connector built here was removed by ADR 0022.)
+5. `evidence/`: indexing and retrieval. (The repository connector built here was removed by ADR 0022, and search over the index by ADR 0023.)
 6. `assessment/`: snapshot, metrics with unit tests, pipeline on the fake gateway, review workspace.
 7. `ai/` gateway against OpenAI, prompt registry, cost ledger; evaluation harness.
-8. `assistant/`, professor overview polish, backup container and restore drill, release workflow.
+8. `assistant/`, professor overview polish, backup container and restore drill, release workflow. (The assistant was removed by ADR 0023; the overview's numbers moved to `overview/`.)

@@ -56,8 +56,8 @@ export function AppShell() {
             )}
             {/* Every screen below is one workspace's, and a professor moves between them, so
                 this is the one place that says which — and, since they may belong to several,
-                the place to change it. The roll, the overview and the assistant all change
-                underneath it. */}
+                the place to change it. The roll and the overview both change underneath
+                it. */}
             <WorkspaceSwitcher />
             <button
               type="button"
@@ -105,11 +105,6 @@ export function AppShell() {
           {isProf && (
             <NavLink to="/workspaces" className={item}>
               {t("workspaces.title")}
-            </NavLink>
-          )}
-          {isProf && (
-            <NavLink to="/assistant" className={item}>
-              {t("assistant.title")}
             </NavLink>
           )}
           {user && !isProf && (

@@ -4,7 +4,6 @@ import { HomeRedirect } from "@/app/HomeRedirect";
 import { AppShell } from "@/app/layout/AppShell";
 import { RequireAuth } from "@/app/RequireAuth";
 import { StatusPage } from "@/app/StatusPage";
-import { AssistantPage } from "@/features/assistant/pages/AssistantPage";
 import { AcceptInvitationPage } from "@/features/auth/pages/AcceptInvitationPage";
 import { LoginPage } from "@/features/auth/pages/LoginPage";
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
@@ -71,7 +70,6 @@ export const router = createBrowserRouter([
           // The read half of REP-02..05, which had no surface at either end until now.
           { path: "/students/:studentId/reports/:periodId", element: <ReportReaderPage /> },
           { path: "/review/:assessmentId", element: <ReviewPage /> }, // UI-05
-          { path: "/assistant", element: <AssistantPage /> }, // QA-01..07
         ],
       },
     ],

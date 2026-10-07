@@ -43,7 +43,6 @@ class Scope:
     user_id: UUID
     role: Role
     project_ids: frozenset[UUID]
-    access_epoch: int
     # True when a scheduled task built this Scope by borrowing a user's identity rather than
     # resolving a session. The identity is a lens, not an author: see `audit_actor` (ADR 0011).
     is_system: bool = False

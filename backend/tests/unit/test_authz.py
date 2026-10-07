@@ -17,7 +17,6 @@ def _scope(role: Role, project_ids: set | None = None) -> Scope:
         user_id=uuid4(),
         role=role,
         project_ids=frozenset(project_ids or set()),
-        access_epoch=1,
     )
 
 

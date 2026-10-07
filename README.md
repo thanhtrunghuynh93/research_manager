@@ -1,6 +1,6 @@
 # Research Management System
 
-A supervision workspace for professors and their students: weekly report packages with attached evidence, professor-approved progress assessments, and a cited research assistant.
+A supervision workspace for professors and their students: weekly report packages with attached evidence and professor-approved progress assessments.
 
 Professors are co-equal inside a workspace ([ADR 0011](docs/adr/0011-co-equal-professors.md)) and a professor may belong to several, reading across them and writing into the one they are working in ([ADR 0016](docs/adr/0016-reads-span-membership.md)).
 

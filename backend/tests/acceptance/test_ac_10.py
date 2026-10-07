@@ -1,11 +1,13 @@
-"""AC-10 — The professor asks for six-week progress across a rubric change | Answer cites the
-relevant weeks and labels the change; it does not present incompatible scores as directly
-comparable.
+"""AC-10 — The professor reviews six weeks of progress across a rubric change | The trajectory
+labels each point with its rubric and marks the change; it does not present incompatible scores
+as directly comparable.
 
-The trap is a chart. Six numbers drawn on one line look like a trajectory whether or not they mean
-the same thing, and a rubric change silently turns "this student improved" into an artefact of
-reweighting. So the series carries the rubric version of every point, and the fact that computes it
-says plainly when more than one is present.
+Restated in 0.12: the professor reads the trajectory on a student's page (ASSESS-10, UI-04), not
+in a chat answer. The trap is still a chart. Six numbers drawn on one line look like a trajectory
+whether or not they mean the same thing, and a rubric change silently turns "this student
+improved" into an artefact of reweighting. So `progress_series` — what GET /api/v1/trends serves —
+carries the rubric version of every point, and the Trajectory component groups by it and states
+the break (frontend: MyProfilePage.test.tsx, "rubric-break").
 """
 
 from __future__ import annotations
@@ -15,20 +17,15 @@ from datetime import UTC, date, datetime
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.fake import FakeGateway
-from app.ai.schemas import RoutePlan
 from app.assessment import service as assessment_service
 from app.assessment.models import AssessmentReview, AssessmentVersion, ReviewState, RubricVersion
-from app.assistant import facts
-from app.assistant import service as assistant_service
 from app.core.authz import Scope
 from app.identity import models as identity_models
+from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
 
 pytestmark = pytest.mark.acceptance
-
-AS_OF = datetime(2026, 10, 26, tzinfo=UTC)
 
 
 async def _six_weeks(
@@ -119,81 +116,72 @@ async def _six_weeks(
 async def test_ac_10_every_point_carries_the_rubric_that_produced_it(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    project, _versions = await _six_weeks(db, prof_scope, student_a)
+    project, versions = await _six_weeks(db, prof_scope, student_a)
 
-    fact = await facts.run(
-        db,
-        "progress_series",
-        facts.FactQuery(
-            scope=prof_scope, as_of=AS_OF, student_id=student_a.id, project_id=project.id
-        ),
+    series = await assessment_service.progress_series(
+        db, prof_scope, student_id=student_a.id, project_id=project.id
     )
 
-    assert fact is not None
-    assert fact.value == 6
-    assert all(row["rubric_version_id"] for row in fact.rows)
-    assert len({row["rubric_version_id"] for row in fact.rows}) == 2
+    assert [point.assessment_id for point in series] == [v.id for v in versions]  # type: ignore[attr-defined]
+    assert all(point.rubric_version_id for point in series)
+    rubrics = [point.rubric_version_id for point in series]
+    assert len(set(rubrics)) == 2
+    # One change, at the point where it happened: the break is between weeks three and four.
+    assert rubrics[:3] == [rubrics[0]] * 3
+    assert rubrics[3:] == [rubrics[3]] * 3
 
 
-async def test_ac_10_the_series_says_the_change_is_a_break_not_a_rise(
+async def test_ac_10_each_index_is_computed_under_its_own_rubric(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
+    """A point is never re-scored under whichever rubric is current: that would erase the break."""
     project, _versions = await _six_weeks(db, prof_scope, student_a)
+    rubrics = {
+        row.id: row.version
+        for row in (
+            await db.execute(
+                RubricVersion.__table__.select().where(
+                    RubricVersion.workspace_id == prof_scope.workspace_id
+                )
+            )
+        ).all()
+    }
 
-    fact = await facts.run(
-        db,
-        "progress_series",
-        facts.FactQuery(
-            scope=prof_scope, as_of=AS_OF, student_id=student_a.id, project_id=project.id
-        ),
+    series = await assessment_service.progress_series(
+        db, prof_scope, student_id=student_a.id, project_id=project.id
     )
 
-    assert fact is not None
-    assert "not directly comparable" in fact.note
-    assert "break" in fact.note
+    assert [rubrics[point.rubric_version_id] for point in series] == [1, 1, 1, 2, 2, 2]
 
 
-async def test_ac_10_a_single_rubric_series_is_labelled_comparable(
+async def test_ac_10_a_single_rubric_series_has_no_break_to_label(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    """The warning must mean something, so it must not be on every answer."""
+    """The warning must mean something, so it must not be on every trajectory."""
     project, _versions = await _six_weeks(db, prof_scope, student_a, reweight_after=None)
 
-    fact = await facts.run(
-        db,
-        "progress_series",
-        facts.FactQuery(
-            scope=prof_scope, as_of=AS_OF, student_id=student_a.id, project_id=project.id
-        ),
+    series = await assessment_service.progress_series(
+        db, prof_scope, student_id=student_a.id, project_id=project.id
     )
 
-    assert fact is not None
-    assert "not directly comparable" not in fact.note
-    assert "comparable" in fact.note
+    assert len(series) == 6
+    assert len({point.rubric_version_id for point in series}) == 1
 
 
-async def test_ac_10_the_answer_carries_the_series_and_its_caveat(
+async def test_ac_10_the_student_reads_the_same_series_with_the_same_labels(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    """The caveat has to reach the professor, not just sit in a column."""
+    """The break matters as much to the person assessed as to the person assessing."""
     project, _versions = await _six_weeks(db, prof_scope, student_a)
+    scope = await identity_service.scope_for(db, student_a)
 
-    answer = await assistant_service.ask(
-        db,
-        prof_scope,
-        question="How has this student progressed over the last six weeks?",
-        student_id=student_a.id,
-        project_id=project.id,
-        as_of=AS_OF,
-        gateway=FakeGateway(
-            responses={
-                "route_question": RoutePlan(intent="fact", fact_functions=["progress_series"])
-            }
-        ),
+    theirs = await assessment_service.progress_series(
+        db, scope, student_id=student_a.id, project_id=project.id
+    )
+    ours = await assessment_service.progress_series(
+        db, prof_scope, student_id=student_a.id, project_id=project.id
     )
 
-    series = [fact for fact in answer.facts if fact.name == "progress_series"]
-    assert series, "the trajectory question is answered from the series, not from prose"
-    assert "not directly comparable" in series[0].note
-    assert "not directly comparable" in answer.answer
-    assert len({row["rubric_version_id"] for row in series[0].rows}) == 2
+    assert [(p.assessment_id, p.rubric_version_id) for p in theirs] == [
+        (p.assessment_id, p.rubric_version_id) for p in ours
+    ]

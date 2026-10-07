@@ -227,7 +227,7 @@ def _may_scrape(request: Request, settings: Settings) -> bool:
 
 @router.get("/metrics", summary="Prometheus metrics", include_in_schema=False)
 async def metrics(request: Request, session: SessionDep) -> Response:
-    """Architecture §12: queue depth, sync staleness, model errors, citation and access failures.
+    """Architecture §12: queue depth, model errors, citation and access failures.
 
     The gauges are read from the database here, in the api process that serves them, at most once
     per `REFRESH_MIN_INTERVAL`; a scrape inside that window is served the previous reading, so a

@@ -41,12 +41,11 @@ def auth_rate_limits() -> dict[str, tuple[int, int]]:
     }
 
 
-# Authenticated paths that are cheap to call and expensive to serve, keyed by pattern because they
-# carry identifiers. Joining and leaving are the pair that matters (PROJ-07): leaving advances the
-# workspace's access epoch, which discards every cached assistant answer for everyone in it, so a
-# join/leave loop turns one student's clicking into the workspace's model spend. The cap is far
-# above deliberate use — nobody joins thirty projects in an hour — and the epoch bump itself is not
-# negotiable, because the leaver's own cached answers were computed with access they no longer have.
+# Authenticated paths that are cheap to call and leave something behind, keyed by pattern because
+# they carry identifiers. Joining and ending a membership are the pair that matters (PROJ-07): each
+# writes a membership row that is kept as history (PROJ-02) and an audit row that is never deleted,
+# so a join/leave loop turns one student's clicking into permanent clutter in both. The cap is far
+# above deliberate use — nobody joins thirty projects in an hour.
 MEMBERSHIP_PATHS = re.compile(r"^/api/v1/projects/[^/]+/(join|members/[^/]+/end)$")
 MEMBERSHIP_LIMIT = (3600, 30)
 

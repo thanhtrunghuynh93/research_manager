@@ -30,9 +30,7 @@ from app.ai.fake import FakeGateway
 from app.assessment import service as assessment_service
 from app.core.db import run_in_session
 from app.core.errors import ConflictError
-from app.core.types import Role, Visibility
-from app.evidence import service as evidence_service
-from app.evidence.models import EvidenceSourceKind
+from app.core.types import Role
 from app.identity import service as identity_service
 from app.identity.models import User
 from app.projects import service as projects_service
@@ -128,7 +126,6 @@ async def load_demo(session: AsyncSession) -> Seeded:
     projects = await _projects(session, prof_scope)
     await _memberships(session, prof_scope, students, projects)
     periods = await _calendar(session, prof_scope)
-    await _project_evidence(session, prof_scope, projects)
     reports = await _reports(session, students, projects, periods)
     assessments = await _assessments(session, prof_scope, students, projects, periods)
 
@@ -244,23 +241,6 @@ async def _calendar(session: AsyncSession, prof_scope: Any) -> list[Any]:
     return periods
 
 
-async def _project_evidence(session: AsyncSession, prof_scope: Any, projects: list[Any]) -> None:
-    """One project-shared piece of evidence, so retrieval has something every member may see."""
-    at = datetime.combine(FIRST_MONDAY, datetime.min.time(), tzinfo=UTC) + timedelta(days=2)
-    await evidence_service.index_evidence(
-        session,
-        workspace_id=prof_scope.workspace_id,
-        source_kind=EvidenceSourceKind.DECISION,
-        source_id=projects[0].id,
-        source_version="1",
-        text="Project decision: the evaluation split is frozen at the September snapshot.",
-        visibility=Visibility.PROJECT_SHARED,
-        locator=f"/projects/{projects[0].id}#decisions",
-        project_id=projects[0].id,
-        source_time=at,
-    )
-
-
 ENTRIES: dict[int, dict[str, str]] = {
     0: {
         "work_performed": "Implemented the corpus loader and wired the BM25 baseline through the "
@@ -368,13 +348,6 @@ async def _assessments(
         if index == 0:
             await assessment_service.approve(session, prof_scope, assessment.id)
 
-    await assessment_service.add_supervision_note(
-        session,
-        prof_scope,
-        body="Private: pace looks fine, but check the cluster access before the next review.",
-        student_id=students[0].id,
-        project_id=projects[0].id,
-    )
     return produced
 
 

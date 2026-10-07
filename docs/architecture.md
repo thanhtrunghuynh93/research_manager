@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.7 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.11
+Version 0.8 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.12
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -10,7 +10,7 @@ This document turns the logical boundaries in section 10 of the requirements int
 | --- | --- | --- |
 | Backend | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 | Matches the team's existing FastAPI projects |
 | Frontend | React 18, Vite, TypeScript, TanStack Query, shadcn/ui | Same toolchain as the graph-digitizer frontend |
-| Database | PostgreSQL 16 with `pgvector` and built-in full-text search | One store for records, search, vectors, and the job queue |
+| Database | PostgreSQL 16 with `pgvector` and built-in full-text search | One store for records, the evidence index, and the job queue |
 | Jobs | procrastinate (Postgres-backed queue) running periodic tasks in the worker | Transactional enqueue; no Redis to operate |
 | Files | MinIO (S3 API) on the same host | Presigned uploads, versioned bucket, easy offsite mirror |
 | LLM | OpenAI GPT API (responses + embeddings) behind one internal gateway module | Vendor isolated to one module; swappable |
@@ -32,15 +32,15 @@ flowchart LR
     OAI[(OpenAI API)]
     MAIL[(Mail provider)]
 
-    Prof -- "reviews, approves, asks questions" --> SPA
+    Prof -- "reviews, approves, reads the overview" --> SPA
     Stu -- "drafts and submits weekly package" --> SPA
-    SPA -- "HTTPS JSON, SSE stream" --> API
+    SPA -- "HTTPS JSON" --> API
     API -- "enqueues jobs in the same transaction" --> WRK
     WRK -- "report text, attachment text, chunk text; never credentials" --> OAI
-    WRK -- "missed-deadline and notification emails" --> MAIL
+    WRK -- "missed-deadline, invitation and recovery emails" --> MAIL
 ```
 
-What crosses the boundaries matters for the AI data boundary (requirements section 11): only the worker talks to OpenAI, and only with content the gateway has assembled from the permission-labelled snapshot. Credentials, supervision notes, and other students' private reports never leave the host.
+What crosses the boundaries matters for the AI data boundary (requirements section 11): only the worker talks to OpenAI, and only with content the gateway has assembled from the permission-labelled snapshot. Credentials and other students' private reports never leave the host.
 
 ## 3 Deployment view
 
@@ -92,10 +92,11 @@ backend/
     evidence/       evidence_references, evidence_chunks, index/ (chunking, embeddings, fts); no repository
                     connector since ADR 0022
     assessment/     rubrics, snapshot.py, pipeline/ (claims, matching, rating), metrics.py, versions, review
-    assistant/      router.py, facts/ (SQL fact functions), retrieval.py, answer.py, conversations
+    overview/       service.py: the professor overview's numbers (next deadline, missing reports, week
+                    board, review queue, stalled runs); app.assistant was removed by ADR 0023
     notifications/  notification records, email/{base,smtp}.py, templates, scheduler_tasks.py
     ai/             gateway.py, prompts/ (registry with versions), schemas/ (structured outputs), cost.py, redaction.py
-    api/            one router per module, dependency wiring, SSE helpers
+    api/            one router per module, dependency wiring
   tests/
   alembic/
 ```
@@ -103,9 +104,9 @@ backend/
 Dependency rule, enforced by an import-linter contract in CI:
 
 ```
-core → identity → projects → reporting → evidence → assessment → assistant
-notifications → reporting          (and core)
-ai ← assessment, ai ← assistant    (no other module may import ai)
+core → identity → projects → reporting → evidence → assessment → overview
+notifications → reporting          (and core; never evidence, assessment or overview)
+ai ← assessment                    (no other module may import ai)
 ```
 
 A module reads another module's data only through that module's `service.py`; it never imports another module's ORM tables into its own queries. This keeps the authorization filter (section 6) in one place per aggregate.
@@ -126,7 +127,6 @@ A module reads another module's data only through that module's `service.py`; it
 | `/review/:assessmentId` | Review workspace: claims, evidence, draft assessment, freshness, approve/override | UI-05 |
 | `/report/:periodId` | One weekly submission flow with a tab per required project entry | REP-02, REP-03 |
 | `/report/:periodId/submitted` | What the student actually submitted, as against the draft the editor shows | REP-02, REP-05 |
-| `/assistant` | Professor assistant with visible active scope | QA-01…QA-07 |
 | `/login` | Sign in; public, no session | AUTH-01 |
 | `/status` | Readiness of database, object store, worker, and mail relay; public | — |
 
@@ -140,13 +140,12 @@ A module reads another module's data only through that module's `service.py`; it
 | Projects | `projects`, `project_memberships`, `plan_baselines`, `plan_baseline_items` |
 | Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
 | Evidence | `evidence_references`, `evidence_chunks` (the connector tables were dropped by migration 0028, ADR 0022) |
-| Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `supervision_notes` |
-| Assistant | `conversations`, `messages`, `answer_cache` |
+| Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews` (`supervision_notes` and the assistant's `conversations`, `messages` and `answer_cache` were dropped by migration 0029, ADR 0023) |
 | Operations | `notifications`, `email_deliveries`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
 
 Every table carries `workspace_id`; composite foreign keys `(workspace_id, x_id)` enforce the same-workspace invariant from requirements section 9.
 
-`workspace_members` records which workspaces an account belongs to, which is plural for a professor; `users.workspace_id` records the one it is *working in*. The first is which workspaces a professor may switch into; the second is where both reads and writes go. `Scope` carries `workspace_ids` and `workspace_id`, which today are the same single workspace, and every visibility predicate is built on `Scope.within` (ADR 0015, ADR 0020). Archiving and the roll read the first; every per-user row is anchored to the second.
+`workspace_members` records which workspaces an account belongs to, which is plural for a professor; `users.workspace_id` records the one it is *working in*. The first is which workspaces a professor may switch into; the second is where both reads and writes go. `Scope` names that one `workspace_id`, and every visibility predicate is built on `Scope.within` (ADR 0015, ADR 0020, ADR 0021). Archiving and the roll read the first; every per-user row is anchored to the second.
 
 Six of those point at `users(workspace_id, id)`, split in two by ADR 0014. The four holding identity records — `invitations`, `sessions`, `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account when it joins another workspace. The two holding research history — `project_memberships`, `weekly_reports` — do not (`developer_identities` and `contributions` were the other two until ADR 0022), so Postgres refuses to move an account that has written anything. That split is what makes "history stays in the workspace it was written in" a property of the schema, and why moving a student is only half-built: `POST /api/v1/users/{user_id}/workspace` moves an account that has written nothing, and the database refuses one that has (AUTH-06); see use_cases.md §2.1.
 
@@ -184,7 +183,7 @@ Constraint `uq_baseline_in_effect`: unique `(membership_id, period_id)` where `s
 Every indexed piece of evidence has exactly one row here, and `evidence_chunks` rows reference it. Visibility is copied from the source at ingestion and re-synced when the source changes. Only `report_entry` and `artifact_version` are written; the other three labels name sources that are gone and stay in the enum because it has rows under it.
 
 **evidence_snapshots** — `id, workspace_id, student_id, project_id, period_id, window_start_utc, window_end_utc, integration_lag_days INT, built_at, item_count INT, coverage_notes JSONB`
-`evidence_snapshot_items` — `(snapshot_id, evidence_ref_id, source_version)`, primary key on both. Built only from `evidence_references` with `visibility <> 'professor_only'` and whose student-visible test passes for `student_id`. The builder never touches `supervision_notes` (ASSESS-01, QA-06).
+`evidence_snapshot_items` — `(snapshot_id, evidence_ref_id, source_version)`, primary key on both. Built only from `evidence_references` with `visibility <> 'professor_only'` and whose student-visible test passes for `student_id` (ASSESS-01).
 
 **assessment_versions** — `id, workspace_id, student_id, project_id, period_id, version_no INT, report_version_id, entry_id, baseline_id NULL, snapshot_id, rubric_version_id, ratings JSONB, progress_index SMALLINT NULL, plan_completion NUMERIC NULL, coverage_pct NUMERIC, confidence ENUM(high, medium, low), confidence_reasons JSONB, narrative JSONB, model_name, prompt_versions JSONB, analysis_run_id, created_at`
 Constraint `uq_assessment_version (student_id, project_id, period_id, version_no)`. Immutable. `ratings` stores per-dimension `{rating: 0-4|"unknown"|"not_applicable", rationale, evidence_ref_ids[]}`.
@@ -231,9 +230,11 @@ The freeze point is `reporting_periods.start_utc` by default. A periodic task `f
 
 Bucket layout: `{workspace_id}/artifacts/{artifact_id}/{version_no}/{sha256}.{ext}` for originals and `.../extracted.txt` for text. `artifact_versions` stores `sha256, byte_size, content_type, storage_key, extraction_state ENUM(pending, ok, failed, unsupported), extracted_text_key`. Upload flow: the API validates size against the configured per-file limit (25 MB default) and per-entry total, issues a presigned PUT, and on completion the worker verifies the checksum, runs extraction (PDF, DOCX, Markdown, images stored as-is), and enqueues indexing. A file attached to a project and to no reporting period is a project document rather than a week's evidence: same table, same bucket, read by everyone on the project, and **not** extracted or indexed, so its version stays `pending` and nothing can cite it ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)). There is no link fetching: REP-04 made evidence a file, the endpoint and the worker's fetch path went with it, and no code in the backend resolves a URL. `artifacts.source_url` and `ArtifactKind.LINK` remain as historical values on rows filed before that, which the reader still shows and nothing re-reads.
 
-### 5.7 Search and retrieval storage
+### 5.7 Evidence index storage
 
-`evidence_chunks` — `id, workspace_id, evidence_ref_id, project_id, owner_student_id NULL, visibility, source_version, chunk_no, text, tsv tsvector GENERATED, embedding vector(1536), source_time`. The text search configuration is `simple` rather than `english`: reports are written in English and Vietnamese, and English stemming distorts the latter, so stemming waits on the retrieval benchmark (section 17). Vectors come from an `Embedder` registered at start-up rather than from a direct gateway call, which keeps `app.evidence` free of `app.ai` and lets a restricted project index without reaching a provider at all. Indexes: GIN on `tsv`, HNSW on `embedding`, B-tree on `(workspace_id, project_id, visibility, source_time)`. Hybrid retrieval runs one SQL statement: the permission and scope predicate first, then reciprocal-rank fusion of the FTS rank and cosine distance. Because filters precede ranking, no chunk outside the caller's scope is ever scored (QA-06). Each chunk resolves to a citation `(source_kind, source_id, source_version, locator)` through `evidence_references` (QA-03).
+`evidence_chunks` — `id, workspace_id, evidence_ref_id, project_id, owner_student_id NULL, visibility, source_version, chunk_no, text, tsv tsvector GENERATED, embedding vector(1536), source_time`. Report entries are indexed on `ReportSubmitted`, attachments on `ArtifactExtracted`, and an attachment's chunks are dropped on `ArtifactRemoved`. Each chunk carries the access label of its source and resolves to a citation `(source_kind, source_id, source_version, locator)` through `evidence_references`. Two reads remain, both used by the assessment snapshot builder (9.2): the window read (`search_evidence_window`, a project's chunks within a time range) and the by-source read (`evidence_for_sources`, a week's own report entries by identity); both apply the `EvidenceChunk` visibility policy before returning anything. Index: B-tree on `(workspace_id, project_id, visibility, source_time)`.
+
+Hybrid retrieval — reciprocal-rank fusion of full-text rank and cosine distance — and the evidence search route it served were removed in 0.12 with the assistant ([ADR 0023](adr/0023-no-research-assistant.md)). Embeddings are still computed at index time, from an `Embedder` registered at start-up rather than a direct gateway call (which keeps `app.evidence` free of `app.ai`), but nothing reads them; removing them and `pgvector` is pending. The `tsv` column and its GIN index, and the HNSW index on `embedding`, are likewise unread.
 
 ## 6 Authorization and confidentiality
 
@@ -249,7 +250,6 @@ class Scope:
     role: Literal["prof", "student"]
     project_ids: frozenset[UUID]              # active memberships for a student; empty for a prof,
                                               # whose predicates branch on the role instead
-    access_epoch: int                         # the anchor workspace's counter, see 6.3
     is_system: bool                           # a job borrowing an identity, not an author
 ```
 
@@ -269,11 +269,10 @@ Every repository function accepts `scope` and applies `visible_to(scope, Model)`
 | Artifact — a week's evidence | All in workspace | `owner_student_id = scope.user_id` |
 | Artifact — a project document (no period, no entry) | All in workspace | `project_id IN scope.project_ids` ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)) |
 | Assessment version | All | Own, and only where an `approved` review exists |
-| Supervision note | All (co-supervisors share; `author_id` says whose) | Never |
 | Project | All | `project_id IN scope.project_ids` |
 | Evidence chunk | All except none | `visibility = 'project_shared' AND project_id IN scope.project_ids` OR `owner_student_id = scope.user_id` |
 
-Downloads reuse the same predicates: a presigned GET is issued only after `visible_to` selects the artifact version (AC-02). Search and AI retrieval build their `WHERE` clause from the same builder, so there is no second permission model (AUTH-02).
+Downloads reuse the same predicates: a presigned GET is issued only after `visible_to` selects the artifact version (AC-02). The evidence reads an assessment snapshot is built from — the window and by-source reads in `app/evidence/repository.py` — apply `visible_to(scope, EvidenceChunk)`, registered in `app/evidence/policies.py`, so there is no second permission model (AUTH-02). The evidence search and citation-open routes were removed with the assistant (ADR 0023).
 
 ### 6.2 Authentication and account lifecycle (AUTH-01)
 
@@ -285,13 +284,13 @@ Downloads reuse the same predicates: a presigned GET is issued only after `visib
 - Token emails: notifications subscribes to `InvitationCreated` and `PasswordResetRequested` and defers a `notifications.send_token_email` job, which is sent only after the issuing transaction commits. They bypass `email_deliveries` because a token message has no in-app counterpart — the addressee has no session — and the queue row would hold a live credential until the next sweep.
 - Break-glass: `python -m app.cli breakglass recover-professor --email …` (also reachable as `python -m app.identity.breakglass`) runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It issues a single-use recovery link valid for 15 minutes rather than a password, so the secret is handed over out of band. `transfer-professor --from … --to …` deactivates the outgoing account in the same transaction and moves `workspaces.owner_id`, the workspace's break-glass contact. `demote-professor` and `deactivate-professor` eject a co-supervisor; every command that could reduce the professor count refuses to leave a workspace with none. None of this is reachable through the API (ADR 0011).
 
-### 6.3 Access changes and cached answers (AUTH-03, AC-11)
+### 6.3 Access changes (AUTH-03, AC-11)
 
-`workspaces.access_epoch` increments inside the same transaction as any membership end, deactivation, or visibility change. `answer_cache` rows and `evidence_snapshots` store the epoch at creation. A cached answer is served only when it was written in the workspace the caller is working in, when the digest of every `(workspace, epoch)` pair its read spanned still matches, and when the citation set still passes `visible_to` for the caller. The digest rather than the single epoch because `Scope.within` is built to span several workspaces (ADR 0016); since ADR 0020 a read covers one, so the digest has one entry, and it stays correct if a read is ever widened again. Snapshots are not invalidated (they are historical records), but a student's view of an assessment re-checks each citation at render time and shows "source no longer available to you" for anything failing the check.
+Ending a membership revokes access at once because nothing caches a read: every request compiles `Scope.project_ids` from the memberships table, and every read applies `visible_to` against it. Deactivating a user deletes their sessions in the same transaction (6.2). Snapshots are historical records and are not invalidated. The cached answers this section described, and the per-workspace access epoch that expired them (ADR 0009), were removed in 0.12 with the assistant ([ADR 0023](adr/0023-no-research-assistant.md), migration 0029 drops `workspaces.access_epoch` and `evidence_snapshots.access_epoch`).
 
 ### 6.4 Confidentiality of professor material (QA-06)
 
-`supervision_notes` are excluded from `evidence_references` and therefore from chunks, snapshots, and student-facing answers by construction. The assistant may include them only when `scope.role = 'prof'`, via a separate retrieval path over `supervision_notes` that is compiled into the professor-only branch of the router (section 11).
+Withdrawn in 0.12 ([ADR 0023](adr/0023-no-research-assistant.md)): private supervision notes and the professor-only assistant branch that read them are gone, and migration 0029 drops `supervision_notes`. What remains is that an assessment's snapshot is built through the student's own view and never from `professor_only` evidence (5.2, 9.2; ASSESS-01). The section number is kept so references to it stay valid.
 
 ### 6.5 Workspaces and the tenant boundary (AUTH-04, AUTH-05, AUTH-06, UI-08)
 
@@ -343,7 +342,6 @@ sequenceDiagram
     J->>DB: LEFT JOIN weekly_reports / entries for this period
     Note over J,DB: student submitted at 23:58 -> has version -> skipped<br/>student on leave -> state='excused' -> skipped
     J->>DB: INSERT notifications (recipient, period, kind='missed_deadline') ON CONFLICT DO NOTHING
-    J->>DB: INSERT notification for professor: list of unfulfilled obligations
     J->>DB: UPDATE period SET reminder_dispatched_at = now()
     J->>DB: enqueue E per inserted row (queueing_lock = notification_id)
     E->>M: send templated email (missing entries, submit link, late/grace status)
@@ -351,7 +349,7 @@ sequenceDiagram
     E->>DB: UPDATE email_deliveries SET state, attempts, last_error
 ```
 
-Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. Delivery is a queued row rather than one job per message: `dispatch_missed_deadline` writes an
+Obligation state is read inside `J`, so a submission at 23:59:30 is seen before any email is created. The professor sees the unfulfilled obligation on the overview's outstanding list, derived from the obligations themselves; the in-app notification record `J` used to write for the professor had no reader and is no longer written (requirements 0.12, ADR 0023). The `ON CONFLICT DO NOTHING` on `uq_notification (recipient_id, period_id, kind)` and the queueing lock make a retried job a no-op (AC-19). An entry missing for one of two required projects yields one email listing the missing project. Delivery is a queued row rather than one job per message: `dispatch_missed_deadline` writes an
 `email_deliveries` row in state `queued` in the same transaction as the notification, and a periodic
 `send_queued_emails` task drains them. That keeps the attempt count and the last error in one place
 and gives the same at-least-once behaviour, since both the notification and its delivery row are
@@ -376,7 +374,7 @@ flowchart LR
     T -- no --> K[keep existing assessment]
     T -- yes --> B[build_snapshot\nwindow = period ± lag\nlabels student-visible]
     B --> C[extract_claims\nLLM structured]
-    C --> M[match_claims\nhybrid retrieval within snapshot\n+ LLM verdict per claim]
+    C --> M[match_claims\nsnapshot evidence\n+ LLM verdict per claim]
     M --> R[rate_rubric\nLLM structured: rating 0-4 or unknown,\nrationale, evidence_ref_ids]
     R --> V[validate_output\nevery evidence_ref_id in snapshot?\nrating in schema?]
     V --> X[compute_metrics\npure Python: index, completion,\ncoverage, confidence]
@@ -456,7 +454,7 @@ Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25
 | Rubric or model version change | No automatic rerun; the professor may request recalculation, producing a new version labelled with the new rubric |
 | Professor override | `assessment_reviews.override` on the same version with rationale; original model output stays in `assessment_versions` |
 
-Trends (ASSESS-10) are queries over `assessment_versions` joined to `assessment_reviews.state = 'approved'`, grouped by rubric version, so a rubric change appears as a labelled break rather than a comparable series (AC-10).
+Trends (ASSESS-10) are queries over `assessment_versions` joined to `assessment_reviews.state = 'approved'`, grouped by rubric version, so a rubric change appears as a labelled break rather than a comparable series. `progress_series` in `backend/app/assessment/service.py` (served by `GET /api/v1/trends`) carries the rubric version of every point, and `frontend/src/features/assessments/components/Trajectory.tsx` marks the break (AC-10).
 
 ## 10 AI gateway
 
@@ -471,45 +469,26 @@ class AIGateway:
 
 Responsibilities:
 
-- **Prompt registry.** `ai/prompts/{prompt_id}/v{n}.md` with a manifest of model, temperature 0, schema, and max tokens. `CallContext` records `(prompt_id, prompt_version, model)` into `assessment_versions.prompt_versions` and `analysis_runs` (ASSESS-09).
-- **Untrusted content framing.** Every retrieved text is inserted inside a delimited data block with a system instruction that the block is evidence to analyse, not instructions to follow, and that no tool or action is available. The gateway exposes no function-calling tools to the model at all; actions exist only as product endpoints (QA-07, AC-12).
+- **Prompt registry.** `ai/prompts/{prompt_id}/v{n}.md` with a manifest of model, temperature 0, schema, and max tokens. Three prompts remain, all the assessment's: `extract_claims`, `match_claims`, `rate_rubric` (the assistant's `route_question` and `answer` went with ADR 0023). `CallContext` records `(prompt_id, prompt_version, model)` into `assessment_versions.prompt_versions` and `analysis_runs` (ASSESS-09).
+- **Untrusted content framing.** Every retrieved text is inserted inside a delimited data block with a system instruction that the block is evidence to analyse, not instructions to follow, and that no tool or action is available. The gateway exposes no function-calling tools to the model at all; actions exist only as product endpoints (AC-12).
 - **Redaction.** Before sending, `redaction.py` strips strings matching credential patterns (tokens, keys, connection strings) and replaces emails other than the subject student's with placeholders. Credentials never reach the gateway anyway because they are not stored in the database.
 - **Cost ledger.** `ai_calls` — `(id, job_id, project_id, prompt_id, prompt_version, model, tokens_in, tokens_out, cost_usd, latency_ms, status, created_at)`. Budgets per project and per month live in `workspaces.ai_budgets`; when exceeded, the job records `delayed_budget` and the review queue shows "analysis delayed: budget" rather than a silent failure.
-- **Caching.** Embeddings are keyed by `sha256(text) + model`; claim extraction is keyed by `content_hash` of the entry, so an unchanged entry is never re-embedded or re-extracted.
+- **Caching.** Embeddings are keyed by `sha256(text) + model` (computed at index time and unread since 0.12, 5.7); claim extraction is keyed by `content_hash` of the entry, so an unchanged entry is never re-embedded or re-extracted.
 - **Restriction flag.** `projects.ai_restricted = true` short-circuits every model step: the pipeline still builds the snapshot and metrics for the plan, produces a qualitative draft with `Not rated — restricted`, and the professor rates manually.
 - **Timeouts and partial state.** 60 s per call, two retries on transient errors, then the step fails and the run is `partial`. Logs carry ids, token counts, and status; never prompt or completion text.
 
 ## 11 Professor assistant
 
-```mermaid
-flowchart TB
-    Q[question + active scope\nstudent, project, date range, as_of] --> RT[router LLM\nintent + entities -> plan]
-    RT --> F[fact functions\nSQL with scope + as_of\nmissing_reports, obligations,\nscores, deadlines, memberships]
-    RT --> SR[semantic retrieval\nvisible_to predicate first,\nthen FTS + vector fusion]
-    F --> PC[permission re-check\nevery fact row and chunk\nagainst current scope + epoch]
-    SR --> PC
-    PC --> G[generate answer\nstructured: answer, facts, synthesis,\ncitations, time range, gaps]
-    G --> CV[citation validation\nevery citation id in retrieved set?]
-    CV --> ST[SSE stream to SPA\nfirst token target < 10 s]
-    CV --> AC[(answer_cache\nkey: user, scope, question hash, epoch)]
-```
-
-- **Router.** A small structured-output call classifies the question into fact, narrative, or mixed, and extracts entities; unresolved names produce a clarifying question rather than a guess (QA-05). Fact questions never go through generation for the number itself: the fact function returns the value and an `as_of` timestamp, and the answer template renders it (QA-02, AC-15).
-- **Fact functions** are plain Python over SQL with `scope` and `as_of` parameters, for example `missing_reports(scope, period_id, as_of)`, `progress_series(scope, student_id, project_id, from, to)` which returns rubric version per point so the answer can label a break (AC-10).
-- **As-of answers** filter `source_time <= as_of` and `report_versions.submitted_at <= as_of` so a historical question uses only what existed then (QA-04).
-- **Answer contract** (QA-03): `time_range, scope, answer, facts[] (each with fact function and as_of), synthesis[], suggestions[], citations[] (source_kind, source_id, source_version, locator), gaps[]`. The SPA renders facts and synthesis with different markers and links each citation to the authorized viewer for that source.
-- **Professor-only branch.** When `scope.role = 'prof'` and the router marks the question as supervision-related, `supervision_notes` are retrieved through a separate function whose output is tagged `private` and rendered with a lock icon; drafts of student-facing text produced by the assistant exclude anything tagged `private` (QA-06).
-- **Streaming.** `POST /api/v1/assistant/ask/stream` uses Server-Sent Events; the router and retrieval steps emit progress events so the first meaningful token appears within the 10 s budget, and a timeout returns a recoverable partial answer with the retrieved citations.
-- **Conversations** persist `scope` as JSON and every message with its citation set; research records live in their own tables and are never derived from chat history (QA-05).
+Withdrawn in requirements 0.12 ([ADR 0023](adr/0023-no-research-assistant.md)), with QA-01..07. The router, fact functions, hybrid retrieval, answer contract, streamed chat screen, conversations, answer cache and the professor-only supervision-note branch were built and never used; migration 0029 drops their tables. The one part with a live caller — the fact functions behind the professor overview — moved unchanged to `app.overview`: plain functions in `backend/app/overview/service.py` (`next_deadline`, `missing_reports`, `week_reports`, `review_queue`, `stalled_analyses`) that `GET /api/v1/overview` (`backend/app/api/v1/overview.py`) calls directly and returns with the instant it was served (AC-15). The section number is kept so that references to §12 onward stay valid.
 
 ## 12 Background jobs
 
 - **Library:** procrastinate with the async connector. Enqueue is a row insert, so `submit_report()` writes `report_versions`, `project_report_entries`, and the job rows in one transaction; either all persist or none (section 10 of the requirements, AC-13). The queue's own schema is applied by a migration from the installed library version, so `alembic upgrade head` is the only step a deploy needs; alembic's autogenerate ignores the `procrastinate_*` tables because the library owns them.
-- **Job key convention:** `{domain}:{ids}:{step}` as `queueing_lock`; procrastinate refuses a second queued job with the same lock. Completed jobs are retained for 30 days for observability.
+- **Job key convention:** `{domain}:{ids}:{step}` as `queueing_lock`; procrastinate refuses a second queued job with the same lock. Completed jobs are retained for seven days for observability (`retention_sweep`).
 - **Retries:** transient errors retry with exponential backoff (max 5); permanent errors fail immediately. A domain record (`analysis_runs`, `email_deliveries`) carries the application state including `partial`.
 - **Manual retry:** `POST /api/v1/admin/assessments/retry` re-enqueues with the same lock; because every step is idempotent on its key, no duplicate assessments or notifications result.
-- **Periodic tasks** (in the worker, `procrastinate.periodic`), six of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`, which expires stale cached answers and deletes jobs finished more than seven days ago with their events); `scan_due_reminders` `*/5` and `send_queued_emails` `*/2` (`app/notifications/scheduler_tasks.py`). The repository connector's `incremental_sync` `*/30` went with ADR 0022.
-- **Observability:** `/api/metrics` exposes queue depth, oldest queued age, failures by job name, model error rate, citation validation failures, and access denials (section 11 "Observability").
+- **Periodic tasks** (in the worker, `procrastinate.periodic`), six of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`, which deletes jobs finished more than seven days ago with their events); `scan_due_reminders` `*/5` and `send_queued_emails` `*/2` (`app/notifications/scheduler_tasks.py`). The repository connector's `incremental_sync` `*/30` went with ADR 0022, and `retention_sweep`'s answer-cache purge went with ADR 0023.
+- **Observability:** `/api/metrics` exposes queue depth, oldest queued age, failures by job name, model error rate, citation validation failures (`rm_citation_validation_failures_total`, whose `surface` label has one value since ADR 0023: `assessment`), and access denials (section 11 "Observability").
 
 ## 13 Notifications and email
 
@@ -520,7 +499,7 @@ class EmailSender(Protocol):
     async def send(self, to: str, template: str, params: dict, idempotency_key: str) -> DeliveryResult: ...
 ```
 
-`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). Nothing is muted: use cases v0.4 removed the preference table with the routes that wrote it, so `notify` records every message a job raises and the unmutable-kind list it used to check is gone. `kind` is free text drawn from a vocabulary in `notifications/service.py`, because a pre-deadline reminder carries its configured offset in the kind (`reminder:48h`).
+`smtp.py` is the MVP implementation; a transactional-API sender can be added behind the same protocol. Templates receive only identifiers, dates, and the recipient's own missing-entry list; assessment narratives and other students' names never appear in email (UI-07, REP-08). Nothing is muted: use cases v0.4 removed the preference table with the routes that wrote it, so `notify` records every message a job raises and the unmutable-kind list it used to check is gone. `kind` is free text drawn from a vocabulary in `notifications/service.py`, and since 0.12 that vocabulary has one entry, `missed_deadline`: the report submitted/resubmitted records and the professor's in-app summary of a missed deadline had no reader and are no longer written (UI-07, ADR 0023).
 
 ## 14 Frontend architecture
 
@@ -528,7 +507,7 @@ class EmailSender(Protocol):
 - **Weekly report editor:** one page per period with a tab per required project entry. Plain textareas per entry field — the CodeMirror/KaTeX editor described here was not built, and the entry form is six fields rather than one Markdown surface; autosave `PATCH /api/v1/periods/{period_id}/report/draft` after 1.5 s of inactivity and on blur, with the saved timestamp shown; drafts recover from `weekly_reports.draft_content` on reload (REP-04). Submit performs client-side completeness checks, then `POST /api/v1/periods/{period_id}/report/submit` with an idempotency key so a double click cannot create two versions.
 - **Attachments:** the client requests a presigned PUT, uploads directly to MinIO, then confirms; the entry shows extraction state as it changes.
 - **Review workspace:** three panes (claims, evidence with freshness badges, draft assessment with component ratings); approve and override with reason are actions on that page. **Requesting a revision is not**: `POST /reports/{id}/revisions` exists and nothing calls it, so UI-05 is met in two of its three parts (use_cases.md §2.5).
-- **Assistant:** the screen posts to `/assistant/ask` and renders the completed answer. The `EventSource` client in `src/api/sse.ts` is written and imported by nothing, so `/assistant/ask/stream` has no caller; citations render as links to the authorized source rather than opening a side panel, and three of the six locator shapes do not resolve to a route (use_cases.md §8.2).
+- **Assistant:** withdrawn in 0.12 (ADR 0023). The `/assistant` screen, its SSE client and the citation links it rendered were removed with the backend.
 - **Accessibility and languages:** keyboard-navigable forms, report content stored as written. One language ships — `src/locales/en` — with the i18next indirection kept so a second is a resource file and a switcher rather than a refactor.
 
 ## 15 Nonfunctional mapping
@@ -537,14 +516,14 @@ class EmailSender(Protocol):
 | --- | --- | --- |
 | Initial capacity | Single Postgres with HNSW and GIN indexes; chunk table partitioned by year when it passes 5 M rows | Seed script generates 50 students × 30 projects × 3 years and 100 k chunks; run the benchmark suite |
 | Interactive performance | Indexed queries per aggregate; pagination; no file bodies through the API | k6 script at 10 concurrent sessions; p95 < 2 s on overview, report, review pages |
-| AI response time | Router and retrieval before generation; SSE progress; 60 s call timeout | Assistant test set of 50 questions; p95 first token < 10 s, completion < 30 s |
+| AI response time | *Withdrawn with the assistant in 0.12 (ADR 0023)*; assessment calls keep the 60 s call timeout | — |
 | Assessment latency | Pipeline steps as separate jobs; two worker processes | Pilot workload; 95 % of runs complete within 10 min of inputs available |
 | Availability and recovery | Compose restart policies; nightly encrypted dump and bucket mirror offsite; RPO 24 h, RTO 4 h | Quarterly restore drill into a scratch stack; checklist item before launch (AC-16) |
 | Reliability | Transactional enqueue; idempotent job keys; `partial` states; manual retry | Chaos test: kill worker mid-run and stub OpenAI failures; report count unchanged, no duplicate versions |
 | Security | TLS via Caddy; server-side sessions; `visible_to` everywhere; presigned URLs; file type sniffing; secrets in `.env` 600 | Authorization test suite covering every AC on access; dependency scanning in CI |
-| Data control | `retention_sweep` deletes expired drafts and artifacts and propagates to MinIO, chunks, answer cache, and snapshots via cascading service calls; backup expiry documented as 30 days | Deletion test asserts no orphan in bucket, chunks, or cache |
+| Data control | `retention_sweep` deletes finished queue jobs after seven days; deleting research records waits on the professor's retention policy (requirements §14); backup expiry documented as 30 days | `backend/tests/jobs/test_periodic_tasks.py` covers the job purge |
 | AI data boundary | Only `ai/gateway.py` reaches OpenAI; per-project `ai_restricted`; documented content list per prompt | Import-linter contract; unit test that restricted projects produce zero `ai_calls` |
-| Source integrity | Untrusted framing; no tools exposed; citation validation against snapshot; router entities validated against DB | Adversarial README and report fixtures in the evaluation set (AC-12) |
+| Source integrity | Untrusted framing; no tools exposed; citation validation against snapshot | Adversarial README fixture in `backend/tests/acceptance/test_ac_12.py` (AC-12) |
 | Cost control | `ai_calls` ledger; budgets; content-hash caches; extracted-text caps | Monthly cost report per project; alert at 80 % budget |
 | Observability | Structured JSON logs with request and job ids; `/api/metrics`; no raw research text in logs | Log audit in review; dashboard for queue lag |
 | Usability | Responsive layout; keyboard-accessible editor; autosave indicator; equation rendering | Manual checklist on desktop and phone width |
@@ -555,8 +534,8 @@ class EmailSender(Protocol):
 | Requirement | Section |
 | --- | --- |
 | AUTH-01 | 6.2 |
-| AUTH-02 | 6.1, 5.7 |
-| AUTH-03 | 6.2, 6.3 |
+| AUTH-02 | 6.1, 5.7 (`EvidenceChunk` policy in `backend/app/evidence/policies.py`); search and AI retrieval withdrawn in 0.12 |
+| AUTH-03 | 6.2, 6.3; cached answers and the access epoch removed in 0.12 (ADR 0023) |
 | AUTH-04 | 5.1 (`workspaces`), 6.5 |
 | AUTH-05 | 6.1 (`Scope.within`), 5.1 (`workspace_members`), 6.5 |
 | AUTH-06 | 5.1 (the four-and-four foreign-key split), 6.5 |
@@ -575,7 +554,7 @@ class EmailSender(Protocol):
 | REP-05 | 5.2 (`report_versions`, `content_changed_in_version_id`), 5.3, 9.5 |
 | REP-06 | 5.2 (`reporting_obligations`), 7.1, 7.2 |
 | REP-07 | 5.2 (`first_submitted_at`); pre-deadline reminders withdrawn in 0.10 (7.3) |
-| REP-08 | 7.2, 13 |
+| REP-08 | 7.2, 13; the professor's in-app view is the overview's outstanding list (`backend/app/overview/service.py`, `backend/app/api/v1/overview.py`) |
 | REPO-01 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | REPO-02 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | REPO-03 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
@@ -584,7 +563,7 @@ class EmailSender(Protocol):
 | REPO-06 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | REPO-07 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | REPO-08 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
-| ASSESS-01 | 5.2 (`evidence_snapshots`), 9.2 |
+| ASSESS-01 | 5.2 (`evidence_snapshots`), 9.2 (`backend/app/assessment/snapshot.py`); the supervision-note exclusion withdrawn with the notes in 0.12 |
 | ASSESS-02 | 9.4, 14 (review workspace) |
 | ASSESS-03 | 9.3 |
 | ASSESS-04 | 9.3, 9.4 |
@@ -594,40 +573,40 @@ class EmailSender(Protocol):
 | ASSESS-08 | 5.2 (`assessment_reviews`), 9.5; correction requests withdrawn in 0.10 |
 | ASSESS-09 | 5.2 (`assessment_versions`), 9.5, 10 |
 | ASSESS-10 | 9.5 |
-| QA-01 | 11 |
-| QA-02 | 11 |
-| QA-03 | 5.7, 11 |
-| QA-04 | 11 |
-| QA-05 | 11 |
-| QA-06 | 6.4, 11 |
-| QA-07 | 10, 11 |
-| UI-01 | 4.2 |
+| QA-01 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
+| QA-02 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
+| QA-03 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
+| QA-04 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
+| QA-05 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
+| QA-06 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
+| QA-07 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
+| UI-01 | 4.2, 11 (`backend/app/overview/service.py`, `backend/app/api/v1/overview.py`; tests `backend/tests/module/overview/test_service.py`, `backend/tests/api/test_overview.py`) |
 | UI-02 | 4.2 |
 | UI-03 | 4.2 |
 | UI-04 | 4.2 |
 | UI-05 | 4.2, 14 |
 | UI-06 | *withdrawn* — exports retired in use cases v0.4; no section implements it |
-| UI-07 | 13 — delivery only; the in-app surface was retired in use cases v0.4 |
+| UI-07 | 13 — delivery only; the in-app surface was retired in use cases v0.4, and since 0.12 only `missed_deadline` records are written |
 | UI-08 | 4.2 (`/workspaces`, `/people`), 6.5 |
 | AC-01 | 5.2 (`uq_entry`), 9.1 |
-| AC-02 | 6.1 |
+| AC-02 | 6.1 (`backend/tests/acceptance/test_ac_02.py`); search and cached responses withdrawn in 0.12 |
 | AC-03 | 5.3, 9.5 |
 | AC-04 | Withdrawn in requirements 0.11 with REPO-05 (ADR 0022) |
 | AC-05 | 9.3, 9.4 |
 | AC-06 | Withdrawn in requirements 0.11 with REPO-03 and REPO-04 (ADR 0022) |
-| AC-07 | 9.3 |
+| AC-07 | 9.3 (`backend/tests/acceptance/test_ac_07.py`); the assistant half withdrawn in 0.12 |
 | AC-08 | 7.1, 7.2 |
 | AC-09 | Withdrawn in requirements 0.11 with REPO-05 (ADR 0022) |
-| AC-10 | 9.5, 11 |
-| AC-11 | 6.3 |
-| AC-12 | 9.3, 10 |
+| AC-10 | 9.5 (`progress_series`; `backend/tests/acceptance/test_ac_10.py`; frontend `Trajectory.tsx`, `frontend/src/features/me/MyProfilePage.test.tsx`); restated in 0.12 |
+| AC-11 | 6.3 (`backend/tests/acceptance/test_ac_11.py`); restated in 0.12 against evidence and documents |
+| AC-12 | 5.7, 9.3, 10 (`backend/tests/acceptance/test_ac_12.py`); amended in 0.12 |
 | AC-13 | 9.1, 12 |
 | AC-14 | 9.3, 9.4 (volume is context, never achievement); restated in requirements 0.11 for attachments |
-| AC-15 | 11 |
+| AC-15 | 11 (`GET /api/v1/overview`; `backend/tests/acceptance/test_ac_15.py`); restated in 0.12 against the overview |
 | AC-16 | 3, 15 |
 | AC-17 | 5.2 (`content_changed_in_version_id`), 9.1, 9.5 |
 | AC-18 | 5.5 |
-| AC-19 | 7.2, 13 |
+| AC-19 | 7.2, 13 (`backend/tests/acceptance/test_ac_19.py`); the professor's in-app view is the overview, amended in 0.12 |
 
 ## 16.1 Where the implementation refines this document
 
@@ -642,7 +621,7 @@ Two corrections and one addition, each carried in
   `EmbedContext` naming the workspace and project, so a gateway-backed embedder can still write the
   `ai_calls` row that `app.evidence` cannot.
 - `app.exports` was a bounded context between `app.assistant` and `app.assessment` in the layer
-  order. Use cases v0.4 retired exports and removed the module and its layer; the reasoning it
+  order (`app.assistant` itself was removed in 0.12, ADR 0023; `app.overview` now heads it). Use cases v0.4 retired exports and removed the module and its layer; the reasoning it
   recorded is kept here because it applies to the next context that spans modules: assembling a
   cross-module read through those modules' services is what makes its authorization identical to
   interactive access rather than a second implementation of it.
@@ -657,4 +636,4 @@ Carried from section 14 of the requirements and from this design:
 4. OpenAI data-processing terms acceptable to the professor, and which projects need `ai_restricted`.
 5. VPS region and offsite backup destination.
 6. Whether to add Postgres Row-Level Security as defence in depth after the MVP.
-7. Chunking parameters and embedding model, to be fixed during the retrieval benchmark.
+7. *Closed by ADR 0023:* there is no retrieval benchmark, because nothing retrieves by similarity; embeddings are computed and unread, and their removal is pending.

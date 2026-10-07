@@ -1,4 +1,4 @@
-"""Visibility predicates for assessment aggregates (AUTH-02, ASSESS-08, QA-06)."""
+"""Visibility predicates for assessment aggregates (AUTH-02, ASSESS-08)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from app.assessment.models import (
     EvidenceSnapshot,
     ReviewState,
     RubricVersion,
-    SupervisionNote,
 )
 from app.core.authz import Scope, register_policy
 
@@ -67,12 +66,3 @@ def run_visible_to(scope: Scope) -> ColumnElement[bool]:
 def rubric_visible_to(scope: Scope) -> ColumnElement[bool]:
     """The rubric is workspace-wide: a student is entitled to know what they are assessed on."""
     return scope.within(RubricVersion.workspace_id)
-
-
-@register_policy(SupervisionNote)
-def supervision_note_visible_to(scope: Scope) -> ColumnElement[bool]:
-    """QA-06: never a student, under any condition. Every professor in the workspace, though —
-    co-supervisors share notes, and the row carries `author_id` to say whose it is (ADR 0011)."""
-    if scope.is_prof:
-        return scope.within(SupervisionNote.workspace_id)
-    return SupervisionNote.id.is_(None)

@@ -35,7 +35,6 @@ const WORKSPACE = {
   id: "w1",
   name: "Ecomind Lab",
   timezone: "Asia/Ho_Chi_Minh",
-  access_epoch: 1,
   owner_id: "p1",
   archived_at: null,
 };
@@ -333,16 +332,27 @@ test("an invitation can be sent again, and only to someone who has not accepted 
   // `POST /users/invitations` has always reissued for an address still in `invited`; what was
   // missing was the button. It carries the row's own workspace, because the roll spans several.
   const sent: Record<string, unknown>[] = [];
-  const invited = user({ id: "s2", email: "waiting@example.edu", display_name: "Waiting", state: "invited" });
-  renderPeople([PROF, user(), invited], [
-    http.post("/api/v1/users/invitations", async ({ request }) => {
-      sent.push((await request.json()) as Record<string, unknown>);
-      return HttpResponse.json({ email: "waiting@example.edu" }, { status: 201 });
-    }),
-  ]);
+  const invited = user({
+    id: "s2",
+    email: "waiting@example.edu",
+    display_name: "Waiting",
+    state: "invited",
+  });
+  renderPeople(
+    [PROF, user(), invited],
+    [
+      http.post("/api/v1/users/invitations", async ({ request }) => {
+        sent.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ email: "waiting@example.edu" }, { status: 201 });
+      }),
+    ],
+  );
 
   await screen.findByText("Waiting");
-  expect(screen.queryByTestId("resend-s1"), "an accepted account has no link to reissue").toBeNull();
+  expect(
+    screen.queryByTestId("resend-s1"),
+    "an accepted account has no link to reissue",
+  ).toBeNull();
 
   await userEvent.click(screen.getByTestId("resend-s2"));
   await waitFor(() => expect(sent).toHaveLength(1));
@@ -358,13 +368,22 @@ test("a colleague still waiting on their invitation can be sent another", async 
   // The professors' rows carried no controls at all, which was right for an accepted colleague
   // (ADR 0011 gives a professor no authority over another) and wrong for one who never got in.
   const sent: Record<string, unknown>[] = [];
-  const colleague = user({ id: "p2", role: "prof", email: "new.prof@example.edu", display_name: "Dr Tran", state: "invited" });
-  renderPeople([PROF, colleague], [
-    http.post("/api/v1/users/invitations", async ({ request }) => {
-      sent.push((await request.json()) as Record<string, unknown>);
-      return HttpResponse.json({ email: "new.prof@example.edu" }, { status: 201 });
-    }),
-  ]);
+  const colleague = user({
+    id: "p2",
+    role: "prof",
+    email: "new.prof@example.edu",
+    display_name: "Dr Tran",
+    state: "invited",
+  });
+  renderPeople(
+    [PROF, colleague],
+    [
+      http.post("/api/v1/users/invitations", async ({ request }) => {
+        sent.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ email: "new.prof@example.edu" }, { status: 201 });
+      }),
+    ],
+  );
 
   await screen.findByText("Dr Tran");
   expect(screen.queryByTestId("resend-p1"), "the accepted professor keeps no controls").toBeNull();

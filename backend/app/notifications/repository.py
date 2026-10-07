@@ -7,21 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz import Scope, visible_to
 from app.notifications.models import DeliveryState, EmailDelivery, Notification
-
-
-async def list_notifications(
-    session: AsyncSession, scope: Scope, *, unread_only: bool = False
-) -> list[Notification]:
-    statement = (
-        select(Notification)
-        .where(visible_to(scope, Notification))
-        .order_by(Notification.created_at.desc(), Notification.id.desc())
-    )
-    if unread_only:
-        statement = statement.where(Notification.read_at.is_(None))
-    return list((await session.execute(statement)).scalars().all())
 
 
 async def notification_row(session: AsyncSession, notification_id: UUID) -> Notification | None:

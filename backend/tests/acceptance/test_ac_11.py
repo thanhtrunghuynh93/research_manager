@@ -1,13 +1,12 @@
-"""AC-11 — A student's membership is removed after an answer was cached | Subsequent access to
-restricted underlying content, citations, and cached answers is denied.
+"""AC-11 — A student's membership is removed | Subsequent access to the project's shared evidence
+and documents is denied; the student's own historical records stay theirs.
 
-The cache is the interesting half. Denying the live query is the ordinary predicate doing its job;
-what this scenario is really about is the answer that was already computed and stored while the
-access was valid. Serving it afterwards would be a disclosure that no live query could produce.
-
-The defence is the access epoch: ending a membership advances a counter in the same transaction,
-and every answer keyed to the previous value stops being served — without anything having to go
-and find it.
+Restated in 0.12. The scenario used to be about an assistant answer cached while the access was
+valid; the assistant and its cache are gone (ADR 0023), and with them the access epoch that
+invalidated it. What remains to prove is the ordinary half, which is the half that matters every
+day: a membership is the entire grant to a project's ongoing work (AUTH-03), so ending it ends
+every read that work is reached through — the evidence an assessment is built from, and the
+documents the project shares (ADR 0018).
 """
 
 from __future__ import annotations
@@ -15,38 +14,30 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 import pytest
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.fake import FakeGateway
-from app.ai.schemas import RoutePlan
-from app.assistant import cache
-from app.assistant import service as assistant_service
-from app.assistant.models import AnswerCache
-from app.assistant.schemas import AnswerOut, AnswerScope
 from app.core.authz import Scope
-from app.core.ids import uuid7
-from app.core.types import Role, Visibility
+from app.core.errors import ForbiddenError, NotFoundError
+from app.core.storage import InMemoryObjectStore, sha256_of
+from app.core.types import Visibility
 from app.evidence import service as evidence_service
 from app.evidence.models import EvidenceSourceKind
 from app.identity import models as identity_models
-from app.identity import repository
 from app.identity import service as identity_service
 from app.projects import service as projects_service
+from app.reporting import artifacts
 from app.reporting import service as reporting_service
-from tests.factories import make_workspace
 
 pytestmark = pytest.mark.acceptance
 
-AS_OF = datetime(2026, 9, 21, 3, 0, tzinfo=UTC)
-QUESTION = "What was decided about the evaluation split on the retrieval project?"
 # Shared with the project rather than owned by the student: a student's own report stays theirs
 # after they leave, which is right. What must stop is reaching the project's shared material.
-SHARED_TEXT = "Project decision: the evaluation split is frozen at the September snapshot."
+SHARED_TEXT = "Project protocol: the evaluation split is frozen at the September snapshot."
+WINDOW = (datetime(2026, 9, 14, tzinfo=UTC), datetime(2026, 9, 21, tzinfo=UTC))
 
 
-async def _project_with_a_report(
-    db: AsyncSession, prof_scope: Scope, student: identity_models.User
+async def _project(
+    db: AsyncSession, prof_scope: Scope, students: list[identity_models.User]
 ) -> tuple[object, object]:
     await reporting_service.configure_calendar(
         db,
@@ -62,305 +53,123 @@ async def _project_with_a_report(
     await projects_service.update_project(db, prof_scope, project.id, status="active")
     # Joined before today, so the membership is live now and ending it today actually ends it:
     # `left_on` is exclusive (architecture §5.2).
-    await projects_service.add_member(
-        db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
-    )
+    for student in students:
+        await projects_service.add_member(
+            db, prof_scope, project.id, student_id=student.id, joined_on=date(2026, 9, 1)
+        )
     period = (await reporting_service.ensure_periods(db, prof_scope, through=date(2026, 9, 20)))[0]
     await reporting_service.ensure_obligations(db, prof_scope, period.id)
-
-    await evidence_service.index_evidence(
-        db,
-        workspace_id=prof_scope.workspace_id,
-        source_kind=EvidenceSourceKind.DECISION,
-        source_id=project.id,
-        source_version="1",
-        text=SHARED_TEXT,
-        visibility=Visibility.PROJECT_SHARED,
-        locator=f"/projects/{project.id}#decisions",
-        project_id=project.id,
-        source_time=datetime(2026, 9, 16, tzinfo=UTC),
-    )
     return period, project
 
 
-async def _end_membership_today(db: AsyncSession, prof_scope: Scope, project: object) -> None:
+async def _end_membership_today(
+    db: AsyncSession, prof_scope: Scope, project: object, student: identity_models.User
+) -> None:
     from app.core.clock import now
 
-    memberships = await projects_service.list_members(db, prof_scope, project.id)
-    await projects_service.end_membership(db, prof_scope, memberships[0].id, left_on=now().date())
+    memberships = await projects_service.list_members(db, prof_scope, project.id)  # type: ignore[attr-defined]
+    mine = next(one for one in memberships if one.student_id == student.id)
+    await projects_service.end_membership(db, prof_scope, mine.id, left_on=now().date())
 
 
-def _gateway() -> FakeGateway:
-    return FakeGateway(
-        responses={"route_question": RoutePlan(intent="narrative", search_query="baseline")}
+async def _shared_evidence(db: AsyncSession, scope: Scope, project_id: object) -> list[str]:
+    hits = await evidence_service.search_evidence_window(
+        db,
+        scope,
+        project_id=project_id,
+        since=WINDOW[0],
+        until=WINDOW[1],  # type: ignore[arg-type]
     )
+    return [hit.text for hit in hits]
 
 
-async def test_ac_11_an_answer_cached_before_the_removal_is_not_served_after_it(
+async def test_ac_11_the_projects_shared_evidence_is_denied_to_the_removed_student(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    _period, project = await _project_with_a_report(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
-
-    first = await assistant_service.ask(
-        db, scope, question=QUESTION, as_of=AS_OF, gateway=_gateway()
-    )
-    assert first.cached is False
-
-    served_again = await assistant_service.ask(
-        db,
-        await identity_service.scope_for(db, student_a),
-        question=QUESTION,
-        as_of=AS_OF,
-        gateway=_gateway(),
-    )
-    assert served_again.cached is True, "the cache is doing something, or this proves nothing"
-
-    await _end_membership_today(db, prof_scope, project)
-
-    after = await assistant_service.ask(
-        db,
-        await identity_service.scope_for(db, student_a),
-        question=QUESTION,
-        as_of=AS_OF,
-        gateway=_gateway(),
-    )
-
-    assert after.cached is False, "the cached answer died with the access it was written under"
-
-
-async def test_ac_11_the_underlying_content_is_denied_to_the_removed_student(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    _period, project = await _project_with_a_report(db, prof_scope, student_a)
-    before = await evidence_service.search_evidence(
-        db,
-        await identity_service.scope_for(db, student_a),
-        query="evaluation split frozen",
-        project_id=project.id,
-    )
-    assert before, "the member could read the project's shared material"
-
-    await _end_membership_today(db, prof_scope, project)
-    scope = await identity_service.scope_for(db, student_a)
-
-    hits = await evidence_service.search_evidence(
-        db, scope, query="evaluation split frozen", project_id=project.id
-    )
-
-    assert hits == []
-
-
-async def test_ac_11_deactivating_a_user_invalidates_their_cached_answers_too(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    """AUTH-03 names deactivation alongside membership removal, and the epoch covers both."""
-    await _project_with_a_report(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
-    await assistant_service.ask(db, scope, question=QUESTION, as_of=AS_OF, gateway=_gateway())
-
-    stored = (
-        await db.execute(select(AnswerCache).where(AnswerCache.user_id == student_a.id))
-    ).scalar_one()
-    epoch_before = stored.access_epoch
-
-    await identity_service.deactivate_user(db, prof_scope, student_a.id)
-    epoch_after = await identity_service.access_epoch(db, prof_scope.workspace_id)
-
-    assert epoch_after != epoch_before, (
-        "deactivation must advance the epoch, or every answer cached for this user stays servable"
-    )
-
-
-async def test_ac_11_the_cache_is_keyed_by_the_asker_not_only_the_question(
-    db: AsyncSession,
-    prof_scope: Scope,
-    student_a: identity_models.User,
-) -> None:
-    """QA-06: two people may ask the same words and be entitled to different answers."""
-    await _project_with_a_report(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
-
-    await assistant_service.ask(db, scope, question=QUESTION, as_of=AS_OF, gateway=_gateway())
-    professors_answer = await assistant_service.ask(
-        db, prof_scope, question=QUESTION, as_of=AS_OF, gateway=_gateway()
-    )
-
-    assert professors_answer.cached is False, "the student's cached answer was not reused"
-    rows = (
-        await db.execute(
-            select(func.count(AnswerCache.id)).where(
-                AnswerCache.workspace_id == prof_scope.workspace_id
-            )
-        )
-    ).scalar_one()
-    assert rows == 2
-
-
-# ------------------------------------- the read-set is the workspace worked in (ADR 0020)
-
-
-async def test_ac_11_an_epoch_bump_in_a_workspace_not_read_keeps_the_answer(
-    db: AsyncSession,
-    prof: identity_models.User,
-    prof_scope: Scope,
-    student_a: identity_models.User,
-) -> None:
-    """ADR 0020: a professor in two workspaces reads only the one they are in, so an answer rests
-    on that workspace's records alone and access changing elsewhere does not touch it.
-
-    This pins that the cache digest covers exactly the anchor, rather than quietly invalidating on
-    every workspace belonged to."""
-    home = prof_scope.workspace_id
-    await _project_with_a_report(db, prof_scope, student_a)
-    owned = await repository.get_workspace(db, home)
-    assert owned is not None
-    owned.owner_id = prof.id
-    await db.flush()
-
-    # Creating takes the professor there, so join back: the anchor is `home` again, and the
-    # professor belongs to both but reads one.
-    second = await identity_service.create_workspace(db, prof_scope, name="Second Lab")
-    await identity_service.join_workspace(db, await identity_service.scope_for(db, prof), home)
-
-    working = await identity_service.scope_for(db, prof)
-    assert working.workspace_id == home
-
-    await assistant_service.ask(db, working, question=QUESTION, as_of=AS_OF, gateway=_gateway())
-    again = await assistant_service.ask(
-        db,
-        await identity_service.scope_for(db, prof),
-        question=QUESTION,
-        as_of=AS_OF,
-        gateway=_gateway(),
-    )
-    assert again.cached is True, "the cache is doing something, or this proves nothing"
-
-    # The anchor is untouched; only a workspace this read cannot see moves.
-    await repository.bump_access_epoch(db, second.id)
-    await db.flush()
-    assert (await identity_service.scope_for(db, prof)).access_epoch == working.access_epoch, (
-        "the anchor's epoch must be unchanged, or this passes for the wrong reason"
-    )
-
-    after = await assistant_service.ask(
-        db,
-        await identity_service.scope_for(db, prof),
-        question=QUESTION,
-        as_of=AS_OF,
-        gateway=_gateway(),
-    )
-    assert after.cached is True, "the answer rests on nothing in the workspace that moved"
-
-
-async def test_ac_11_an_answer_cached_in_one_workspace_is_not_served_in_another(
-    db: AsyncSession,
-    prof: identity_models.User,
-    prof_scope: Scope,
-) -> None:
-    """Epochs are small per-workspace counters, so two workspaces sit at the same number most of
-    the time. The unique key carries no workspace, so without one in the lookup the same professor
-    asking the same question while working elsewhere was served the first workspace's answer.
-
-    Written against the cache directly. Going through `ask` would not reach the collision: the
-    router resolves a different `AnswerScope` in a workspace holding different records, so the
-    scope hash differs and the rows never meet. The defect lives in the lookup, so that is what is
-    exercised, with both scopes pinned to the same epoch — the case the counters make ordinary.
-    """
-    home = prof_scope.workspace_id
-    other = await make_workspace(db, name="Second Lab")
-    answer = AnswerOut(
-        id=uuid7(),
-        question=QUESTION,
-        scope=AnswerScope(as_of=AS_OF, role="prof"),
-        time_range="September",
-        generated_at=AS_OF,
-        answer="the evaluation split is frozen",
-    )
-
-    here = Scope(
-        workspace_id=home,
-        user_id=prof.id,
-        role=Role.PROF,
-        project_ids=frozenset(),
-        access_epoch=1,
-    )
-    there = Scope(
-        workspace_id=other.id,
-        user_id=prof.id,
-        role=Role.PROF,
-        project_ids=frozenset(),
-        access_epoch=1,
-    )
-    key = cache.key_for(here, QUESTION, "same-scope-key")
-
-    await cache.put(db, here, key, answer)
-
-    assert await cache.get(db, here, key) is not None, "the row is there to be found"
-    assert await cache.get(db, there, cache.key_for(there, QUESTION, "same-scope-key")) is None, (
-        "an answer belongs to the workspace it was asked in, whatever the epochs happen to be"
-    )
-
-
-# ------------------------------- the per-citation re-check (ADR 0009, the finer of the two gates)
-
-PRIVATE_TEXT = "Private note: the baseline crashes on the September snapshot split."
-
-
-async def test_ac_11_a_cited_record_moved_out_of_reach_without_the_epoch_is_not_served(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    """The epoch catches structural change; the citation re-check catches a single record whose
-    label moved without it. Relabelled here straight in the table, so the epoch provably stays put
-    and only the re-check stands between the cached answer and the asker."""
-    from sqlalchemy import update
-
-    from app.evidence.models import EvidenceChunk, EvidenceReference
-
-    _period, project = await _project_with_a_report(db, prof_scope, student_a)
-    entry_id = uuid7()
+    _period, project = await _project(db, prof_scope, [student_a])
     await evidence_service.index_evidence(
         db,
         workspace_id=prof_scope.workspace_id,
-        source_kind=EvidenceSourceKind.REPORT_ENTRY,
-        source_id=entry_id,
+        source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+        source_id=project.id,  # type: ignore[attr-defined]
         source_version="1",
-        text=PRIVATE_TEXT,
-        visibility=Visibility.STUDENT_PRIVATE,
-        locator=f"/reports/{entry_id}",
-        project_id=project.id,
-        owner_student_id=student_a.id,
-        source_time=datetime(2026, 9, 17, tzinfo=UTC),
+        text=SHARED_TEXT,
+        visibility=Visibility.PROJECT_SHARED,
+        project_id=project.id,  # type: ignore[attr-defined]
+        source_time=datetime(2026, 9, 16, tzinfo=UTC),
     )
-    scope = await identity_service.scope_for(db, student_a)
-
-    first = await assistant_service.ask(
-        db, scope, question=QUESTION, as_of=AS_OF, gateway=_gateway()
-    )
-    assert any(c.source_id == entry_id for c in first.citations), "the private entry is cited"
-    again = await assistant_service.ask(
+    before = await _shared_evidence(
         db,
         await identity_service.scope_for(db, student_a),
-        question=QUESTION,
-        as_of=AS_OF,
-        gateway=_gateway(),
+        project.id,  # type: ignore[attr-defined]
     )
-    assert again.cached is True, "the cache is doing something, or this proves nothing"
+    assert SHARED_TEXT in before, "the member could read the project's shared material"
 
-    for model in (EvidenceReference, EvidenceChunk):
-        await db.execute(
-            update(model)
-            .where(model.workspace_id == prof_scope.workspace_id)
-            .where(model.owner_student_id == student_a.id)
-            .values(visibility=Visibility.PROFESSOR_ONLY)
-        )
-    await db.flush()
-    after_scope = await identity_service.scope_for(db, student_a)
-    assert after_scope.access_epoch == scope.access_epoch, "the epoch did not move"
+    await _end_membership_today(db, prof_scope, project, student_a)
 
-    after = await assistant_service.ask(
-        db, after_scope, question=QUESTION, as_of=AS_OF, gateway=_gateway()
+    after = await _shared_evidence(
+        db,
+        await identity_service.scope_for(db, student_a),
+        project.id,  # type: ignore[attr-defined]
+    )
+    assert after == []
+
+
+async def test_ac_11_the_projects_documents_are_denied_to_the_removed_student(
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+) -> None:
+    """A document another member shared with the project: readable while on it, not after."""
+    store = InMemoryObjectStore()
+    _period, project = await _project(db, prof_scope, [student_a, student_b])
+    b_scope = await identity_service.scope_for(db, student_b)
+    paper = b"# The protocol we are replicating"
+    grant = await artifacts.request_upload(
+        db,
+        b_scope,
+        project_id=project.id,  # type: ignore[attr-defined]
+        filename="protocol.md",
+        byte_size=len(paper),
+        sha256=sha256_of(paper),
+        store=store,
+    )
+    await store.put_bytes(grant.storage_key, paper, content_type=grant.content_type)
+    await artifacts.confirm_upload(db, b_scope, grant.artifact_id, store=store)
+
+    a_scope = await identity_service.scope_for(db, student_a)
+    assert "protocol.md" in {row.filename for row in await artifacts.list_artifacts(db, a_scope)}
+
+    await _end_membership_today(db, prof_scope, project, student_a)
+    a_scope = await identity_service.scope_for(db, student_a)
+
+    assert await artifacts.list_artifacts(db, a_scope) == []
+    with pytest.raises((ForbiddenError, NotFoundError)):
+        await artifacts.download_url(db, a_scope, grant.artifact_id, store=store)
+
+
+async def test_ac_11_the_students_own_report_stays_theirs(
+    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+) -> None:
+    """AUTH-03 preserves history: leaving ends the work, not the student's record of it."""
+    period, project = await _project(db, prof_scope, [student_a])
+    scope = await identity_service.scope_for(db, student_a)
+    await reporting_service.submit_report(
+        db,
+        scope,
+        period_id=period.id,  # type: ignore[attr-defined]
+        entries=[
+            {
+                "project_id": project.id,  # type: ignore[attr-defined]
+                "stage": "implementation",
+                "work_performed": "Froze the evaluation split.",
+            }
+        ],
     )
 
-    assert after.cached is False, "a citation the asker can no longer open voids the cached answer"
-    assert all(c.source_id != entry_id for c in after.citations)
+    await _end_membership_today(db, prof_scope, project, student_a)
+
+    after = await identity_service.scope_for(db, student_a)
+    report = await reporting_service.get_report(db, after, period_id=period.id)  # type: ignore[attr-defined]
+    assert report.current_version_id is not None

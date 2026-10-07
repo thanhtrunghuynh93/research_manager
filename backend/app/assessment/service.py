@@ -41,7 +41,6 @@ from app.assessment.models import (
     ReviewState,
     RubricVersion,
     RunState,
-    SupervisionNote,
 )
 from app.assessment.schemas import (
     AssessmentOut,
@@ -125,8 +124,7 @@ async def build_snapshot(
     if student is None:
         raise NotFoundError("student not found")
 
-    epoch = await identity_service.access_epoch(session, student.workspace_id)
-    scope = snapshot.student_view(student_id, student.workspace_id, project_id, epoch)
+    scope = snapshot.student_view(student_id, student.workspace_id, project_id)
     draft = await snapshot.collect(
         session,
         scope=scope,
@@ -149,7 +147,6 @@ async def build_snapshot(
         integration_lag_days=0,
         item_count=len(draft.items),
         coverage_notes=draft.coverage_notes,
-        access_epoch=epoch,
     )
     session.add(row)
     await session.flush()
@@ -255,7 +252,6 @@ async def run_pipeline(
         user_id=student_id,
         role=student.role,
         project_ids=frozenset({project_id}),
-        access_epoch=await identity_service.access_epoch(session, workspace_id),
     )
 
     entry = await reporting_service.entry_for_assessment(
@@ -773,30 +769,6 @@ async def withdraw(session: AsyncSession, scope: Scope, assessment_id: UUID) -> 
     return ReviewOut.model_validate(review)
 
 
-async def add_supervision_note(
-    session: AsyncSession,
-    scope: Scope,
-    *,
-    body: str,
-    student_id: UUID | None = None,
-    project_id: UUID | None = None,
-    period_id: UUID | None = None,
-) -> UUID:
-    """QA-06: private to the professor, in its own table, never indexed."""
-    scope.require_prof()
-    note = SupervisionNote(
-        workspace_id=scope.workspace_id,
-        author_id=scope.user_id,
-        student_id=student_id,
-        project_id=project_id,
-        period_id=period_id,
-        body=body,
-    )
-    session.add(note)
-    await session.flush()
-    return note.id
-
-
 # ------------------------------------------------------------------ reads
 
 
@@ -839,31 +811,6 @@ async def current_review(
 ) -> ReviewOut | None:
     review = await repo.current_review(session, scope, assessment_id)
     return None if review is None else ReviewOut.model_validate(review)
-
-
-async def list_supervision_notes(
-    session: AsyncSession,
-    scope: Scope,
-    *,
-    student_id: UUID | None = None,
-    project_id: UUID | None = None,
-    since: Any = None,
-    until: Any = None,
-) -> list[SupervisionNote]:
-    """QA-06: the professor's own notes, on the professor's own branch. A student never gets here.
-
-    The role check is the barrier, and it is here rather than in the caller because forgetting it
-    upstream would be a disclosure rather than a bug.
-    """
-    scope.require_prof()
-    return await repo.list_supervision_notes(
-        session,
-        scope,
-        student_id=student_id,
-        project_id=project_id,
-        since=since,
-        until=until,
-    )
 
 
 async def latest_run(

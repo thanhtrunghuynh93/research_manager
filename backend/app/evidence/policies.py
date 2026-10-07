@@ -1,4 +1,4 @@
-"""Visibility predicate for evidence references (AUTH-02, QA-03)."""
+"""Visibility predicate for evidence chunks (AUTH-02)."""
 
 from __future__ import annotations
 
@@ -7,31 +7,32 @@ from sqlalchemy.sql import ColumnElement
 
 from app.core.authz import Scope, register_policy
 from app.core.types import Visibility
-from app.evidence.models import EvidenceReference
+from app.evidence.models import EvidenceChunk
 
 
-@register_policy(EvidenceReference)
-def evidence_reference_visible_to(scope: Scope) -> ColumnElement[bool]:
-    """QA-03: opening a citation shows the same material the citation was allowed to be built from.
+@register_policy(EvidenceChunk)
+def evidence_chunk_visible_to(scope: Scope) -> ColumnElement[bool]:
+    """The one place a chunk becomes eligible to be read on someone's behalf.
 
-    The label on the reference is the one copied onto every chunk beneath it, so this says exactly
-    what `index.retrieval.visible_chunks` says — stated once more here because `visible_to` fails
-    closed, and without a policy the citation-open endpoint cannot run at all.
+    The label is copied from the reference onto every chunk beneath it, so this filters without a
+    join. The professor sees every chunk in their workspace. A student sees material shared with a
+    project they are currently on, and their own private material — never another student's, and
+    never anything labelled professor-only.
     """
-    same_workspace: ColumnElement[bool] = scope.within(EvidenceReference.workspace_id)
+    same_workspace: ColumnElement[bool] = scope.within(EvidenceChunk.workspace_id)
     if scope.is_prof:
         return same_workspace
     return and_(
         same_workspace,
-        EvidenceReference.visibility != Visibility.PROFESSOR_ONLY,
+        EvidenceChunk.visibility != Visibility.PROFESSOR_ONLY,
         or_(
             and_(
-                EvidenceReference.visibility == Visibility.PROJECT_SHARED,
-                EvidenceReference.project_id.in_(scope.project_ids),
+                EvidenceChunk.visibility == Visibility.PROJECT_SHARED,
+                EvidenceChunk.project_id.in_(scope.project_ids),
             ),
             and_(
-                EvidenceReference.visibility == Visibility.STUDENT_PRIVATE,
-                EvidenceReference.owner_student_id == scope.user_id,
+                EvidenceChunk.visibility == Visibility.STUDENT_PRIVATE,
+                EvidenceChunk.owner_student_id == scope.user_id,
             ),
         ),
     )

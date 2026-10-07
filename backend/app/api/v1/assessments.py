@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter
 
 from app.api.deps import ProfScopeDep, ScopeDep, SessionDep
 from app.assessment import service
@@ -13,7 +13,6 @@ from app.assessment.schemas import (
     AssessmentOut,
     ReviewOut,
     SnapshotItemOut,
-    SupervisionNoteIn,
     TrendPoint,
 )
 
@@ -78,23 +77,3 @@ async def progress_series(
     return await service.progress_series(
         session, scope, student_id=student_id, project_id=project_id
     )
-
-
-@router.post(
-    "/supervision-notes",
-    status_code=status.HTTP_201_CREATED,
-    summary="Record a private supervision note",
-)
-async def add_supervision_note(
-    payload: SupervisionNoteIn, scope: ProfScopeDep, session: SessionDep
-) -> dict[str, str]:
-    """QA-06: private to the professor. Never indexed, never in a snapshot, never in an answer."""
-    note_id = await service.add_supervision_note(
-        session,
-        scope,
-        body=payload.body,
-        student_id=payload.student_id,
-        project_id=payload.project_id,
-        period_id=payload.period_id,
-    )
-    return {"id": str(note_id)}

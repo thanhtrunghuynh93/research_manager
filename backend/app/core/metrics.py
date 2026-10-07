@@ -1,6 +1,6 @@
 """The metric series this system publishes (architecture §12, §15).
 
-The list is the one the requirements name: ingestion failures, stale connections, queue latency,
+The list is the one the requirements name: ingestion failures, queue latency,
 assessment versions, model errors, citation validation failures, and access denials. Each is here
 because its absence is invisible — a worker that stopped polling, a credential that expired three
 weeks ago, and a model that refuses every call all look like a quiet week from the outside.
@@ -29,7 +29,9 @@ MODEL_CALLS = Counter(
 )
 CITATION_FAILURES = Counter(
     "rm_citation_validation_failures_total",
-    "Citations dropped because they were not in the snapshot or the retrieved set.",
+    "Citations dropped because they were not in the assessment's evidence snapshot.",
+    # One surface, "assessment", since the chat assistant was withdrawn (ADR 0023). The label stays
+    # so the series keeps its name and existing dashboards keep matching it.
     labelnames=("surface",),
 )
 ACCESS_DENIALS = Counter(

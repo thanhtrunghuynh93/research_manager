@@ -313,84 +313,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/assistant/ask": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Ask a question about the workspace's research
-         * @description The answer carries its scope, its facts, its citations, and its gaps (QA-03).
-         */
-        post: operations["ask_api_v1_assistant_ask_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/assistant/ask/stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Ask, and watch the steps while it works
-         * @description Requirements §11: a first meaningful response inside ten seconds, and visible progress.
-         *
-         *     Most of the wait is routing, facts and retrieval rather than generation, so the progress of
-         *     those steps is what makes it legible. The answer contract is the same one `/ask` returns; it
-         *     simply arrives in the order it becomes useful (architecture §11).
-         */
-        post: operations["ask_streaming_api_v1_assistant_ask_stream_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/assistant/conversations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The caller's own conversations */
-        get: operations["list_conversations_api_v1_assistant_conversations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/assistant/conversations/{conversation_id}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** One conversation's turns */
-        get: operations["list_messages_api_v1_assistant_conversations__conversation_id__messages_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/accept-invitation": {
         parameters: {
             query?: never;
@@ -510,44 +432,6 @@ export interface paths {
         get: operations["current_calendar_api_v1_calendar_get"];
         /** Configure the reporting calendar */
         put: operations["configure_calendar_api_v1_calendar_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/evidence/references/{reference_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** One citable evidence reference */
-        get: operations["get_reference_api_v1_evidence_references__reference_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/evidence/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Permission-filtered search over the evidence index
-         * @description AUTH-02: the predicate sits inside each ranking arm, so a chunk outside the caller's scope
-         *     is never scored and cannot surface through a snippet or a citation.
-         */
-        get: operations["search_evidence_api_v1_evidence_search_get"];
-        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -911,26 +795,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/supervision-notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Record a private supervision note
-         * @description QA-06: private to the professor. Never indexed, never in a snapshot, never in an answer.
-         */
-        post: operations["add_supervision_note_api_v1_supervision_notes_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/trends": {
         parameters: {
             query?: never;
@@ -1244,94 +1108,6 @@ export interface components {
             /** Tokens Out */
             tokens_out: number;
         };
-        /**
-         * AnswerOut
-         * @description The whole contract. Everything a reader needs to decide how much to trust this.
-         */
-        AnswerOut: {
-            /** Answer */
-            answer: string;
-            /**
-             * Cached
-             * @default false
-             */
-            cached: boolean;
-            /** Citations */
-            citations?: components["schemas"]["CitationOut"][];
-            /**
-             * Clarifying Question
-             * @default
-             */
-            clarifying_question: string;
-            /** Conversation Id */
-            conversation_id?: string | null;
-            /** Facts */
-            facts?: components["schemas"]["FactOut"][];
-            /** Gaps */
-            gaps?: string[];
-            /**
-             * Generated At
-             * Format: date-time
-             */
-            generated_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Model Name
-             * @default
-             */
-            model_name: string;
-            /** Prompt Versions */
-            prompt_versions?: {
-                [key: string]: string;
-            };
-            /** Question */
-            question: string;
-            scope: components["schemas"]["AnswerScope"];
-            /** Suggestions */
-            suggestions?: string[];
-            /** Synthesis */
-            synthesis?: string[];
-            /** Time Range */
-            time_range: string;
-        };
-        /**
-         * AnswerScope
-         * @description QA-05: what the answer was about, rendered beside it so a follow-up is unambiguous.
-         */
-        AnswerScope: {
-            /**
-             * As Of
-             * Format: date-time
-             */
-            as_of: string;
-            /** Project Id */
-            project_id?: string | null;
-            /**
-             * Project Name
-             * @default
-             */
-            project_name: string;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: "prof" | "student";
-            /** Since */
-            since?: string | null;
-            /** Student Id */
-            student_id?: string | null;
-            /**
-             * Student Name
-             * @default
-             */
-            student_name: string;
-            /** Until */
-            until?: string | null;
-        };
         /** ApproveIn */
         ApproveIn: {
             /** Override */
@@ -1424,23 +1200,6 @@ export interface components {
             version_id: string;
             /** Version No */
             version_no: number;
-        };
-        /** AskIn */
-        AskIn: {
-            /** As Of */
-            as_of?: string | null;
-            /** Conversation Id */
-            conversation_id?: string | null;
-            /** Project Id */
-            project_id?: string | null;
-            /** Question */
-            question: string;
-            /** Since */
-            since?: string | null;
-            /** Student Id */
-            student_id?: string | null;
-            /** Until */
-            until?: string | null;
         };
         /** AssessmentOut */
         AssessmentOut: {
@@ -1586,68 +1345,6 @@ export interface components {
             /** Week Start Weekday */
             week_start_weekday: number;
         };
-        /**
-         * CitationOut
-         * @description QA-03: a citation must open an authorized record, so it carries its locator and version.
-         */
-        CitationOut: {
-            /**
-             * Available
-             * @default true
-             */
-            available: boolean;
-            /**
-             * Label
-             * @default
-             */
-            label: string;
-            /**
-             * Locator
-             * @default
-             */
-            locator: string;
-            /**
-             * Source Id
-             * Format: uuid
-             */
-            source_id: string;
-            /** Source Kind */
-            source_kind: string;
-            /**
-             * Source Version
-             * @default
-             */
-            source_version: string;
-        };
-        /** ConversationOut */
-        ConversationOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Owner Id
-             * Format: uuid
-             */
-            owner_id: string;
-            /** Scope */
-            scope: {
-                [key: string]: unknown;
-            };
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
         /** CurrentPeriod */
         CurrentPeriod: {
             /** Deadline Utc */
@@ -1771,81 +1468,6 @@ export interface components {
             /** Work Performed */
             work_performed: string;
         };
-        /** EvidenceHitOut */
-        EvidenceHitOut: {
-            /**
-             * Evidence Ref Id
-             * Format: uuid
-             */
-            evidence_ref_id: string;
-            /** Locator */
-            locator: string;
-            /** Project Id */
-            project_id?: string | null;
-            /** Score */
-            score: number;
-            /**
-             * Source Id
-             * Format: uuid
-             */
-            source_id: string;
-            /** Source Kind */
-            source_kind: string;
-            /**
-             * Source Time
-             * Format: date-time
-             */
-            source_time: string;
-            /** Source Version */
-            source_version: string;
-            /** Text */
-            text: string;
-        };
-        /** EvidenceReferenceOut */
-        EvidenceReferenceOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Ingested At
-             * Format: date-time
-             */
-            ingested_at: string;
-            /** Locator */
-            locator: string;
-            /** Owner Student Id */
-            owner_student_id?: string | null;
-            /** Project Id */
-            project_id?: string | null;
-            /**
-             * Source Id
-             * Format: uuid
-             */
-            source_id: string;
-            source_kind: components["schemas"]["EvidenceSourceKind"];
-            /**
-             * Source Time
-             * Format: date-time
-             */
-            source_time: string;
-            /** Source Version */
-            source_version: string;
-            /** Supported Claim */
-            supported_claim?: string | null;
-            visibility: components["schemas"]["Visibility"];
-        };
-        /**
-         * EvidenceSourceKind
-         * @description Where a piece of evidence came from (architecture §5.7).
-         *
-         *     The Postgres enum keeps all five labels: `repository_event`, `decision` and `feedback` name
-         *     sources that no longer exist (repository events since ADR 0022), and dropping a label from an
-         *     enum means rebuilding the type under a table that has rows. Nothing writes them.
-         * @enum {string}
-         */
-        EvidenceSourceKind: "report_entry" | "artifact_version" | "repository_event" | "decision" | "feedback";
         /** ExcuseIn */
         ExcuseIn: {
             /** Reason */
@@ -1867,32 +1489,6 @@ export interface components {
          * @enum {string}
          */
         ExtractionState: "pending" | "ok" | "failed" | "unsupported";
-        /**
-         * FactOut
-         * @description A computed value with the function behind it, kept separate from prose (QA-02).
-         */
-        FactOut: {
-            /**
-             * As Of
-             * Format: date-time
-             */
-            as_of: string;
-            /** Label */
-            label: string;
-            /** Name */
-            name: string;
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-            /** Rows */
-            rows?: {
-                [key: string]: unknown;
-            }[];
-            /** Value */
-            value: unknown;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2072,36 +1668,6 @@ export interface components {
              */
             student_name: string;
         };
-        /** MessageOut */
-        MessageOut: {
-            /** Answer */
-            answer: {
-                [key: string]: unknown;
-            };
-            /** Body */
-            body: string;
-            /**
-             * Conversation Id
-             * Format: uuid
-             */
-            conversation_id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            role: components["schemas"]["MessageRole"];
-        };
-        /**
-         * MessageRole
-         * @enum {string}
-         */
-        MessageRole: "user" | "assistant";
         /**
          * MoveStudentIn
          * @description Where to move a student to. Only a student who has not started work can be moved.
@@ -2552,17 +2118,6 @@ export interface components {
             /** Entries */
             entries: components["schemas"]["EntryIn"][];
         };
-        /** SupervisionNoteIn */
-        SupervisionNoteIn: {
-            /** Body */
-            body: string;
-            /** Period Id */
-            period_id?: string | null;
-            /** Project Id */
-            project_id?: string | null;
-            /** Student Id */
-            student_id?: string | null;
-        };
         /**
          * TimingStatus
          * @description REP-05: timing is recorded separately from the workflow state.
@@ -2816,8 +2371,6 @@ export interface components {
         };
         /** WorkspaceOut */
         WorkspaceOut: {
-            /** Access Epoch */
-            access_epoch: number;
             /** Archived At */
             archived_at?: string | null;
             /**
@@ -3366,123 +2919,6 @@ export interface operations {
             };
         };
     };
-    ask_api_v1_assistant_ask_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AskIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AnswerOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    ask_streaming_api_v1_assistant_ask_stream_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AskIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_conversations_api_v1_assistant_conversations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationOut"][];
-                };
-            };
-        };
-    };
-    list_messages_api_v1_assistant_conversations__conversation_id__messages_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     accept_invitation_api_v1_auth_accept_invitation_post: {
         parameters: {
             query?: never;
@@ -3693,70 +3129,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarConfigOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_reference_api_v1_evidence_references__reference_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                reference_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceReferenceOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    search_evidence_api_v1_evidence_search_get: {
-        parameters: {
-            query: {
-                q: string;
-                project_id?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceHitOut"][];
                 };
             };
             /** @description Validation Error */
@@ -4528,41 +3900,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionSummaryOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    add_supervision_note_api_v1_supervision_notes_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SupervisionNoteIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
                 };
             };
             /** @description Validation Error */

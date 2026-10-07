@@ -15,7 +15,6 @@ Layout:
 ```
 docs/evaluation/
   cases/<case-id>/report.md, evidence/, expected.json   ratings and expected claim statuses
-  questions.jsonl                                        professor questions with expected facts
   protocol.md                                            how the professor rates; how agreement is computed
 ```
 
@@ -25,9 +24,9 @@ professor's judgement**. The pilot gate is 30 student–project–weeks rated by
 work; until those exist, agreement numbers measure agreement with the anchors, which is a check on
 the prompt rather than evidence that the rubric is calibrated.
 
-`questions.jsonl` holds 20 of the 50 the gate asks for, chosen to cover every question kind the
-assistant must handle: facts computed in SQL, narrative, longitudinal across a rubric change,
-uncertainty, confidentiality, and one adversarial.
+The professor-question set that sat beside these (`questions.jsonl`) evaluated the chat
+assistant, and went with it in requirements 0.12 (ADR 0023). The overview's counts are checked by
+ordinary tests against the database instead.
 
 The harness in `backend/tests/evaluation` keeps two questions apart. Contract properties — the
 index withheld when evidence is absent, no citation outside the snapshot, no instruction obeyed
@@ -37,8 +36,8 @@ asserted. See [protocol.md](protocol.md) for why, and for what each measure mean
 
 ## Pilot gates
 
-- At least 30 student–project–weeks reviewed by the professor and 50 questions answered.
-- All authorization scenarios pass; all exact count/date answers match the database.
+- At least 30 student–project–weeks reviewed by the professor.
+- All authorization scenarios pass; all exact counts and dates on the overview match the database.
 - At least 95 % of evaluated factual claims are supported by their cited evidence.
 - Missing-evidence cases produce an uncertainty response, never an invented result.
 - Agreement threshold agreed with the professor during the pilot, not set in advance.

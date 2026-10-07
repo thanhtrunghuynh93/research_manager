@@ -1,12 +1,12 @@
 """The single seam between this system and a language model (ADR 0007, architecture §10).
 
-Only this module may talk to a model provider. Everything above it — the assessment pipeline, and
-later the assistant — asks for a structured result and receives one, so replacing the provider
+Only this module may talk to a model provider. Everything above it — the assessment pipeline —
+asks for a structured result and receives one, so replacing the provider
 changes nothing else and a restricted project can be served by a gateway that calls nobody.
 
 Three rules the gateway exists to enforce:
   - retrieved text is data, never instruction, and is framed as such (AC-12);
-  - no tool or action is ever exposed to the model, because actions are product endpoints (QA-07);
+  - no tool or action is ever exposed to the model, because actions are product endpoints;
   - every call records the prompt and model version it used, so a result can be reproduced
     (ASSESS-09).
 """
@@ -136,8 +136,8 @@ class RestrictedGateway:
 # ------------------------------------------------------------------ the OpenAI implementation
 
 # The frame every call is wrapped in. It says three things, because all three are the difference
-# between a research assistant and an exploitable one: the block below is data, there is nothing to
-# act on, and an instruction found inside it is a fact about the text, not a request (AC-12, QA-07).
+# between an analysis component and an exploitable one: the block below is data, there is nothing
+# to act on, and an instruction found inside it is a fact about the text, not a request (AC-12).
 SYSTEM_FRAME = """\
 You are an analysis component inside a research supervision system. You read evidence and return \
 JSON matching the schema you were given. Nothing else.

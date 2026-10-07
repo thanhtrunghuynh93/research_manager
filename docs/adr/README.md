@@ -15,8 +15,8 @@ that silently stops is worse than no index — a reader takes the last row for t
 | [0005](0005-github-app-connector.md) | *Withdrawn by 0022* — GitHub App as the first repository connector |
 | [0006](0006-deterministic-metrics.md) | Rubric arithmetic outside the language model |
 | [0007](0007-openai-behind-gateway.md) | OpenAI GPT API behind a single internal gateway |
-| [0008](0008-facts-outside-the-model.md) | The assistant computes facts in SQL, never through the model |
-| [0009](0009-access-epoch-for-cached-answers.md) | A counter, not an invalidation sweep, expires cached answers |
+| [0008](0008-facts-outside-the-model.md) | *Withdrawn by 0023* — the assistant computes facts in SQL, never through the model |
+| [0009](0009-access-epoch-for-cached-answers.md) | *Superseded by 0023* — a counter, not an invalidation sweep, expired cached answers |
 | [0010](0010-presigned-uploads-verified-after-the-fact.md) | Uploads are granted, then verified; extraction has three outcomes |
 | [0011](0011-co-equal-professors.md) | Professors are co-equal; the role is fixed at acceptance |
 | [0012](0012-workspace-ownership.md) | Ownership is the workspace administration relation (amends 0011) |
@@ -30,3 +30,4 @@ that silently stops is worse than no index — a reader takes the last row for t
 | [0020](0020-reads-follow-the-workspace-you-are-in.md) | Reads follow the workspace you are working in (supersedes 0016; amended by 0021) |
 | [0021](0021-the-read-set-is-one-workspace.md) | The read-set is one workspace; the spanning seam is removed (amends 0020) |
 | [0022](0022-no-repository-connector.md) | No repository connector: students link a repository and attach their evidence (withdraws 0005) |
+| [0023](0023-no-research-assistant.md) | No research assistant: the overview computes its own numbers; the access epoch goes with the cache (withdraws 0008, supersedes 0009) |

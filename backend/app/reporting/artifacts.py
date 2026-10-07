@@ -39,7 +39,6 @@ from app.core.storage import (
     sha256_of,
     storage_key,
 )
-from app.identity import service as identity_service
 from app.reporting import events, extraction, repository
 from app.reporting.models import (
     Artifact,
@@ -610,7 +609,7 @@ async def remove_artifact(
     )
 
     # Evidence first, and it is allowed to fail the whole removal: a reference left behind is a
-    # file the assistant can still quote after the student took it back.
+    # file the next assessment can still quote after the student took it back.
     await events.emit(
         events.ArtifactRemoved(
             workspace_id=artifact.workspace_id,
@@ -637,8 +636,6 @@ async def remove_artifact(
     # Only the artifact: `artifact_versions` carries an ON DELETE CASCADE onto it, so deleting
     # the versions here as well asks the database to remove rows it has already removed.
     await session.delete(artifact)
-    # AUTH-03: an answer cached while the file was readable must not outlive it.
-    await identity_service.advance_access_epoch(session, artifact.workspace_id)
     await session.flush()
 
 

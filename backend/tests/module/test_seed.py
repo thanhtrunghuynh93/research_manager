@@ -11,8 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment import service as assessment_service
-from app.core.errors import ConflictError
-from app.evidence import service as evidence_service
+from app.core.errors import ConflictError, NotFoundError
 from app.identity import service as identity_service
 from app.identity.models import User
 from app.reporting import service as reporting_service
@@ -45,10 +44,19 @@ async def test_a_student_sees_their_own_reports_and_nobody_else_s(db: AsyncSessi
     assert student is not None
     scope = await identity_service.scope_for(db, student)
 
-    submissions = await reporting_service.submissions(db, scope)
+    own = []
+    for period_id in result.period_ids:
+        try:
+            own.append(await reporting_service.get_report(db, scope, period_id=period_id))
+        except NotFoundError:
+            continue
+        with pytest.raises(NotFoundError):
+            await reporting_service.get_report(
+                db, scope, period_id=period_id, student_id=result.student_ids[1]
+            )
 
-    assert submissions
-    assert {row.student_id for row in submissions} == {student.id}
+    assert own
+    assert {report.student_id for report in own} == {student.id}
 
 
 async def test_the_professor_has_drafts_waiting_and_one_released_week(db: AsyncSession) -> None:
@@ -67,24 +75,6 @@ async def test_the_professor_has_drafts_waiting_and_one_released_week(db: AsyncS
 
     assert queue, "the review queue should not be empty in the demo"
     assert released, "one week should already be released to the student"
-
-
-async def test_the_project_shared_evidence_is_searchable(db: AsyncSession) -> None:
-    """QA-02: the demo's shared evidence is retrievable, so the search has something to find."""
-    result = await load_demo(db)
-    professor = await db.get(User, result.professor_id)
-    assert professor is not None
-    prof_scope = await identity_service.scope_for(db, professor)
-
-    hits = await evidence_service.search_evidence(
-        db,
-        prof_scope,
-        query="evaluation split frozen",
-        mode="lexical",
-        project_id=result.project_ids[0],
-    )
-
-    assert any("evaluation split is frozen" in hit.text for hit in hits)
 
 
 async def test_the_demo_includes_a_claim_the_evidence_cannot_support(db: AsyncSession) -> None:

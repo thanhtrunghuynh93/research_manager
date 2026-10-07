@@ -6,6 +6,9 @@ what it looked at, refuse to cite what it did not, and say plainly when it could
 
 from __future__ import annotations
 
+from datetime import timedelta
+from uuid import uuid4
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +18,8 @@ from app.assessment import models, service
 from app.assessment.metrics import Confidence
 from app.core.authz import Scope
 from app.core.types import Visibility
+from app.evidence import service as evidence_service
+from app.evidence.models import EvidenceSourceKind
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -52,22 +57,24 @@ async def test_a_snapshot_records_what_was_considered(
 
     assert snapshot.item_count >= 1, "the report entry itself is evidence"
     assert snapshot.window_start_utc < snapshot.window_end_utc
-    assert snapshot.access_epoch >= 1
 
 
 async def test_a_snapshot_excludes_professor_only_material(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:
-    # ASSESS-01/QA-06: the approved assessment is published to the student, so its evidence must
-    # be evidence the student may see.
+    # ASSESS-01: the approved assessment is published to the student, so its evidence must be
+    # evidence the student may see.
     period, project, _ = await _submit(db, prof_scope, student_a)
-    await service.add_supervision_note(
+    await evidence_service.index_evidence(
         db,
-        prof_scope,
-        student_id=student_a.id,
+        workspace_id=prof_scope.workspace_id,
+        source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+        source_id=uuid4(),
+        source_version="1",
+        text="Private: this student is struggling and I should raise it gently.",
+        visibility=Visibility.PROFESSOR_ONLY,
         project_id=project.id,
-        period_id=period.id,
-        body="Private: this student is struggling and I should raise it gently.",
+        source_time=period.start_utc + timedelta(days=1),
     )
 
     snapshot = await service.build_snapshot(

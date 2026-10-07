@@ -1,8 +1,7 @@
 """The professor overview (UI-01).
 
-One request behind one screen, assembled from the same fact functions the assistant uses. That is
-deliberate: the number on the dashboard and the number in the answer are computed by the same
-code, so they cannot disagree and then have to be reconciled by whoever is reading them.
+One request behind one screen. Every number on it is computed in `app.overview.service` from the
+tables at the instant the request was served, and that instant is returned with it (AC-15).
 
 Every section is always present, even when empty. A missing section reads as a broken screen; an
 empty one reads as nothing to do.
@@ -19,11 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ProfScopeDep, SessionDep
 from app.assessment import ops
-from app.assistant import facts
 from app.core.authz import Scope
 from app.core.clock import now
 from app.identity import service as identity_service
 from app.notifications import service as notifications_service
+from app.overview import service as overview_service
 
 router = APIRouter(tags=["overview"])
 
@@ -119,39 +118,27 @@ class OverviewOut(BaseModel):
 @router.get("/overview", summary="The professor's current week at a glance")
 async def overview(scope: ProfScopeDep, session: SessionDep) -> OverviewOut:
     as_of = now()
-    query = facts.FactQuery(scope=scope, as_of=as_of)
 
-    deadline = await facts.run(session, "next_deadline", query)
-    outstanding = await facts.run(session, "missing_reports", query)
-    week = await facts.run(session, "week_reports", query)
-    queue = await facts.run(session, "review_queue", query)
-    stalled = await facts.run(session, "stalled_analyses", query)
+    deadline = await overview_service.next_deadline(session, scope, as_of=as_of)
+    missing = await overview_service.missing_reports(session, scope, as_of=as_of)
+    week = await overview_service.week_reports(session, scope, as_of=as_of)
+    queue = await overview_service.review_queue(session, scope, as_of=as_of)
+    stalled = await overview_service.stalled_analyses(session, scope)
     budgets = await ops.ai_budgets(session, scope)
     mail = await notifications_service.mail_health(session, scope)
 
     return OverviewOut(
         as_of=as_of,
-        current_period=(
-            CurrentPeriod(
-                period_id=deadline.rows[0]["period_id"],
-                local_start=deadline.rows[0]["local_start"],
-                local_end=deadline.rows[0]["local_end"],
-                meeting_date=deadline.rows[0]["meeting_date"],
-                deadline_utc=deadline.rows[0]["deadline_utc"],
-                timezone=deadline.rows[0]["timezone"],
-            )
-            if deadline is not None and deadline.rows
-            else None
-        ),
+        current_period=CurrentPeriod(**deadline) if deadline is not None else None,
         outstanding=Outstanding(
-            count=int(outstanding.value) if outstanding is not None else 0,
+            count=len(missing) if missing is not None else 0,
             as_of=as_of,
-            entries=outstanding.rows if outstanding is not None else [],
-            note=outstanding.note if outstanding is not None else "",
+            entries=missing if missing is not None else [],
+            note=overview_service.MISSING_NOTE if missing is not None else "",
         ),
         week=await _week_board(session, scope, week),
-        review_queue=queue.rows if queue is not None else [],
-        stalled_analyses=stalled.rows if stalled is not None else [],
+        review_queue=queue,
+        stalled_analyses=stalled,
         ai_budget=BudgetState(
             analysis_delayed=budgets.analysis_delayed,
             warning=budgets.warning,
@@ -169,16 +156,10 @@ async def overview(scope: ProfScopeDep, session: SessionDep) -> OverviewOut:
 
 
 async def _week_board(
-    session: AsyncSession, scope: Scope, week: facts.Fact | None
+    session: AsyncSession, scope: Scope, rows: list[dict[str, Any]]
 ) -> list[WeekWorkspace]:
-    """Group the flat fact rows into the shape the screen reads: workspace, project, student.
-
-    The grouping is here rather than in the fact because the two callers want different shapes: the
-    assistant cites rows, and a dashboard is a nesting. Both come from one computation, which is
-    the rule this endpoint is built on — the number on the screen and the number in the answer
-    cannot disagree if only one of them was ever computed.
-    """
-    if week is None or not week.rows:
+    """Group the flat rows into the shape the screen reads: workspace, project, student."""
+    if not rows:
         return []
 
     listed = await identity_service.list_workspaces(session, scope)
@@ -186,7 +167,7 @@ async def _week_board(
     boards: dict[str, WeekWorkspace] = {}
     projects: dict[tuple[str, str], WeekProject] = {}
 
-    for row in week.rows:
+    for row in rows:
         workspace_id = str(row["workspace_id"])
         board = boards.get(workspace_id)
         if board is None:

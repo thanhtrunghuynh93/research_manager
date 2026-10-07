@@ -29,7 +29,6 @@ async def test_login_returns_a_session_token_that_resolves_to_a_scope(
     assert context.scope.user_id == student_a.id
     assert context.scope.workspace_id == workspace.id
     assert context.scope.role is Role.STUDENT
-    assert context.scope.access_epoch == workspace.access_epoch
     assert context.scope.project_ids == frozenset(), "memberships arrive with the projects module"
 
 

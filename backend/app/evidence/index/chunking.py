@@ -26,7 +26,7 @@ class Chunk:
 
     @property
     def locator(self) -> str:
-        """What a citation points at inside the source (QA-03)."""
+        """What a citation points at inside the source (ASSESS-02)."""
         return f"chars {self.start}-{self.end}"
 
 

@@ -2,6 +2,9 @@
 approved leave | At 00:00 local time on the meeting day exactly one email goes to the unsubmitted
 student, none to the others, and the professor sees the unfulfilled obligation in-app; a retried
 job sends no duplicate.
+
+Amended in 0.12: "in-app" is the overview's outstanding list (UI-01), read from the obligations.
+The notification record the job used to write for the professor had no screen to appear on.
 """
 
 from __future__ import annotations
@@ -10,16 +13,16 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope
 from app.core.clock import now, reminder_due
 from app.identity import models as identity_models
-from app.identity import service as identity_service
-from app.notifications import repository as notifications_repository
 from app.notifications import service as notifications
 from app.notifications.email.console import ConsoleEmailSender
+from app.notifications.models import Notification
+from app.overview import service as overview_service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
 from tests.factories import make_entry, make_user, make_week, submit
@@ -72,23 +75,16 @@ async def test_ac_19_exactly_one_email_reaches_the_student_who_owes_a_report(
     assert dispatched == [period.id]
     assert [email.to for email in sender.outbox] == ["unsubmitted@example.edu"]
 
-    # The professor sees the outstanding obligation in the application, and receives no email.
-    professor_messages = await notifications_repository.list_notifications(db, prof_scope)
-    summary = next(
-        message
-        for message in professor_messages
-        if message.kind == notifications.UNFULFILLED_OBLIGATIONS
-    )
-    assert [entry["student_id"] for entry in summary.payload["students"]] == [str(unsubmitted.id)]
+    # The professor sees the outstanding obligation on the overview, and receives no email.
+    outstanding = await overview_service.missing_reports(db, prof_scope, as_of=now())
+    assert outstanding is not None
+    assert [entry["student_id"] for entry in outstanding] == [str(unsubmitted.id)]
     assert prof.email not in [email.to for email in sender.outbox]
 
     # The student who submitted and the student on leave hear nothing.
-    for student in (on_time, on_leave):
-        scope = await identity_service.scope_for(db, student)
-        kinds = [
-            message.kind for message in await notifications_repository.list_notifications(db, scope)
-        ]
-        assert notifications.MISSED_DEADLINE not in kinds
+    recipients = (await db.execute(select(Notification.recipient_id))).scalars().all()
+    assert on_time.id not in recipients
+    assert on_leave.id not in recipients
 
     # A retried job sends no duplicate.
     assert await notifications.scan_due_reminders(db) == []

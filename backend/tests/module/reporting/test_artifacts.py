@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ForbiddenError, NotFoundError, ValidationError
 from app.core.storage import InMemoryObjectStore, sha256_of
+from app.evidence.models import EvidenceSourceKind
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -163,10 +164,10 @@ async def test_a_confirmed_upload_is_extracted_and_indexed(
     assert version.uploaded is True
     from app.evidence import service as evidence_service
 
-    hits = await evidence_service.search_evidence(
-        db, scope, query="difficulty proxy length", project_id=project.id
+    hits = await evidence_service.evidence_for_sources(
+        db, scope, source_kind=EvidenceSourceKind.ARTIFACT_VERSION, source_ids=[version.version_id]
     )
-    assert hits, "an attachment's text is searchable evidence"
+    assert hits, "an attachment's text is citable evidence"
 
 
 async def test_an_unreadable_file_is_marked_unread_rather_than_indexed_as_empty(
@@ -600,7 +601,12 @@ async def test_the_attachment_is_indexed_when_the_provider_comes_back(
     indexed = await evidence_service.index_artifact_version(db, uploaded.version_id, store=store)
 
     assert indexed is True
-    hits = await evidence_service.search_evidence(db, scope, query="ablation difficulty proxy")
+    hits = await evidence_service.evidence_for_sources(
+        db,
+        scope,
+        source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+        source_ids=[uploaded.version_id],
+    )
     assert hits, "the attachment is citable once the provider answers again"
 
 

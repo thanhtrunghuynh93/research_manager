@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import Scope
 from app.core.clock import now
 from app.identity import models as identity_models
-from app.notifications import models, repository, service
+from app.notifications import models, service
 from app.reporting import models as reporting_models
 from app.reporting import service as reporting_service
 from tests.factories import Week, make_entry, make_week, submit
@@ -152,22 +152,25 @@ async def test_running_the_job_again_sends_nothing_more(
     assert len(rows) == 1
 
 
-async def test_the_professor_is_told_in_app_who_is_outstanding(
+async def test_the_professor_is_neither_notified_nor_mailed(
     db: AsyncSession,
     prof: identity_models.User,
     prof_scope: Scope,
     student_a: identity_models.User,
 ) -> None:
+    """REP-08 (0.12): the professor reads who is outstanding on the overview, from the obligations.
+
+    The in-app summary this job used to write had no reader once the notifications screen went
+    (UI-07, 0.4), so it is no longer written.
+    """
     week = await _week(db, prof_scope, [student_a])
 
     await service.dispatch_missed_deadline(db, week.period.id)
 
-    professor_notifications = await repository.list_notifications(db, prof_scope)
-    summary = next(n for n in professor_notifications if n.kind == service.UNFULFILLED_OBLIGATIONS)
-    assert summary.recipient_id == prof.id
-    assert summary.payload["students"][0]["student_id"] == str(student_a.id)
+    recipients = (await db.execute(select(models.Notification.recipient_id))).scalars().all()
+    assert list(recipients) == [student_a.id]
     deliveries = (await db.execute(select(models.EmailDelivery))).scalars().all()
-    assert all(d.notification_id != summary.id for d in deliveries), "the professor gets no email"
+    assert [d.recipient_email for d in deliveries] == [student_a.email]
 
 
 async def test_the_email_names_no_other_student(

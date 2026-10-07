@@ -17,6 +17,7 @@ from app.core.authz import Scope
 from app.core.types import Visibility
 from app.evidence import models, service
 from app.evidence.index import embeddings
+from app.evidence.schemas import EvidenceReferenceOut
 from app.projects import service as projects_service
 from tests.factories import make_project
 
@@ -57,8 +58,10 @@ async def _project(db: AsyncSession, scope: Scope, *, restricted: bool) -> objec
     return project
 
 
-async def _index(db: AsyncSession, scope: Scope, project: object, text: str) -> None:
-    await service.index_evidence(
+async def _index(
+    db: AsyncSession, scope: Scope, project: object, text: str
+) -> EvidenceReferenceOut:
+    return await service.index_evidence(
         db,
         workspace_id=scope.workspace_id,
         project_id=project.id,
@@ -93,30 +96,16 @@ async def test_an_unrestricted_project_still_is(
     assert provider.sent
 
 
-async def test_a_restricted_project_is_still_searchable(
+async def test_a_restricted_project_is_still_indexed(
     db: AsyncSession, prof_scope: Scope, provider: _Provider
 ) -> None:
-    """Restricted must mean "local", not "absent": the rows still have to be retrievable."""
+    """Restricted must mean "local", not "absent": the rows still have to be readable."""
     project = await _project(db, prof_scope, restricted=True)
-    await _index(db, prof_scope, project, "We reproduced the published baseline within one point.")
-
-    hits = await service.search_evidence(
-        db, prof_scope, query="baseline", project_id=project.id, mode="lexical"
+    reference = await _index(
+        db, prof_scope, project, "We reproduced the published baseline within one point."
     )
+
+    hits = await service.chunks_for_reference(db, reference.id)
 
     assert hits
-    assert provider.sent == []
-
-
-async def test_a_query_against_a_restricted_project_is_not_sent_either(
-    db: AsyncSession, prof_scope: Scope, provider: _Provider
-) -> None:
-    """The question is research text too, and it names what the professor is looking for."""
-    project = await _project(db, prof_scope, restricted=True)
-    await _index(db, prof_scope, project, "Ablation notes.")
-
-    await service.search_evidence(
-        db, prof_scope, query="unpublished protocol", project_id=project.id, mode="hybrid"
-    )
-
     assert provider.sent == []

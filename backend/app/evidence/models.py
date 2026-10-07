@@ -61,8 +61,8 @@ class EvidenceReference(UUIDPrimaryKeyMixin, Base):
     """One citable piece of evidence, carrying the access label it was indexed under.
 
     Every indexed chunk points at a row here, so the permission filter and the citation come from
-    the same record (requirements §9, QA-03). Visibility is copied from the source at ingestion and
-    re-synced when the source changes.
+    the same record (requirements §9, ASSESS-02). Visibility is copied from the source at ingestion
+    and re-synced when the source changes.
     """
 
     __tablename__ = "evidence_references"

@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.19 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.11, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.20 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.12, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -43,6 +43,15 @@ built for GitHub and never connected to a repository: its seven tables held no r
 the evidence search and the citation-open reference, which moved to `api/v1/evidence.py`;
 `/admin/sync`, the overview's sync section, the student's identity and contribution rows, the
 webhook and `incremental_sync` are gone. A project still records its repository as a link.
+
+**v0.20 takes away the research assistant** (requirements 0.12, ADR 0023, migration 0029). It was
+built in full and never used: conversations, messages, the answer cache and supervision notes held
+no rows. `/assistant` and its routes are gone (§2.8), and so are the evidence search and
+citation-open routes that served it (§2.7), the private supervision note (§2.6), and the workspace
+access epoch that expired the cache. The overview computes the same numbers directly. The
+notification records nothing read — report submitted and resubmitted, and the professor's in-app
+summary of a missed deadline — are no longer written; the professor sees who is outstanding on the
+overview.
 
 ## How to read the tables
 
@@ -88,7 +97,7 @@ is meant to read it.
 
 ## 1 The screens
 
-Sixteen routes and one shell, in `frontend/src/app/router.tsx`. The guard is the route's own; the
+Fifteen routes and one shell, in `frontend/src/app/router.tsx`. The guard is the route's own; the
 API enforces every permission itself regardless (AUTH-02), so the guard is about not offering a
 dead end rather than about security.
 
@@ -108,18 +117,17 @@ dead end rather than about security.
 | `/projects` | signed in | nav (both roles since PROJ-07; a student's bar is their week, then this); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
 | `/students/:id` | professor | a name on `/people`, or on the overview's outstanding list | Approved assessments, trajectory per project, downloadable materials |
 | `/review/:assessmentId` | professor | the overview's review queue, or a student's profile | Ratings per dimension, confidence, the evidence snapshot, approve with a rationale |
-| `/assistant` | professor | nav | Facts, synthesis, citations, gaps |
 | `/projects/:id` | signed in | the list at `/projects`, a title on `/me`, a member row | Research questions, members, the project's related documents; the stage and the milestones to a professor only. Activate the project, open it to joining, assign a student, end a membership (professor); attach a document (anyone on it); edit the record (its creator) |
 
 v0.4 removed two rows, `/notifications` and `/exports`, and they were the two either role could
-open; v0.5 added `/workspaces`. What is left is a professor's six and a student's two, meeting
+open; v0.5 added `/workspaces`, and v0.20 removed `/assistant`. What is left is a professor's five and a student's two, meeting
 nowhere but the sign-in pages and `/projects/:id` — which nothing links to, so in practice they do
 not meet at all.
 
 (v0.2 and v0.3 counted fourteen rows here as "thirteen routes". The table was right and the
 sentence was not; the counts here have been correct since v0.4.)
 
-The navigation offers five items to a professor and two to a student, and mirrors the guard
+The navigation offers four items to a professor and two to a student, and mirrors the guard
 exactly: a page the caller cannot load is never linked, because a link that always fails is worse
 than no link. `/` and anything unrecognised go to the home for the role — `/overview` for a
 professor, `/me` for a student.
@@ -171,7 +179,7 @@ menu of the memberships this professor holds, and choosing one moves the anchor 
 overview — switching is joining a workspace already belonged to (ADR 0015), so it is the same
 call. The overview rather than wherever you were, because a record page names a record of the
 workspace you just left and staying put would turn a switch into a redirect. It moved because it is
-not administration: it is the frame the roll, the overview and the assistant are read in, and
+not administration: it is the frame the roll and the overview are read in, and
 changing it meant leaving the screen that had prompted the question. What stays here is what
 changes the set you can switch between — join, leave, archive — plus create, rename, the calendar
 and the budget. A professor with one membership sees the name without a menu.
@@ -283,8 +291,9 @@ the earlier link stops working the moment a new one is issued, which matters to 
 an older email.
 
 Enrolment is invitation-only and there is no self-registration, so the invitation email is the only
-door into the system. Deactivation, role change and password reset each revoke every session and
-advance the workspace access epoch in the same transaction.
+door into the system. Deactivation, role change and password reset each revoke every session in
+the same transaction. (Until v0.20 they also advanced the workspace access epoch, which expired the
+assistant's answer cache; both went in ADR 0023.)
 
 The first row is where a student gets their workspace. `InvitationIn` carries `workspace_id`
 alongside the email, name and role; omitting it means the caller's own, which is what
@@ -332,8 +341,7 @@ week's private evidence, or a corridor. The artifacts table already carried a nu
 one branch that says so — everyone on the project reads it, whoever attached it may remove it, and
 a professor reads every one and removes none. The create form takes them too, and attaches them
 once the project exists, since there is nothing to attach them to before that. They are not
-extracted and not indexed: a project document cannot be cited by an assessment or the assistant,
-which is a separate decision about what the model may read.
+extracted and not indexed: a project document cannot be cited by an assessment, which is a separate decision about what the model may read.
 
 **Milestones, decisions and tasks are gone from the product.** All three started the same way, and
 it is the thing this inventory exists to catch: nothing wrote what they showed. Milestone
@@ -461,43 +469,37 @@ surveillance.
 | Approve and publish an assessment | `POST /assessments/{id}/approve` | 🖥️ |
 | See a student's trajectory on one project | `GET /trends` | 🖥️ |
 | Withdraw a published assessment | `POST /assessments/{id}/withdraw` | ⚙️ |
-| Record a private supervision note | `POST /supervision-notes` | ⚙️ |
 | Re-run one assessment pipeline | `POST /admin/assessments/retry` | 🖥️ |
 
 Drafts are the professor's to approve; nothing reaches a student unapproved. An override requires a
-recorded reason and keeps the model's own output beside it. Supervision notes live in a table
-nothing indexes and are read through a function the student branch never calls, so their
-confidentiality is structural rather than a matter of filtering.
+recorded reason and keeps the model's own output beside it. Until v0.20 a professor could also
+record a private supervision note, through an endpoint no screen called; the assistant was its only
+reader, and both were withdrawn (ADR 0023).
 
-### 2.7 Evidence (QA-02, QA-03)
+### 2.7 Evidence
 
-| Use case | Endpoint | |
-| --- | --- | --- |
-| Search the evidence index | `GET /evidence/search` | ⚙️ |
-| Open one citable evidence reference | `GET /evidence/references/{id}` | ⚙️ |
+No route. What is indexed — report entries and attachments — is read by the assessment pipeline
+when it builds a snapshot (§2.6), and by nothing a person calls.
 
 Until v0.19 this section was the repository connector (REPO-01..08): connect a repository, link it
 to a project, read and trigger its sync, confirm developer identities, list attributed
 contributions. None of it had a screen, and none of it was ever used; it was removed with its
-tables (ADR 0022). What is indexed now is report entries and attachments.
+tables (ADR 0022). v0.19 left two ⚙️ routes here, searching the evidence index and opening one
+citable reference; both existed for the assistant and went with it in v0.20 (ADR 0023).
+Embeddings are still computed at index time, are read by nothing, and their removal is pending.
 
-### 2.8 The assistant (QA-01..07)
+### 2.8 The assistant — *withdrawn in v0.20*
 
-| Use case | Endpoint | |
-| --- | --- | --- |
-| Ask a cited question about the workspace's research | `POST /assistant/ask` | 🖥️ |
-| Read their own past conversations | `GET /assistant/conversations` | 🖥️ |
-| Watch the steps while an answer is produced | `POST /assistant/ask/stream` | ⚙️ |
-| Read one conversation's turns | `GET /assistant/conversations/{id}/messages` | ⚙️ |
+Requirements 0.12 withdrew QA-01..07 (ADR 0023, migration 0029). Until then this section was asking
+a cited question about the workspace's research (`/assistant`, 🖥️), reading past conversations,
+watching an answer stream, and reading one conversation's turns. It was built in full and never
+used: the conversations, messages and answer-cache tables were empty on the running deployment. The
+overview borrowed its fact functions for the week's numbers; those now live in `app.overview` and
+return the same counts.
 
 The export row is gone as of v0.4, and UI-06 went with it: exports were the whole of that
 requirement, so retiring the feature retired the requirement rather than leaving part of it unmet.
-It also took the professor's only way to get a record out of the system that is not a screen — the
-assistant answers questions, it does not hand over rows.
-
-A fact question never reaches the generation step: the obligations table says how many reports are
-missing and that number is rendered rather than written. Citations are checked against what was
-actually retrieved, and an invented one is dropped and the drop is stated.
+It also took the professor's only way to get a record out of the system that is not a screen.
 
 ### 2.9 Operations (UI-01, requirements §11)
 
@@ -541,7 +543,6 @@ reported **$0 spent** in exactly the case where nothing was capping the bill.
 | **Read an approved assessment** | `GET /assessments`, `/assessments/{id}` | 🖥️ |
 | **See their own trajectory per project** | `GET /trends` | 🖥️ |
 | Read an assessment's evidence snapshot | `GET /assessments/{id}/evidence` | ⚙️ |
-| Search the evidence they can see | `GET /evidence/search` | ⚙️ |
 
 The student's surface was two screens and is now five: `/me` is the week — what is owed, when it is
 due, the weeks before it, and one link onward — `/report/:periodId` is the editor, and
@@ -583,10 +584,6 @@ carrying the same idempotency key returns the version already written. A submiss
 worker by design — a failed enqueue is logged and swallowed, because report acceptance must not
 wait on anything downstream.
 
-**The student has no assistant.** That is deliberate and recorded as next-release work: the
-retrieval path and the permission predicate are already shared, so it is a surface rather than a
-rebuild.
-
 **The student can no longer export.** Requirements §2 gives a student "own released records" to
 export; v0.4 removed the route and the screen, and the professor's export went with it, so the
 answer to *how do I keep a copy of my own work* is now that nobody does. It was the only row this
@@ -602,10 +599,11 @@ table lost, and it was lost entirely rather than reduced.
 
 This table had seven rows in v0.3 and has three now. The five that went were the whole in-app
 surface of UI-07 — reading notifications, marking them read, and muting categories — and only
-that. The notification *records* are still written and the missed-deadline email still goes out
-under REP-08; the reminder offsets that once configured pre-deadline records went in v0.18. What left is the
-reading: a notification now exists in the database and reaches its recipient by email or not at
-all.
+that. The missed-deadline email still goes out under REP-08, and its record is the only
+notification still written: the reminder offsets that once configured pre-deadline records went in
+v0.18, and the report submitted and resubmitted records and the professor's in-app summary of a
+missed deadline stopped in v0.20, because nothing read them (ADR 0023). The professor learns who is
+outstanding from the overview (§2.9), not from a notification.
 
 "Critical categories cannot be muted" left with them. It was a rule enforced by a list of
 unmutable kinds; it is now a property of the code, because `notify` consults nothing before it
@@ -664,7 +662,7 @@ No human initiates these. They run in the worker and are why the product advance
 | `scan_due_reminders` | 5 min | Finds weeks whose deadline has passed and queues the missed-deadline email |
 | `send_queued_emails` | 2 min | Drains the email delivery table |
 | `queue_health` | 5 min | Warns when the oldest queued job is over ten minutes old; its runs are the worker heartbeat `/readyz` reads |
-| `retention_sweep` | nightly | Expires the assistant's answer cache, and deletes queue jobs finished over seven days ago |
+| `retention_sweep` | nightly | Deletes queue jobs finished over seven days ago (until v0.20 it also expired the assistant's answer cache) |
 
 Both calendar tasks are idempotent by construction, so a worker that was down for a day catches up
 rather than skipping a week.
@@ -678,7 +676,8 @@ that it is now the only way out as well.
 ## 8 What this inventory shows
 
 Repository evidence (§2.7) was the one capability area with no screens at all; it went in v0.19
-with the connector rather than gaining one, and leaves §2.7 its two ⚙️ evidence routes. Operations
+with the connector rather than gaining one, and the two ⚙️ evidence routes it left went with the
+assistant in v0.20. Operations
 (§2.9) was another until v0.13, when model spend, the budget that caps it and the retry on a
 stalled analysis each got one. Project setup (§2.3) and calendar administration (§2.4) were two more until v0.11, and workspace management was a
 fourth until v0.5. §8.3 is what the v0.3 scope decision did to the same balance.
@@ -730,30 +729,13 @@ Nothing in the API had to change to close it. Every endpoint involved was alread
 review had approved them. What was missing was a caller — which is exactly the distinction the ⚙️
 and 🚧 marks exist to make.
 
-The assistant makes this worse rather than working around it. It is professor-only, and the fact
-layer builds a locator for every citation it returns, which `CitationLink` renders as a `Link`.
-Five locator shapes exist; two of them go nowhere:
-
-| Locator | Built in | What a professor gets |
-| --- | --- | --- |
-| `/review/{assessment_id}` | `assistant/facts/scores.py` | The review screen |
-| `/students/{id}#notes` | `assistant/retrieval.py` | The student's profile |
-| `/projects/{id}` | `assistant/facts/members.py` | The project screen — the one inbound link it has |
-| `/report/{period_id}` | `assistant/facts/obligations.py`, `facts/reports.py` | The student guard: `/overview` — though the record is now readable, one route along |
-| `/artifacts/{id}` | `evidence/service.py` | Not a route: `/overview` |
-
-They go nowhere quietly, for the reason §1 gives: the guard and the catch-all both redirect, so the
-professor lands on their own overview with nothing to say that the citation did not open. QA-03
-asks that a citation open an authorized record. The record is authorized, the API would serve it,
-and the answer that cited it was right. What is missing is a route.
-
-The worst of the six used to be the one that matters most: a claim about what a student did this
-week is cited to a report entry — `/report/{period_id}#{project_id}` — and that entry was what a
-professor could read nowhere in the app. Half of that is now fixed and half is not. The entry is
-readable, at `/students/:studentId/reports/:periodId` (§2.5), but the fact layer still builds the
-student's locator, so a professor following the citation still lands on `/overview`. The
-destination exists; the sign still points at the wrong door. Both fact functions have the
-`student_id` they would need, so this is a locator change rather than a feature.
+The assistant made this worse rather than working around it, until v0.20 withdrew it (ADR 0023).
+It was professor-only, and its fact layer built a locator for every citation it returned, which
+`CitationLink` rendered as a link. Several of those locators named routes that do not exist or that
+the professor's guard turns away, so a citation redirected to `/overview` instead of opening —
+including the one that mattered most, a report entry cited to the student's `/report/{period_id}`
+after the professor's reader at `/students/:studentId/reports/:periodId` existed. The record was
+authorized and the answer was right; what was missing was a route.
 
 ### 8.3 What the scope change cost
 
@@ -761,8 +743,8 @@ v0.3 predicted two consequences and v0.4 shipped them, so they are now descripti
 forecast. Neither was a reason not to do it; both are things a reader of the code alone would have
 to reconstruct.
 
-**Email is the only channel that *announces* anything.** Notification records are still written and
-the missed-deadline mail still goes out (§7), and nothing in the app displays either, so a student
+**Email is the only channel that *announces* anything.** The missed-deadline mail still goes out
+(§7) and its record is still written, and nothing in the app displays either, so a student
 who does not read their email still has no way to learn that something has happened.
 
 What has changed since v0.3 is what they find when they do look. An assessment released to them is
@@ -818,18 +800,20 @@ only route by which one student learns another's name. Joining every open projec
 roster gets enumerated.
 
 What it does *not* reach was checked policy by policy and is the more important half. Reports,
-report versions, attachments, obligations, assessments, reviews, supervision notes, evidence snapshots and plan baselines are keyed to a `student_id`, never to a `project_id`.
+report versions, attachments, obligations, assessments, reviews, evidence snapshots and plan baselines are keyed to a `student_id`, never to a `project_id`.
 Joining a project tells you what the work is. It tells you nothing about how anyone on it is doing.
 
-Two mitigations, and one deliberate refusal. The flag: `open_to_join` defaults closed and is the
+Two mitigations, and a rate limit. The flag: `open_to_join` defaults closed and is the
 professor's per project, so nothing became joinable when this shipped and the exposure is bounded
 by decisions somebody took. The projection: `GET /projects/joinable` serves title, stage, status
 and a member count, and not the research questions — though since joining is unilateral and
 instant, that is about keeping a directory a directory rather than about confidentiality. The
-refusal: a student leaving still advances the workspace-wide access epoch, which discards every
-cached assistant answer in it. Not bumping was considered and rejected — the leaver's own cached
-answers were computed with access they no longer hold — so the cost is carried by a rate limit on
-the route instead.
+rate limit: joining a project and ending a membership are capped at thirty an hour, because each
+call writes a membership row kept as history and an audit row that is never deleted. Until v0.20
+ending a membership also advanced the workspace-wide access epoch and discarded every cached
+assistant answer; the epoch went with
+the cache (ADR 0023), and access still ends the moment the membership does, because
+`scope.project_ids` is compiled from memberships on every request.
 
 ### 8.5 The shape
 
@@ -864,25 +848,19 @@ path ends where the expression begins. `POST /users/{id}/{action}` is one call s
 three routes.
 
 Those two commands settle 🖥️ against ⚙️. They cannot see 🚧, because an endpoint a screen calls
-looks identical whether or not anyone can reach that screen. Two more are needed, and they are the
-ones that found §8.2:
+looks identical whether or not anyone can reach that screen. One more is needed, and it is the one
+that found §8.2:
 
 ```bash
 # every inbound link. A route defined in router.tsx and absent here is orphaned.
 grep -rnE '(to=\{?["`]/|navigate\(["`]/)' frontend/src --include=*.tsx | grep -v '\.test\.'
-
-# every locator the API hands the citation renderer, each of which becomes a <Link>. Any path
-# here that router.tsx does not define, or defines behind a guard the assistant's caller fails,
-# is a citation that redirects instead of opening.
-grep -rnE 'locator=f?"' backend/app --include=*.py | grep -v test
 ```
 
-Both are read against `frontend/src/app/router.tsx`: the first for routes it defines that nothing
-reaches, the second for paths it does not define at all, or defines behind a guard the assistant's
-own caller fails. A screen with no inbound link and a locator with no route are the two ways this
-document goes quietly wrong.
+It is read against `frontend/src/app/router.tsx` for routes it defines that nothing reaches. A
+screen with no inbound link is the way this document goes quietly wrong. (Until v0.20 a second grep
+checked the assistant's citation locators against the same file; they went with it.)
 
-None of the four commands can see ✂️ or ◻️, and no command can: those rows record a decision, and
+None of the three commands can see ✂️ or ◻️, and no command can: those rows record a decision, and
 a decision leaves no trace in the code until someone acts on it. They are checked against
 [research_management_requirements.md](research_management_requirements.md) instead, and they are
 meant to be temporary. A ✂️ row is deleted in the pull request that removes the code — deleting it

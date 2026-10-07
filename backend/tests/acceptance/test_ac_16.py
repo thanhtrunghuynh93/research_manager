@@ -22,6 +22,7 @@ import asyncio
 import os
 from datetime import date
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -48,7 +49,8 @@ RESTORED_DB = "rm_ac16_restored"
 DUMP_PATH = "/tmp/rm-ac16.dump"  # noqa: S108 - inside the database container, not this host
 
 REPORTED_WORK = "Implemented the loader and reproduced the BM25 baseline."
-DECISION_TEXT = "Project decision: the evaluation split is frozen at the September snapshot."
+SHARED_TEXT = "Project protocol: the evaluation split is frozen at the September snapshot."
+PRIVATE_TEXT = "Professor only: discuss pacing before the review."
 PASSWORD = "correct horse battery staple"  # noqa: S105 - fixture credential
 
 
@@ -152,15 +154,28 @@ async def _seed(url: str) -> dict[str, Any]:
                 ],
             )
 
+            shared_source = uuid4()
             await evidence_service.index_evidence(
                 session,
                 workspace_id=prof_scope.workspace_id,
-                source_kind=EvidenceSourceKind.DECISION,
-                source_id=project.id,
+                source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+                source_id=shared_source,
                 source_version="1",
-                text=DECISION_TEXT,
+                text=SHARED_TEXT,
                 visibility=Visibility.PROJECT_SHARED,
-                locator=f"/projects/{project.id}#decisions",
+                locator="protocol.md",
+                project_id=project.id,
+            )
+            private_source = uuid4()
+            await evidence_service.index_evidence(
+                session,
+                workspace_id=prof_scope.workspace_id,
+                source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
+                source_id=private_source,
+                source_version="1",
+                text=PRIVATE_TEXT,
+                visibility=Visibility.PROFESSOR_ONLY,
+                locator="pacing.md",
                 project_id=project.id,
             )
 
@@ -174,13 +189,6 @@ async def _seed(url: str) -> dict[str, Any]:
             )
             assert assessment is not None
             await assessment_service.approve(session, prof_scope, assessment.id)
-            await assessment_service.add_supervision_note(
-                session,
-                prof_scope,
-                body="Private: discuss pacing before the review.",
-                student_id=student_id,
-                project_id=project.id,
-            )
             await session.commit()
 
             return {
@@ -191,6 +199,8 @@ async def _seed(url: str) -> dict[str, Any]:
                 "period_id": period.id,
                 "version_id": version.id,
                 "assessment_id": assessment.id,
+                "shared_source": shared_source,
+                "private_source": private_source,
             }
     finally:
         await engine.dispose()
@@ -228,6 +238,12 @@ async def restored(container: Any) -> Any:
             _run(container, f"dropdb -U {user} --if-exists {database}")
 
 
+async def _evidence(session: Any, scope: Scope, source_id: Any) -> list[Any]:
+    return await evidence_service.evidence_for_sources(
+        session, scope, source_kind=EvidenceSourceKind.ARTIFACT_VERSION, source_ids=[source_id]
+    )
+
+
 async def test_ac_16_the_submitted_version_and_its_text_survive_the_restore(restored: Any) -> None:
     seeded, factory = restored
     async with factory() as session:
@@ -261,32 +277,27 @@ async def test_ac_16_the_evidence_reference_a_citation_resolves_through_survives
     seeded, factory = restored
     async with factory() as session:
         prof = await _scope(session, seeded["prof_id"])
-        hits = await evidence_service.search_evidence(
-            session, prof, query="evaluation split frozen", project_id=seeded["project_id"]
-        )
+        hits = await _evidence(session, prof, seeded["shared_source"])
 
-        assert hits
-        assert hits[0].locator.endswith("#decisions")
+        assert [hit.text for hit in hits] == [SHARED_TEXT]
+        assert hits[0].locator == "protocol.md"
         assert hits[0].source_version == "1"
 
 
 async def test_ac_16_the_permission_boundary_is_restored_with_the_data(restored: Any) -> None:
-    """A restore that returns the rows but loses the boundary is not a restore (AUTH-02, QA-06)."""
+    """A restore that returns the rows but loses the boundary is not a restore (AUTH-02)."""
     seeded, factory = restored
     async with factory() as session:
         student = await _scope(session, seeded["student_id"])
 
         # The membership came back, so the project's shared material is readable again.
         assert student.project_ids == frozenset({seeded["project_id"]})
-        assert await evidence_service.search_evidence(
-            session, student, query="evaluation split frozen", project_id=seeded["project_id"]
-        )
+        assert await _evidence(session, student, seeded["shared_source"])
 
-        # And the professor's private note is still refused, in its own table as before.
-        from app.core.errors import ForbiddenError
-
-        with pytest.raises(ForbiddenError):
-            await assessment_service.list_supervision_notes(session, student)
+        # And professor-only material is still refused to them, as it was before.
+        assert await _evidence(session, student, seeded["private_source"]) == []
+        prof = await _scope(session, seeded["prof_id"])
+        assert await _evidence(session, prof, seeded["private_source"])
 
 
 async def test_ac_16_the_immutability_guards_come_back_with_the_schema(restored: Any) -> None:

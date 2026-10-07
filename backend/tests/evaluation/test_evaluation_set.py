@@ -18,7 +18,6 @@ from tests.evaluation.harness import (
     build_report,
     check_contract,
     load_cases,
-    load_questions,
 )
 
 pytestmark = pytest.mark.evaluation_contract
@@ -77,19 +76,6 @@ def test_the_adversarial_case_names_the_strings_that_must_not_survive() -> None:
         assert case.must_not_appear, f"{case.case_id} declares no forbidden output"
         readme = "\n".join(doc.text for doc in case.evidence).lower()
         assert "ignore all previous instructions" in readme
-
-
-def test_the_question_set_covers_facts_narrative_uncertainty_and_refusal() -> None:
-    kinds = {question["kind"] for question in load_questions()}
-
-    assert {"fact", "narrative", "longitudinal", "uncertainty", "confidentiality"} <= kinds
-
-
-def test_every_fact_question_names_the_function_that_must_answer_it() -> None:
-    """QA-02/AC-15: a count is computed in SQL. A question with no named function invites prose."""
-    for question in load_questions():
-        if question["kind"] == "fact":
-            assert question.get("fact_function"), question["id"]
 
 
 # ------------------------------------------------------------------ the harness notices

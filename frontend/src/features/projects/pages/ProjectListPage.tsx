@@ -3,8 +3,7 @@
  *
  * This screen exists as much for navigation as for its own content: `/projects/:id` implements
  * UI-03 in full and, until this list, nothing in the app linked to it. A professor could reach the
- * project workspace only by typing a UUID or by following an assistant citation that happened to
- * be a project path.
+ * project workspace only by typing a UUID or by following a link that happened to name one.
  *
  * `GET /projects` is signed-in rather than professor-only, so a student sees the projects they are
  * on. Since PROJ-07 the create form is not gated either: a student starts their own project, and

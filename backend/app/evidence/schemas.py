@@ -30,14 +30,13 @@ class EvidenceReferenceOut(BaseModel):
 
 
 class EvidenceHit(BaseModel):
-    """One retrieved chunk with everything a citation needs (QA-03)."""
+    """One indexed chunk with everything a citation in an assessment needs (ASSESS-02)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     chunk_id: UUID
     evidence_ref_id: UUID
     text: str
-    score: float
     source_kind: EvidenceSourceKind
     source_id: UUID
     source_version: str

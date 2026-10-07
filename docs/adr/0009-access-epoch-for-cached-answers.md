@@ -1,6 +1,6 @@
 # ADR 0009 — A counter, not an invalidation sweep, expires cached answers
 
-Status: accepted — 2026-09-12
+Status: superseded by [ADR 0023](0023-no-research-assistant.md) — 2026-10-07 (accepted 2026-09-12). The cache and the epoch are both removed.
 
 ## Context
 

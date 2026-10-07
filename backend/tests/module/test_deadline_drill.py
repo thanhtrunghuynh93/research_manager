@@ -60,26 +60,24 @@ async def test_a_repeated_dispatch_sends_nothing_further(db: AsyncSession) -> No
     assert second.to == []
 
 
-async def test_the_professor_sees_the_outstanding_list_in_app_and_gets_no_email(
-    db: AsyncSession,
-) -> None:
-    """REP-08: the professor is told in-app, at the same moment, and is not mailed."""
-    from app.identity import service as identity_service
+async def test_the_professor_is_not_mailed(db: AsyncSession) -> None:
+    """REP-08: the professor reads who is outstanding on the overview; the drill mails nobody else.
+
+    The in-app summary the job used to write for them had no screen to appear on (0.12).
+    """
+    from sqlalchemy import select
+
     from app.identity.models import User
-    from app.notifications import repository as notifications_repository
+    from app.notifications.models import Notification
     from app.seed import PROF_EMAIL
 
     await load_demo(db)
     recorded = _RecordingSender()
     await run_deadline_drill(db, sender=recorded)
 
-    from sqlalchemy import select
-
     professor = (await db.execute(select(User).where(User.email == PROF_EMAIL))).scalar_one()
-    prof_scope = await identity_service.scope_for(db, professor)
-    inbox = await notifications_repository.list_notifications(db, prof_scope)
-
-    assert any(item.kind == "unfulfilled_obligations" for item in inbox)
+    recipients = (await db.execute(select(Notification.recipient_id))).scalars().all()
+    assert professor.id not in recipients
     assert PROF_EMAIL not in recorded.to
 
 

@@ -139,25 +139,6 @@ async def count_active_professors_in(
     )
 
 
-async def access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
-    epoch = (
-        await session.execute(select(Workspace.access_epoch).where(Workspace.id == workspace_id))
-    ).scalar_one_or_none()
-    return epoch if epoch is not None else 0
-
-
-async def bump_access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
-    """AUTH-03: invalidate caches and snapshots built under the previous epoch."""
-    return (
-        await session.execute(
-            update(Workspace)
-            .where(Workspace.id == workspace_id)
-            .values(access_epoch=Workspace.access_epoch + 1)
-            .returning(Workspace.access_epoch)
-        )
-    ).scalar_one()
-
-
 async def ai_budgets(session: AsyncSession, workspace_id: UUID) -> dict[str, Any]:
     budgets = (
         await session.execute(select(Workspace.ai_budgets).where(Workspace.id == workspace_id))

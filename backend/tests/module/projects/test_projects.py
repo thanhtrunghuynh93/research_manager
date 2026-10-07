@@ -97,22 +97,19 @@ async def test_membership_is_what_fills_a_students_scope(
     assert scope.project_ids == frozenset({project.id})
 
 
-async def test_ending_a_membership_removes_access_and_advances_the_epoch(
+async def test_ending_a_membership_removes_access(
     db: AsyncSession,
-    workspace: identity_models.Workspace,
     prof_scope: Scope,
     student_a: identity_models.User,
 ) -> None:
-    # AUTH-03: removing a membership invalidates subsequent access and cached answers.
+    # AUTH-03: removing a membership invalidates subsequent access.
     project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
-    before = await _epoch(db, workspace.id)
 
     await service.end_membership(db, prof_scope, membership.id)
 
     scope = await identity_service.scope_for(db, student_a)
     assert scope.project_ids == frozenset(), "removal takes effect now, not tomorrow"
-    assert scope.access_epoch > before
 
 
 async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
@@ -409,7 +406,6 @@ async def test_joining_grants_the_projects_shared_records(
 
 async def test_a_student_may_not_end_their_own_membership(
     db: AsyncSession,
-    workspace: identity_models.Workspace,
     prof_scope: Scope,
     student_a: identity_models.User,
     student_a_scope: Scope,
@@ -427,27 +423,10 @@ async def test_a_student_may_not_end_their_own_membership(
         await service.end_membership(db, scope, membership.id)
     assert project.id in (await identity_service.scope_for(db, student_a)).project_ids
 
-    epoch = await _epoch(db, workspace.id)
     ended = await service.end_membership(db, prof_scope, membership.id)
 
     assert ended.left_on == _workspace_today(), "PROJ-02 keeps the row rather than deleting it"
-    assert await _epoch(db, workspace.id) > epoch, "AUTH-03: ending revokes cached reads too"
     assert project.id not in (await identity_service.scope_for(db, student_a)).project_ids
-
-
-async def test_joining_does_not_advance_the_epoch(
-    db: AsyncSession,
-    workspace: identity_models.Workspace,
-    prof_scope: Scope,
-    student_a_scope: Scope,
-) -> None:
-    # Widening access cannot invalidate an answer computed under narrower access.
-    project = await _open_project(db, prof_scope)
-    epoch = await _epoch(db, workspace.id)
-
-    await service.join_project(db, student_a_scope, project.id)
-
-    assert await _epoch(db, workspace.id) == epoch
 
 
 async def test_a_student_cannot_end_a_co_members_membership(
@@ -524,16 +503,6 @@ async def test_the_creator_keeps_the_record_after_leaving_it(
     assert (await service.update_project(db, scope, project.id, title="Still mine")).title == (
         "Still mine"
     )
-
-
-async def _epoch(db: AsyncSession, workspace_id: object) -> int:
-    return (
-        await db.execute(
-            select(identity_models.Workspace.access_epoch).where(
-                identity_models.Workspace.id == workspace_id
-            )
-        )
-    ).scalar_one()
 
 
 # ------------------------------------------------------------------ PROJ-01: where the code lives

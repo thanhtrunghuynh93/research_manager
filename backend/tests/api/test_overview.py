@@ -1,8 +1,7 @@
 """The professor overview (UI-01).
 
-One payload behind one screen. What matters about it is the same thing that matters about the
-assistant: the counts are computed, not narrated, and a gap in the evidence is labelled as a gap
-rather than shown as a quiet week (AC-04).
+One payload behind one screen. What matters about it: the counts are computed from the tables at
+a stated instant, not narrated, and every section is present even when it is empty.
 """
 
 from __future__ import annotations

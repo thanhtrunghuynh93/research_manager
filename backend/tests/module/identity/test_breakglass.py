@@ -169,25 +169,6 @@ async def test_transfer_refuses_an_account_in_another_workspace(
         await service.transfer_professor(db, from_email=prof.email, to_email=outsider.email)
 
 
-async def test_transfer_advances_the_access_epoch(
-    db: AsyncSession, workspace: models.Workspace, prof: models.User, student_a: models.User
-) -> None:
-    before = (
-        await db.execute(
-            select(models.Workspace.access_epoch).where(models.Workspace.id == workspace.id)
-        )
-    ).scalar_one()
-
-    await service.transfer_professor(db, from_email=prof.email, to_email=student_a.email)
-
-    after = (
-        await db.execute(
-            select(models.Workspace.access_epoch).where(models.Workspace.id == workspace.id)
-        )
-    ).scalar_one()
-    assert after > before
-
-
 async def test_transfer_audits_the_state_the_predecessor_actually_had(
     db: AsyncSession, prof: models.User, student_a: models.User
 ) -> None:

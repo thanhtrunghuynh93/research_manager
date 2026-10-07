@@ -9,7 +9,7 @@
  * the rule report evidence already has.
  *
  * Nothing reads these files. They are not extracted, not indexed, and cannot be cited by an
- * assessment or the assistant, so the badge stays at "Uploaded" — which is what has happened.
+ * assessment, so the badge stays at "Uploaded" — which is what has happened.
  * Making them citable is a decision about what the model may read, and a larger one than this.
  *
  * The upload is the same three steps as everywhere else, from `@/lib/upload`: hash here, PUT

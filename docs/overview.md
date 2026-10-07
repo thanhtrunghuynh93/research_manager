@@ -1,8 +1,8 @@
 # The Research Management Framework — Problem, Innovation, Impact
 
-Version 0.3 — 21 September 2026 — an overview of what this framework is for and what is new in it.
-It summarises [research_management_requirements.md](research_management_requirements.md) v0.9,
-[architecture.md](architecture.md) v0.5, the [ADRs](adr/), and
+Version 0.4 — 7 October 2026 — an overview of what this framework is for and what is new in it.
+It summarises [research_management_requirements.md](research_management_requirements.md) v0.12,
+[architecture.md](architecture.md) v0.8, the [ADRs](adr/), and
 [implementation_status.md](implementation_status.md); those documents remain authoritative where
 this one abbreviates them.
 
@@ -51,10 +51,9 @@ citations and for an index computed from missing evidence. Each of these fails b
 mode for a record that a person's standing depends on.
 
 **(4) Supervision records are confidential in a way that is easy to leak.** One student's private
-report, another's individual assessment, and the professor's own supervision notes sit in the same
-store and feed the same retrieval index. Access changes retroactively: a membership ends, and every
-cached answer built under the old membership is a fresh disclosure the next time it is served
-(AC-11). Retrieved text is itself untrusted — a README can contain instructions addressed to the
+report and another's individual assessment sit in the same store and feed the same evidence index.
+Access changes retroactively: a membership ends, and anything read or built under the old
+membership is a fresh disclosure the next time it is served (AC-11). Retrieved text is itself untrusted — a README can contain instructions addressed to the
 model that reads it (AC-12).
 
 Against this background, the framework treats supervision as a records problem with an AI component
@@ -80,12 +79,12 @@ stage-specific anchors, with a 0–100 progress index as a supervision aid rathe
 (ASSESS-03, ASSESS-04). Commitment completion against the frozen plan is reported separately,
 because it measures promises kept, not scientific value (ASSESS-05).
 
-**Assistant.** A professor-facing, read-only research assistant answers factual, comparative,
-longitudinal and planning questions over the records the caller may already see, under an explicit
-answer contract: time range, scope, answer, facts with their as-of instants, synthesis marked apart
-from facts, citations that open the authorised source, and disclosed gaps (QA-01…QA-07).
+**Overview.** The professor's week — next deadline, who is outstanding, the week's reports, the
+review queue and stalled analyses — is computed from the records with an explicit as-of instant
+(UI-01, REP-08). A chat assistant over the same records was specified, built and withdrawn unused
+([ADR 0023](adr/0023-no-research-assistant.md)).
 
-**Implementation.** A modular monolith — FastAPI, PostgreSQL 16 with `pgvector` and full-text search,
+**Implementation.** A modular monolith — FastAPI, PostgreSQL 16,
 a Postgres-backed job queue, MinIO for files, React SPA — on a single host, sized for fifty students
 and thirty active projects per workspace (architecture §1, §3, requirements §11). The model provider
 is reachable from exactly one module.
@@ -96,15 +95,14 @@ What is new here is not any single component but the boundary drawn between dete
 and generative interpretation, and the fact that the boundary is enforced by schema and by tests
 rather than by prompt instructions. Seven decisions carry most of that novelty.
 
-**I1 — Facts are computed in SQL; the model never produces a number.** Registered fact functions
-compute counts, dates, deadlines, memberships and scores through the owning module's service layer,
-so they compile the same permission predicate as every other read. For a question classified as
-factual, the generation step is not called at all; for a mixed question, facts are supplied as
-authoritative and rendered in their own field, apart from the prose. The router may name a fact
-function but may not invent one: an unregistered name is dropped rather than approximated
-([ADR 0008](adr/0008-facts-outside-the-model.md)). The AC-15 test scripts the fake gateway to answer
-"seven", so passing proves the model was never consulted for the count. Note that this makes the
-dashboard and the assistant incapable of disagreeing — both are built from the same functions.
+**I1 — Facts are computed in SQL; the model never produces a number.** Counts, dates, deadlines,
+memberships and scores are computed through the owning module's service layer, so they compile the
+same permission predicate as every other read. The overview's figures are plain functions the
+endpoint calls directly, and the AC-15 test checks its outstanding count against the obligations
+table after exemptions and deadline rules, with its as-of instant. In an assessment the model
+returns ratings, rationales and evidence ids, and every figure is derived from them (I2). The
+assistant that once rendered the same functions into answers
+([ADR 0008](adr/0008-facts-outside-the-model.md)) was withdrawn with ADR 0023; the rule outlived it.
 
 **I2 — Rubric arithmetic lives outside the model, and unknown is not zero.** The model returns only
 per-dimension ratings, rationales and evidence reference ids through a structured-output schema;
@@ -133,15 +131,13 @@ genuine read failure reduces coverage ([ADR 0010](adr/0010-presigned-uploads-ver
 This is the unfairness nobody would have noticed: a week recorded as empty when it was merely
 unreadable.
 
-**I5 — A single counter expires every cached answer, and over-invalidation is the intended failure
-mode.** `workspaces.access_epoch` increments in the same transaction as any membership end,
-deactivation, role change or visibility change; a cached answer or snapshot records the epoch it was
-built under and is served only while it matches, after which each citation is additionally re-checked
-against the caller's current scope ([ADR 0009](adr/0009-access-epoch-for-cached-answers.md)).
-Nothing has to find the stale answers, which is what makes the rule reviewable: deciding whether a
-change is covered means asking whether it advances the epoch. The cost is a few wasted regenerations
-a term; the alternative — an invalidation sweep — fails silently and looks exactly like normal
-operation.
+**I5 — Access is compiled on every request, so revocation needs no invalidation.** The caller's
+readable projects are compiled from the memberships table on each request and nothing caches a
+read, so a membership that ends is out of every read the moment it is written (AC-11). An earlier
+design cached assistant answers and expired them with a per-workspace access epoch
+([ADR 0009](adr/0009-access-epoch-for-cached-answers.md)); the cache was never used, and both were
+removed ([ADR 0023](adr/0023-no-research-assistant.md)). What carries over is the rule: a cache must
+bring its own invalidation, and over-invalidation is the right failure mode.
 
 **I6 — Approval, immutability and reproducible provenance are the publication contract.** Generated
 assessments are drafts visible only to the professor; approval publishes, an override records its
@@ -150,8 +146,7 @@ stores the rubric version, prompt and model versions, evidence references, repor
 timestamp, and a new report version re-assesses only the entries whose content changed
 (ASSESS-09, AC-17). Trends are grouped by rubric version, so a rubric change appears as a labelled
 break rather than as a comparable series (AC-10). It is worth noting what this forecloses: the model
-has no path to publishing anything, because publication is a product action taken by a person
-(QA-07).
+has no path to publishing anything, because publication is a product action taken by a person.
 
 **I7 — Evidence belongs to whoever supplied it, and a week is the week it is about.** An attachment
 is indexed as private to the student who attached it, so a project-mate cannot retrieve through
@@ -170,26 +165,25 @@ are the projects of their workspace and a membership cannot straddle two
 students own the projects they report on — a student may start a project, join one a professor has
 opened to joining, and edit the record of what they started, while ending a membership is the
 professor's, because whether research is finished is a supervision judgement rather than a
-student's to record — and no private record follows a project, because reports, assessments,
-feedback and notes are keyed to a student ([ADR 0017](adr/0017-students-own-their-projects.md),
+student's to record — and no private record follows a project, because reports and assessments
+are keyed to a student ([ADR 0017](adr/0017-students-own-their-projects.md),
 [ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
 
 ## 4 Impact
 
 **For the professor.** The review workspace presents the student's claims, the evidence, the draft
 assessment and source freshness together, so that the weekly act becomes reviewing a cited draft
-rather than reconstructing a week. Because the assistant and the overview compute from the same fact
-functions, the answer to "which reports are missing" is the obligations table after exemptions and
-deadline rules, with an explicit as-of instant, and it is the same number on every screen.
-Longitudinal questions that span a rubric change are answerable without pretending the scores are
-comparable.
+rather than reconstructing a week. The overview's answer to "which reports are missing" is the
+obligations table after exemptions and deadline rules, with an explicit as-of instant. A trajectory
+that spans a rubric change shows the break rather than pretending the scores are comparable.
 
 **For the student.** The framework makes the basis of an assessment inspectable: the frozen plan, the
-component ratings with rationales, the cited evidence, the stated limitations, and a correction
-channel with the right to add evidence (ASSESS-08). Negative and theoretical results are creditable
+component ratings with rationales, the cited evidence and the stated limitations. A student who
+disputes a rating raises it with the professor, who can adjust it with a recorded reason; the
+in-product correction request was withdrawn in requirements 0.10 (ASSESS-08). Negative and theoretical results are creditable
 without code (AC-05), and unavailable evidence never becomes a zero.
 
-**For the group as a research record.** Reports, plans, decisions, contributions and assessments
+**For the group as a research record.** Reports, plans, attachments and assessments
 accumulate as versioned, permission-labelled records independent of chat history, which makes the
 history of a project answerable years later — why direction changed, what was tried and abandoned,
 who contributed what. The record is designed to outlive the model that currently reads it:
@@ -217,7 +211,7 @@ per-dimension exact and within-one agreement, material correction rate, citation
 uncertainty behaviour, injection resistance, and run-to-run variation of the index. This is because
 asserting a threshold nobody has agreed to would turn calibration into a test that gets tuned until
 it passes. The pilot gates are explicit: at least 30 student–project–weeks rated by the professor on
-real work, 50 professor questions with exact counts and dates matching the database, every
+real work, every exact count and date matching the database, every
 authorisation and adversarial scenario passing, citation support at or above 95%, every
 incomplete-evidence case producing an uncertainty response, and an agreement threshold agreed with
 the professor and recorded with its date. Approval remains a required publication step whatever the
@@ -226,8 +220,8 @@ numbers say.
 **Limitations.** The ten evaluation cases in this repository are a de-identified seed set whose
 ratings are the specification's anchors applied by the set's author, not the professor's judgement;
 until the pilot weeks exist, agreement numbers check the prompt rather than the rubric. The default
-weights and anchors are proposals, not validated measures of research productivity. The interactive,
-first-token and assessment-latency targets in requirements §11 have not yet been benchmarked against
+weights and anchors are proposals, not validated measures of research productivity. The interactive
+and assessment-latency targets in requirements §11 have not yet been benchmarked against
 the 100,000-chunk corpus, and the rubric's construct validity — whether these four dimensions
 capture research progress across stages — is a question the pilot opens rather than settles.
 

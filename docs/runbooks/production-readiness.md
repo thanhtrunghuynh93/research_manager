@@ -3,7 +3,8 @@
 Audit of 14 September 2026, against the working tree at the time. Scope is the two flows a first
 deployment cannot open without: **enrolling a professor and a student**, and **submitting a weekly
 report**. Everything else — assessments, the assistant, repository sync, exports — is out of scope
-here and may hold findings of its own.
+here and may hold findings of its own. (The assistant and repository sync have since been withdrawn,
+ADR 0023 and ADR 0022.)
 
 **Second pass, 15 September 2026**, working through §1 and §2 before a first deploy to a 4 GB VPS.
 §1.1, §1.2, §2.2, §2.3 and §2.4 are now closed; §1.3 is narrowed to the DNS records themselves.

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Any
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
 from app.assessment.models import ReviewState as ReviewState
@@ -27,7 +27,6 @@ class SnapshotOut(BaseModel):
     integration_lag_days: int
     item_count: int
     coverage_notes: dict[str, Any]
-    access_epoch: int
     built_at: datetime
 
 
@@ -93,26 +92,6 @@ class ReviewOut(BaseModel):
 class ApproveIn(BaseModel):
     override: dict[str, Any] | None = None
     rationale: str | None = None
-
-
-def _require_non_blank(value: str) -> str:
-    """Trimmed, and refused when nothing is left."""
-    cleaned = value.strip()
-    if not cleaned:
-        raise ValueError("must not be blank")
-    return cleaned
-
-
-# A body that is only whitespace is an empty body. `min_length=1` counted the spaces, so three of
-# them were accepted as a note nobody could read anything in.
-NonBlank = Annotated[str, AfterValidator(_require_non_blank)]
-
-
-class SupervisionNoteIn(BaseModel):
-    body: NonBlank
-    student_id: UUID | None = None
-    project_id: UUID | None = None
-    period_id: UUID | None = None
 
 
 class TrendPoint(BaseModel):

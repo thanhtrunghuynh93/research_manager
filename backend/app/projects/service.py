@@ -360,8 +360,6 @@ async def _enrol(
             "origin": origin.value,
         },
     )
-    # No epoch bump: granting access cannot invalidate an answer cached under narrower access.
-    #
     # Reporting subscribes and derives this week's obligation now rather than at 00:15 tomorrow,
     # which is what makes a project produce a report the moment it exists. projects cannot call
     # reporting — it sits above this module — so the event is how the two meet.
@@ -413,7 +411,6 @@ async def end_membership(
         return MembershipOut.model_validate(membership)
 
     membership.left_on = left_on or today
-    await identity_service.advance_access_epoch(session, scope.workspace_id)
     _audit(
         session,
         scope,
@@ -432,8 +429,7 @@ async def _on_user_removed(event: Any, session: AsyncSession) -> None:
 
     Obligations derive from memberships (REP-01), so this is what stops the weekly obligations and
     the reminders attached to them. Each row is closed directly rather than through
-    `end_membership`: there is no Scope here, and the epoch has already been advanced by the
-    removal itself, so bumping it once per project would be noise.
+    `end_membership`: there is no Scope here.
     """
     # The removal's day in the workspace, not in UTC: `left_on` is exclusive, so a removal just
     # after local midnight recorded against the UTC date would end the membership the day before
@@ -676,7 +672,6 @@ async def effective_baseline_for_student(
         user_id=student_id,
         role=Role.PROF,
         project_ids=frozenset({project_id}),
-        access_epoch=0,
     )
     return await effective_baseline(
         session, scope, membership_id=membership.id, period_id=period_id
@@ -687,13 +682,6 @@ async def project_title(session: AsyncSession, project_id: UUID) -> str:
     """Job-level read: the name to put in a notification, with no other project detail."""
     project = await session.get(Project, project_id)
     return "" if project is None else project.title
-
-
-async def student_project_ids(
-    session: AsyncSession, workspace_id: UUID, student_id: UUID
-) -> frozenset[UUID]:
-    """Used by identity to compile a Scope; also the answer to "which projects is X on?"."""
-    return await policies.load_membership_project_ids(session, workspace_id, student_id)
 
 
 # ------------------------------------------------------------------ helpers

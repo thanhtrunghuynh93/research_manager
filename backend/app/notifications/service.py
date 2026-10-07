@@ -26,7 +26,7 @@ from app.core.ids import uuid7
 from app.core.jobs import defer_after_commit
 from app.identity import security
 from app.identity import service as identity_service
-from app.notifications import policies, repository  # noqa: F401  (policies register on import)
+from app.notifications import repository
 from app.notifications.email.base import EmailSender
 from app.notifications.models import DeliveryState, EmailDelivery, Notification
 from app.notifications.schemas import NotificationOut
@@ -34,13 +34,9 @@ from app.reporting import service as reporting_service
 
 log = logging.getLogger(__name__)
 
-# The kind vocabulary (UI-07).
-REPORT_SUBMITTED = "report_submitted"
-REPORT_RESUBMITTED = "report_resubmitted"
+# The kind vocabulary (UI-07). One kind is written: a record that nothing reads or sends is not a
+# notification, and the ones that were (submission, the professor's in-app summary) are gone.
 MISSED_DEADLINE = "missed_deadline"
-UNFULFILLED_OBLIGATIONS = "unfulfilled_obligations"
-ASSESSMENT_RELEASED = "assessment_released"
-SYNC_FAILED = "sync_failed"
 
 MISSED_DEADLINE_TEMPLATE = "missed_deadline"
 # AUTH-01: the two messages that carry a credential rather than news.
@@ -165,38 +161,9 @@ async def dispatch_missed_deadline(
         )
         await session.flush()
 
-    if unfulfilled:
-        await _notify_professors(session, period, unfulfilled)
-
     # Stamped last, so a crash before this point leaves the period to be retried harmlessly.
     await reporting_service.mark_reminder_dispatched(session, period_id, at=instant)
     return created
-
-
-async def _notify_professors(
-    session: AsyncSession, period: Any, unfulfilled: dict[UUID, list[dict[str, str]]]
-) -> None:
-    """REP-08: the professor sees the list in-app at the same time, and receives no email."""
-    students = [
-        {"student_id": str(student_id), "missing_projects": missing}
-        for student_id, missing in unfulfilled.items()
-    ]
-    workspace_id = await _workspace_of(session, next(iter(unfulfilled)))
-    for professor_id in await identity_service.professor_ids(session, workspace_id):
-        await notify(
-            session,
-            workspace_id=workspace_id,
-            recipient_id=professor_id,
-            kind=UNFULFILLED_OBLIGATIONS,
-            subject_table="reporting_periods",
-            subject_id=period.id,
-            period_id=period.id,
-            payload={
-                "period_start": period.local_start.isoformat(),
-                "period_end": period.local_end.isoformat(),
-                "students": students,
-            },
-        )
 
 
 def _group_by_student(entries: list[Any]) -> dict[UUID, list[dict[str, str]]]:
@@ -218,13 +185,6 @@ def _deadline_local(meeting_date: Any, timezone: str) -> str:
     day = meeting_date - _timedelta(days=1)
     to_utc(day, DEADLINE_LOCAL_TIME, timezone)  # validates the timezone
     return f"{day.isoformat()} 23:59 ({timezone})"
-
-
-async def _workspace_of(session: AsyncSession, user_id: UUID) -> UUID:
-    contact = await identity_service.contact_for_job(session, user_id)
-    if contact is None:
-        raise NotFoundError("user not found")
-    return contact.workspace_id
 
 
 # ------------------------------------------------------------------ email delivery
@@ -266,12 +226,6 @@ async def send_queued_emails(session: AsyncSession, sender: EmailSender, *, limi
             )
         await session.flush()
     return sent
-
-
-async def failed_deliveries(session: AsyncSession, scope: Scope) -> int:
-    """UI-01: the professor's overview shows a mail-delivery warning rather than silence."""
-    scope.require_prof()
-    return await repository.failed_delivery_count(session, scope.workspace_id)
 
 
 @dataclass(frozen=True)
@@ -322,34 +276,14 @@ async def mail_health(session: AsyncSession, scope: Scope) -> MailHealth:
 # ------------------------------------------------------------------ reactions to other modules
 
 
-async def _on_report_submitted(event: Any, session: AsyncSession) -> None:
-    """UI-07: tell the professor a package arrived. The message carries no report content."""
-    for professor_id in await identity_service.professor_ids(session, event.workspace_id):
-        await notify(
-            session,
-            workspace_id=event.workspace_id,
-            recipient_id=professor_id,
-            kind=REPORT_RESUBMITTED if event.resubmitted else REPORT_SUBMITTED,
-            subject_table="report_versions",
-            subject_id=event.report_version_id,
-            payload={
-                "student_id": str(event.student_id),
-                "period_id": str(event.period_id),
-                "report_id": str(event.report_id),
-            },
-        )
-
-
 def register_subscriptions() -> None:
-    """Reporting and identity emit; notifications reacts, which is how they stay unaware of it.
+    """Identity emits; notifications reacts, which is how identity stays unaware of it.
 
     Registration happens on import, like the visibility policies, so any process that can notify
     has already wired it. `subscribe` is idempotent.
     """
     from app.identity import events as identity_events
-    from app.reporting import events as reporting_events
 
-    reporting_events.subscribe(reporting_events.ReportSubmitted, _on_report_submitted)
     identity_events.subscribe(identity_events.InvitationCreated, _on_invitation_created)
     identity_events.subscribe(identity_events.PasswordResetRequested, _on_password_reset_requested)
 

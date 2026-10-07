@@ -17,7 +17,6 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
-    Integer,
     Text,
     UniqueConstraint,
     func,
@@ -72,10 +71,6 @@ class Workspace(UUIDPrimaryKeyMixin, Base):
     `timezone` is the workspace default used when the reporting module creates its first
     calendar configuration; `calendar_configs` stays the versioned authority for period
     arithmetic (architecture §5.2, REP-01).
-
-    `access_epoch` increments whenever a membership ends, a user is deactivated, or visibility
-    changes. Cached answers and snapshots record the epoch they were built under so a stale cache
-    cannot outlive the access it was built with (AUTH-03, architecture §6.3).
     """
 
     __tablename__ = "workspaces"
@@ -85,7 +80,6 @@ class Workspace(UUIDPrimaryKeyMixin, Base):
     owner_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("users.id", use_alter=True, ondelete="SET NULL")
     )
-    access_epoch: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     # Monthly spending limits for model calls, as
     # {"monthly_usd": "50", "project_monthly_usd": {"<project id>": "10"}}.
     # Absent keys mean "no limit configured", which is not a limit of zero (architecture §10).

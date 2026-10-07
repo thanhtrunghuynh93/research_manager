@@ -198,11 +198,6 @@
       "artifacts": "Usable research artifacts"
     }
   },
-  "evidence": {
-    "noLongerAvailable": "no longer available to you",
-    "privateNote": "Private supervision note",
-    "noCitations": "No citations — nothing here rests on a retrieved record."
-  },
   "review": {
     "title": "Review",
     "subject": "This student",
@@ -231,29 +226,6 @@
       "unsupported": "Unsupported",
       "unverifiable": "Unverifiable"
     }
-  },
-  "assistant": {
-    "title": "Assistant",
-    "question": "Question",
-    "ask": "Ask",
-    "thinking": "Working…",
-    "placeholder": "Which reports are missing this week?",
-    "readOnly": "Read-only. It can draft text; sending, approving and changing remain your actions.",
-    "failed": "The question could not be answered.",
-    "scope": "Scope",
-    "wholeWorkspace": "the whole workspace",
-    "cached": "Cached",
-    "facts": "Read from the records",
-    "factsNote": "Computed from the database, not written by the model.",
-    "synthesis": "Inferred",
-    "synthesisNote": "The model's reading of the facts and evidence above.",
-    "suggestions": "Suggested next steps",
-    "suggestionsNote": "Drafts for you to act on, never actions taken.",
-    "citations": "Sources",
-    "gaps": "What could not be established",
-    "keepScope": "Keep this scope for follow-up questions",
-    "computedBadge": "computed",
-    "modelBadge": "model"
   },
   "project": {
     "unavailable": "This project could not be loaded.",

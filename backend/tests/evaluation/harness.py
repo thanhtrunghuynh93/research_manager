@@ -21,7 +21,6 @@ from typing import Any
 
 EVALUATION_ROOT = Path(__file__).resolve().parents[3] / "docs" / "evaluation"
 CASES_ROOT = EVALUATION_ROOT / "cases"
-QUESTIONS_FILE = EVALUATION_ROOT / "questions.jsonl"
 
 DIMENSIONS = ("progress", "learning", "rigor", "artifacts")
 
@@ -113,11 +112,6 @@ def load_case(folder: Path) -> Case:
         adversarial=bool(expected.get("adversarial", False)),
         notes=expected.get("notes", ""),
     )
-
-
-def load_questions(path: Path | None = None) -> list[dict[str, Any]]:
-    lines = (path or QUESTIONS_FILE).read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines if line.strip()]
 
 
 # ------------------------------------------------------------------ one run's outcome

@@ -30,7 +30,6 @@ class WorkspaceOut(BaseModel):
     id: UUID
     name: str
     timezone: str
-    access_epoch: int
     owner_id: UUID | None = None
     archived_at: datetime | None = None
     # Whether the caller belongs to this workspace, which is not the same as owning it and not the

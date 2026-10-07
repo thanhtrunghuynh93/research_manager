@@ -23,8 +23,8 @@ function renderShell(role: "prof" | "student" = "prof") {
     ),
     http.get("/api/v1/workspaces", () =>
       HttpResponse.json([
-        { id: "w1", name: "Ecomind Lab", timezone: "UTC", access_epoch: 1, owner_id: "u1" },
-        { id: "w2", name: "Vision Lab", timezone: "UTC", access_epoch: 1, owner_id: "u1" },
+        { id: "w1", name: "Ecomind Lab", timezone: "UTC", owner_id: "u1" },
+        { id: "w2", name: "Vision Lab", timezone: "UTC", owner_id: "u1" },
       ]),
     ),
   );
@@ -72,8 +72,8 @@ test("offers no language switcher", async () => {
 });
 
 test("names the workspace every screen below is showing", async () => {
-  // A professor moves between workspaces (ADR 0014), so the overview, the roll and the assistant
-  // all change underneath this header. It is the one place that says which one they are in.
+  // A professor moves between workspaces (ADR 0014), so the overview and the roll both change
+  // underneath this header. It is the one place that says which one they are in.
   renderShell("prof");
 
   await waitFor(() =>

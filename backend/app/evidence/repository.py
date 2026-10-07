@@ -88,13 +88,11 @@ async def chunks_in_window(
     until: datetime,
 ) -> list[tuple[EvidenceChunk, EvidenceReference]]:
     """Everything the caller may see in a window, for the snapshot builder (ASSESS-01)."""
-    from app.evidence.index.retrieval import visible_chunks
-
     query = (
         select(EvidenceChunk, EvidenceReference)
         .join(EvidenceReference, EvidenceReference.id == EvidenceChunk.evidence_ref_id)
         .where(
-            visible_chunks(scope),
+            visible_to(scope, EvidenceChunk),
             EvidenceChunk.project_id == project_id,
             EvidenceChunk.source_time >= since,
             EvidenceChunk.source_time < until,
@@ -112,30 +110,16 @@ async def chunks_for_sources(
     source_ids: list[UUID],
 ) -> list[tuple[EvidenceChunk, EvidenceReference]]:
     """Everything the caller may see that came from these sources, whatever their timestamps."""
-    from app.evidence.index.retrieval import visible_chunks
-
     if not source_ids:
         return []
     rows = await session.execute(
         select(EvidenceChunk, EvidenceReference)
         .join(EvidenceReference, EvidenceReference.id == EvidenceChunk.evidence_ref_id)
         .where(
-            visible_chunks(scope),
+            visible_to(scope, EvidenceChunk),
             EvidenceReference.source_kind == source_kind,
             EvidenceReference.source_id.in_(source_ids),
         )
         .order_by(EvidenceChunk.source_time, EvidenceChunk.chunk_no)
     )
     return [(chunk, reference) for chunk, reference in rows]
-
-
-async def get_evidence_reference(
-    session: AsyncSession, scope: Scope, reference_id: UUID
-) -> EvidenceReference | None:
-    return (
-        await session.execute(
-            select(EvidenceReference).where(
-                EvidenceReference.id == reference_id, visible_to(scope, EvidenceReference)
-            )
-        )
-    ).scalar_one_or_none()

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import cost
 from app.ai.gateway import Budget, CallContext, OpenAIGateway
-from app.ai.schemas import AnswerDraft, ClaimList, ClaimVerdicts, RoutePlan, RubricOutput, strict
+from app.ai.schemas import ClaimList, ClaimVerdicts, RubricOutput, strict
 from app.core.authz import Scope
 from app.core.ids import uuid7
 from app.identity import models as identity_models
@@ -151,7 +151,7 @@ def _context(workspace_id: Any, session: AsyncSession, **kwargs: Any) -> CallCon
 async def test_retrieved_text_is_framed_as_data_and_no_tool_is_ever_offered(
     db: AsyncSession, workspace: identity_models.Workspace
 ) -> None:
-    """AC-12, QA-07: a README that says "ignore your instructions" is evidence, not an order."""
+    """AC-12: a README that says "ignore your instructions" is evidence, not an order."""
     client = _StubClient(parsed=ClaimList(claims=[]))
     await _gateway(client).complete_structured(
         prompt_id="extract_claims",
@@ -439,15 +439,13 @@ async def test_every_prompt_is_sent_with_a_schema_the_provider_accepts(
         ("extract_claims", ClaimList),
         ("match_claims", ClaimVerdicts),
         ("rate_rubric", RubricOutput),
-        ("route_question", RoutePlan),
-        ("answer", AnswerDraft),
     ):
         # `model_construct` skips validation: what the provider returns is not under test here,
         # only whether the schema it was asked for is one the endpoint would have accepted.
         client = _StubClient(parsed=schema.model_construct())
         result = await _gateway(client).complete_structured(
             prompt_id=prompt_id,
-            inputs={"entry": "x", "question": "x"},
+            inputs={"entry": "x"},
             schema=schema,
             budget=Budget(),
             context=_context(workspace.id, db),

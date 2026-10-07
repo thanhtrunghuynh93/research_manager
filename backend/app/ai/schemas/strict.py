@@ -29,9 +29,10 @@ from pydantic import BaseModel
 
 # Keywords strict mode does not accept.
 #
-# `default` is deliberately NOT here. The SDK does not strip it, and `ClaimList`, `ClaimVerdicts`,
-# `RoutePlan` and `AnswerDraft` all carry defaults and all succeed against the real provider — so
-# the production record settles it, and flagging it would fail four schemas that demonstrably work.
+# `default` is deliberately NOT here. The SDK does not strip it, and `ClaimList` and
+# `ClaimVerdicts` carry defaults and succeed against the real provider (as two since-withdrawn
+# assistant schemas did) — so the production record settles it, and flagging it would fail schemas
+# that demonstrably work.
 #
 # Numeric bounds ARE here, and that one is a judgement call rather than a reading of the record:
 # the only schema carrying them is the only schema that has never succeeded, so production tells us

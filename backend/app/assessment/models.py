@@ -95,7 +95,7 @@ class EvidenceSnapshot(UUIDPrimaryKeyMixin, Base):
     """ASSESS-01: exactly what was considered, frozen at the moment of assessment.
 
     Built only from evidence the student is allowed to see, because the approved assessment is
-    published to them and its citations must open (QA-06).
+    published to them and its citations must open.
     """
 
     __tablename__ = "evidence_snapshots"
@@ -115,7 +115,6 @@ class EvidenceSnapshot(UUIDPrimaryKeyMixin, Base):
     item_count: Mapped[int] = mapped_column(Integer, default=0)
     # What was left out and why, e.g. extraction failures (ASSESS-06).
     coverage_notes: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    access_epoch: Mapped[int] = mapped_column(Integer, default=0)
     built_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
@@ -235,23 +234,4 @@ class AssessmentReview(UUIDPrimaryKeyMixin, Base):
     override: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     rationale: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class SupervisionNote(UUIDPrimaryKeyMixin, Base):
-    """QA-06: private to the professors. Never indexed, never in a snapshot, never in an answer
-    a student can read. Kept in its own table so that is structural rather than a filter.
-
-    "Private" means not a student, not not-another-professor: co-supervisors share the workspace's
-    notes (ADR 0011). `author_id` is what lets a reader tell whose note they are looking at."""
-
-    __tablename__ = "supervision_notes"
-    __table_args__ = (Index("ix_supervision_notes_subject", "student_id", "project_id"),)
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    author_id: Mapped[UUID]
-    student_id: Mapped[UUID | None]
-    project_id: Mapped[UUID | None]
-    period_id: Mapped[UUID | None]
-    body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

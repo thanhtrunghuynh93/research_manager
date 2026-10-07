@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.11 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.11, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.19
+Version 0.12 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.12, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.19
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -13,12 +13,12 @@ layout. Update it in the pull request that changes what it describes.
 | 1 | Repository skeleton, `core/`, health endpoints, dev Compose, CI | Done |
 | 2 | `identity/`: users, invitations, sessions, authz, break-glass | Done |
 | 3 | `projects/` and `reporting/`: periods, obligations, drafts, submission, versions, plan baselines, artifacts; student frontend | Done |
-| 4 | `notifications/`: scheduler tasks, missed-deadline email, notification records | Done |
-| 5 | `evidence/`: indexing and retrieval (the connectors and identity mapping built here were removed, ADR 0022) | Done |
+| 4 | `notifications/`: scheduler tasks, missed-deadline email, notification records (only `missed_deadline` is still written, ADR 0023) | Done |
+| 5 | `evidence/`: indexing and retrieval (the connectors and identity mapping built here were removed, ADR 0022; search over the index, ADR 0023) | Done |
 | 6 | `assessment/`: snapshot, metrics, pipeline, review | Done |
 | 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Done |
-| 8 | `assistant/`, professor overview, backup drill, release | Done |
-| 9 | The seams: assessment triggering, the periodic tasks, the evidence API (the repository half removed, ADR 0022) | Done |
+| 8 | `assistant/`, professor overview, backup drill, release (the assistant withdrawn in requirements 0.12, ADR 0023; the overview's numbers moved to `overview/`) | Done |
+| 9 | The seams: assessment triggering, the periodic tasks, the evidence API (the repository half removed, ADR 0022; the rest, ADR 0023) | Done |
 | 10 | A full review of the branch, and the defects it found | Done |
 | 11 | Deployment preparation: readiness checks, production config refusal, auth rate limits, mail warnings | Done |
 | 12 | `workspaces/`: ownership, joining and leaving, plural membership, reads that span it | Done |
@@ -29,6 +29,26 @@ backend tests and 91.3 % coverage, and both had drifted by the time anyone read 
 table that replaced it was checked by `scripts/check_docs.py` and cost an edit on every change, so
 0.10 dropped it. Section 6 says how to obtain the
 current figures, and CI enforces the 85 % gate rather than a sentence.
+
+**7 October 2026 — the research assistant is removed** ([ADR 0023](adr/0023-no-research-assistant.md),
+requirements 0.12). Built in step 8, it was never used: migration 0029 dropped `conversations`,
+`messages`, `answer_cache` and `supervision_notes` — every one empty on the running deployment —
+with the `message_role` enum and both `access_epoch` columns. Gone with it: `app/assistant/`
+(router, fact functions, retrieval, answer contract, SSE stream, cache), `api/v1/assistant.py`, the
+`route_question` and `answer` prompts and their schemas, the chat screen, and the two routes in
+`api/v1/evidence.py` (evidence search and the citation-open reference) together with the hybrid
+retrieval behind them. Private supervision notes and their route went too. The access epoch is
+removed ([ADR 0009](adr/0009-access-epoch-for-cached-answers.md) superseded): revocation is still
+immediate because `Scope.project_ids` is compiled from memberships on every request. The overview's
+numbers moved, unchanged, to `app/overview/service.py`, which `GET /api/v1/overview` calls
+directly. Notifications now write only `missed_deadline` records (student, with the email); the
+submission records and the professor's in-app summary nothing read are no longer written, and the
+professor sees who is outstanding on the overview. `retention_sweep` now only purges finished
+queue jobs. `evidence/` keeps indexing, the chunk access label (now a registered policy on
+`EvidenceChunk`) and the window and by-source reads the snapshot uses; embeddings are still
+computed at index time but nothing reads them — their removal is pending. QA-01..07 are withdrawn;
+AC-10, AC-11, AC-12 and AC-15 are restated against the trajectory, the project's evidence and
+documents, and the overview.
 
 **7 October 2026 — the repository connector is removed** ([ADR 0022](adr/0022-no-repository-connector.md),
 requirements 0.11). Built for GitHub in step 5 and given routes in step 9, it was never connected
@@ -153,8 +173,8 @@ audited break-glass procedure the runbook describes, reachable only from a host 
 
 One predicate decides every read of a user record, and search and downloads compile the same one —
 there is no second permission model. Deactivation, role change, and password reset each
-revoke every session and advance `workspaces.access_epoch` in the same transaction, which is what
-later lets a cached answer be refused.
+revoke every session and advanced `workspaces.access_epoch` in the same transaction, which is what
+let a cached answer be refused; the epoch went with the answer cache in requirements 0.12 (ADR 0023).
 
 `app.cli identity bootstrap` creates the workspace and its professor; without it there was no way
 to get a first account, and the deploy runbook now names it.
@@ -185,6 +205,10 @@ The frontend covers sign-in, the student overview, and the weekly editor with a 
 project, autosave, attachments, and an idempotent submit.
 
 ### Step 4 — `notifications/` (REP-07, REP-08, UI-07)
+
+*Since requirements 0.12 (ADR 0023) only the student's `missed_deadline` record is written; the
+professor's in-app summary and the submission records were dropped unread, and the professor sees
+who is outstanding on the overview. The per-recipient notification policy went with them.*
 
 The missed-deadline job reads obligations at the moment it sends, so a submission at 23:59 receives
 nothing. Every write is keyed, so a retried job sends no duplicate. The professor sees the
@@ -219,8 +243,10 @@ the artifact once; bots are labelled; and a repository serving several projects 
 paths unresolved.
 
 The index stores citable references with their access label and chunks that carry it too, so the
-permission predicate sits inside each ranking arm and a chunk outside the caller's scope is never
-scored.
+permission predicate sat inside each ranking arm and a chunk outside the caller's scope was never
+scored. *Search over the index was removed in requirements 0.12 (ADR 0023); the label stays, as the
+registered policy on `EvidenceChunk` that the snapshot's window and by-source reads apply.
+Embeddings are still computed at index time and read by nothing; their removal is pending.*
 
 ### Step 6 — `assessment/` (ASSESS-01..10)
 
@@ -229,7 +255,8 @@ unknown withholds the index rather than scoring zero, a not-applicable dimension
 rest, and a missing baseline leaves commitment completion unavailable.
 
 Snapshots are built through the student's own view of the evidence, so an assessment later
-published to them cites only what they can open, and a supervision note can never reach one. A
+published to them cites only what they can open (supervision notes, which it could never reach,
+were withdrawn in 0.12). A
 citation that is not in the snapshot is dropped and the rating that rested on it is downgraded to
 `unknown`. A failed model step leaves the run partial and retryable; a restricted project reaches
 no provider at all.
@@ -262,6 +289,10 @@ real disagreement is a number to hit rather than a decision to make.
 
 ### Step 8 — `assistant/`, overview, operations (QA-01..07, UI-01)
 
+*Requirements 0.12 withdrew QA-01..07 and the assistant was removed
+([ADR 0023](adr/0023-no-research-assistant.md)); what follows is what was built. The overview's
+numbers now come from `app/overview/service.py`, unchanged; the demo dataset and drill stay.*
+
 The assistant runs one flow in a fixed order, because the order is the safety property: route,
 resolve entities against the database, compute facts, retrieve, re-check, generate, validate
 citations, cache.
@@ -292,18 +323,20 @@ endpoint (requirements §10, AC-13).
 
 Seven periodic tasks ran: `ensure_periods` and `freeze_baselines` daily, `scan_due_reminders`
 and `send_queued_emails` on their short cycles, `incremental_sync` every thirty, `queue_health` every
-five, and `retention_sweep` nightly. Six since ADR 0022 removed `incremental_sync`. The two
+five, and `retention_sweep` nightly. Six since ADR 0022 removed `incremental_sync`; since ADR 0023
+`retention_sweep` only purges finished queue jobs. The two
 calendar tasks are idempotent by construction, so a worker that was down for a day catches up
 rather than skipping a week.
 
-*Removed in requirements 0.11 (ADR 0022), except evidence search, now in `api/v1/evidence.py`:*
+*Removed in requirements 0.11 (ADR 0022), except evidence search, which moved to
+`api/v1/evidence.py` and was removed in 0.12 (ADR 0023):*
 the repository routes closed REPO-01 through REPO-05 as a *product* rather than a module: connect,
 link to a project, map a developer identity, resync, search the evidence index, and the signed
 GitHub webhook — which also enqueues the targeted run architecture §8.3 describes and reports
 whether the delivery matched anything, because one landing nowhere looks identical to one working.
 
 `/api/metrics` serves the series requirements §11 names. The assistant gained the SSE stream its
-client helper was already written against.
+client helper was already written against (both removed in 0.12, ADR 0023).
 
 ### Step 12 — `workspaces/` (AUTH-04..06, UI-08)
 
@@ -336,7 +369,8 @@ ownership, so a colleague could not enter a workspace the screen offered them; `
 did not restore the membership `remove_student` deletes, so a restored account was active and
 invisible to every membership-keyed read; and the answer cache was still validated against the
 anchor's `access_epoch` alone, which ADR 0016's last bullet had predicted in writing. The third
-needed migration 0022 and is now keyed to the whole read-set.
+needed migration 0022 to key it to the whole read-set; the cache and the epoch were removed in 0.12
+(ADR 0023).
 
 **A live functional test of the deployed system found six more, and they share a shape too:** each
 was a place where two parts of the product answered the same question on different terms.
@@ -354,7 +388,7 @@ was a place where two parts of the product answered the same question on differe
   project saw it, owed its weekly entry, and could not attach a file to it — "not a member of this
   project". `identity.workspace_today` is now the one answer to what day it is, and the milestone
   overdue count and a removal's leave date were reading UTC too.
-- **Citations pointed at routes their readers cannot open (QA-03).** Every fact emitted the
+- **Citations pointed at routes their readers cannot open (QA-03, withdrawn in 0.12).** Every fact emitted the
   student's report route, so a professor following a source was redirected to the overview with an
   access warning — which reads as the record being missing rather than the link being wrong. The
   locators are role-aware, and a week now cites one report per student rather than one place for
@@ -380,17 +414,18 @@ was a place where two parts of the product answered the same question on differe
 | OCR for scanned documents | REP-04 | Explicitly later work in the specification. A scanned PDF is recorded as "no text layer", not as an extraction failure |
 | A repository connector, experiment trackers | §12 next release | The connector was built and withdrawn unused (ADR 0022); trackers are out of MVP scope by the specification |
 | Row-Level Security | §11 | ADR 0004: application-level authorization first, RLS as defence in depth after the MVP |
-| Student-side assistant | §2, §12 | Next release; the retrieval path and the predicate are already shared, so it is a surface rather than a rebuild |
+| An assistant, professor- or student-side | §7 (withdrawn), §12 | The professor assistant was built and withdrawn unused (ADR 0023), with the retrieval it ran on. Bringing one back starts from section 7's *Was:* text and needs its own cache invalidation |
 | Rubric calibration | ASSESS-03, §13 | Needs the professor's own ratings on real weeks. The harness and the protocol are ready for them |
-| Retention and authorized deletion | §11 "Data control" | `retention_sweep` expires the answer cache and finished queue jobs, which have a defined lifetime. Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
+| Retention and authorized deletion | §11 "Data control" | `retention_sweep` purges finished queue jobs, the one thing with a defined lifetime since the answer cache was removed (ADR 0023). Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
 | Moving a student who has written history | AUTH-06 | Four composite foreign keys refuse it, by design rather than by omission. The two ways out — cascade the history into the new workspace, or make the move a new account — both change what "the workspace a record was written in" means, and neither is worth doing before someone needs it (use_cases.md §2.1) |
 | Professor-authored feedback | REP-07 | No code path writes one; the `feedback` table that would have held it was dropped in migration 0027. What a student can read today is the approved assessment and — since v0.13 — the reason attached to a revision request, which is the one thing a professor can now write that reaches them |
-| Performance benchmarks | §11, §15 | Nothing measures them. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured, and no seed builds the 100k-chunk corpus they assume |
+| Performance benchmarks | §11, §15 | Nothing measures them. The p95 targets — 2 s interactive, 10 min assessment — have never been measured (the 10 s first-token target went with the assistant, ADR 0023), and no seed builds the 100k-chunk corpus they assume |
 
 ### Acceptance scenarios
 
 All sixteen that stand have tests: AC-01 through AC-19 less AC-04, AC-06 and AC-09, which
-requirements 0.11 withdrew with the repository connector; AC-14 was restated for attachments.
+requirements 0.11 withdrew with the repository connector; AC-14 was restated for attachments, and
+0.12 restated AC-10, AC-11, AC-12 and AC-15 without the assistant.
 `scripts/check_traceability.py` asserts it on every CI run, skips a row marked withdrawn, and
 prints the list.
 
@@ -408,26 +443,26 @@ produced something wrong. Each is reflected in the code and in the document it c
 | --- | --- |
 | `meeting_date` is derived from the period's end, not its start (architecture §7.1 corrected) | The formula as written placed the deadline the day before the period opened. The meeting follows the week it discusses |
 | `project_memberships.left_on` is exclusive | With an inclusive end, "remove this student now" left their access alive until midnight |
-| Embeddings come from a registered `Embedder`, not a direct gateway call | repo_layout §3.1 said otherwise, but §3.3 forbids `evidence` importing `ai`, and a restricted project must be able to index without a provider |
+| Embeddings come from a registered `Embedder`, not a direct gateway call (still computed; unread since ADR 0023, removal pending) | repo_layout §3.1 said otherwise, but §3.3 forbids `evidence` importing `ai`, and a restricted project must be able to index without a provider |
 | The index tells the embedder who to bill, through `EmbedContext` | Same contract: `evidence` cannot write an `ai_calls` row, but it can say which workspace a batch is for and leave the accounting to whoever makes the vectors |
 | `plan_baselines` carries a targeted guard rather than the blanket immutability trigger (`repository_events` did too, until ADR 0022) | A proposed baseline had to be acceptable; the guard allows exactly that transition and nothing else |
 | Email delivery is a queued row drained by a periodic task, not one job per message | Same at-least-once behaviour, with the attempt count and the last error in one place |
 | Two import contracts scoped to direct imports | The API reaches models through `service.py` and the gateway through `assessment.service`; that is the intended arrangement, and the contracts now forbid what they meant to forbid |
-| Full-text search uses the `simple` configuration | Reports are written in English and Vietnamese; English stemming distorts the latter. Revisit with the retrieval benchmark |
+| Full-text search uses the `simple` configuration (the column is still generated; nothing queries it since ADR 0023) | Reports are written in English and Vietnamese; English stemming distorts the latter |
 | Report entries and attachments are indexed by `evidence` reacting to events | Reporting stays unaware of evidence, which is the layer direction the architecture sets. `ArtifactExtracted` uses the same seam `ReportSubmitted` does |
 | Deadlines render as 23:59 rather than 11:59 PM | The requirement states the rule in 24-hour time, and the workspace's timezone convention matches |
 | ~~`app.exports` is a bounded context, not just a router~~ — retired in use cases v0.4 | A bundle spanned reporting, projects and assessment; assembling it through those modules' services is what made export authorization identical to interactive access rather than a second implementation of it. The module is gone; the reasoning applies to the next context that spans modules |
 | Model prices live in a table in `ai/cost.py`, and an unknown model records a null cost | A guessed price would be believed. The tokens are the fact; the money is arithmetic over a published rate |
 | A spent budget is a distinct run state, not a `partial` | The professor's response to "the money ran out" is different from their response to "the model failed", so the record distinguishes them |
-| The assistant resolves entity names against records the caller can already see | A model asked about a name will produce a plausible id. Matching against the caller's own visible set means a wrong guess finds nothing rather than reaching a record |
-| Relative dates are resolved in Python, not by the router model | "Last month" has an exact answer, and a language model is the wrong instrument for arithmetic on dates |
+| ~~The assistant resolves entity names against records the caller can already see~~ — removed with the assistant (ADR 0023) | A model asked about a name will produce a plausible id. Matching against the caller's own visible set means a wrong guess finds nothing rather than reaching a record |
+| ~~Relative dates are resolved in Python, not by the router model~~ — removed with the assistant (ADR 0023) | "Last month" has an exact answer, and a language model is the wrong instrument for arithmetic on dates |
 | Attachment text is indexed `student_private`, matching the artifact record | The artifact is readable by its owner and the professor; indexing its text as project-shared would let a project-mate retrieve through search what they cannot open directly |
 | A link is extracted by the server's `Content-Type`, not by the URL's last path segment | `/abs/2401.00001` has no extension worth reading, and the response says what it actually sent |
 | A failed enqueue is logged and swallowed, not raised | Requirements §10: report acceptance must not wait on anything downstream. A missing draft is recoverable from the retry endpoint; an unrecorded submission is not recoverable at all |
 | ~~The connector factory falls back to the in-memory connector and says so in the log~~ — removed with the connector (ADR 0022) | A misconfigured key should surface as stale evidence on the dashboard, not as a dead worker that stops syncing every repository. Silently syncing nothing is the one outcome that must not happen, because it is indistinguishable from a student who did nothing (AC-04) |
 | ~~A webhook for an unknown repository is accepted, recorded, and reported as unmatched~~ — removed with the connector (ADR 0022) | Asking GitHub to retry something that will never match is noise rather than resilience; but a webhook landing nowhere looks identical to one working, so the response says which it was |
 | Metric labels may never identify a person | A metric is scraped into a system with different access rules from this one, so a student id in a label would be a disclosure through the monitoring stack |
-| `retention_sweep` expires only the answer cache | It is the one record with a defined lifetime. Inventing a deletion schedule for reports and assessments would be irreversible and is the professor's decision (requirements §14) |
+| `retention_sweep` expires only finished queue jobs (the answer cache until ADR 0023 removed it) | They are the one record with a defined lifetime. Inventing a deletion schedule for reports and assessments would be irreversible and is the professor's decision (requirements §14) |
 | An entry with every field empty is refused, not just an empty package | The check was per package on the reading that judging one entry's substance is the professor's. That reading holds — the test is emptiness, not adequacy — but at package level a blank entry passed whenever a sibling tab had text, and *that project's* obligation was then marked submitted. One press of one button could report every project a student is on with nothing written for any of them. The granularity now matches the thing being discharged |
 | The submitted report is a separate screen from the editor, not a mode of it | The editor is seeded mutable state — draft, autosave, idempotent submit — and a professor rendering it would mount autosave against an endpoint that answers 422. The deciding reason is narrower: the editor's tabs come from the obligations, so an entry for a project the student has left can never appear in it, and those entries are in every version. A read-only editor could not have shown them |
 | The reader never renders `draft_content`, though the policy would allow it | A professor may read the draft; showing it would make autosave surveillance. An unsubmitted draft is not a submission, and the screen is about the record |
@@ -452,7 +487,9 @@ Carried from requirements §14 and architecture §17, narrowed to what is still 
    The decision is still the professor's; what changed is that it can now be taken in the product.
 5. **VPS region and offsite backup destination**.
 6. **Whether to add Row-Level Security** as defence in depth after the MVP.
-7. **Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.
+7. ~~**Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.~~ Nothing
+   retrieves by similarity since ADR 0023; chunking feeds the assessment snapshot, and embeddings
+   are pending removal.
 
 There is no repository provider left to choose: ADR 0022 withdrew the connector ADR 0005 chose.
 

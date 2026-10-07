@@ -1,8 +1,9 @@
 """AC-02 — A student on one project requests another student's private report or its citation URL |
-Access is denied in API, UI, search, cached responses, downloads, and exports.
+Access is denied in API, UI, evidence reads, and downloads.
 
-Search, downloads, and exports arrive with later modules; each one compiles the same predicate, so
-what is proved here is that the predicate denies the read through both the service and HTTP.
+Amended in 0.12: search and cached responses went with the assistant (ADR 0023). Every remaining
+read compiles the same predicate, so what is proved here is that the predicate denies the read
+through both the service and HTTP.
 """
 
 from __future__ import annotations
