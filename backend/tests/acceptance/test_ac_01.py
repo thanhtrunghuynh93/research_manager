@@ -1,5 +1,5 @@
-"""AC-01 — A student belongs to two projects, one with a repository and one without | One weekly
-package contains both project entries; two separate assessments use appropriate evidence.
+"""AC-01 — A student belongs to two projects, one with attached evidence and one without | One
+weekly package contains both project entries; two separate assessments use appropriate evidence.
 
 The assessment half arrives with the assessment module; what is provable now is that one package
 carries both entries and that they stay separately addressable.

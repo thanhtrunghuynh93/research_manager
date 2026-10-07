@@ -1,7 +1,7 @@
 """Reading the current state into the metric gauges (architecture §12, §15).
 
 Lives at the application root rather than in `app.core` because it reads across every module —
-the queue, evidence, assessment, notifications — and `app.core` sits beneath all of them
+the queue, assessment, notifications — and `app.core` sits beneath all of them
 (docs/repo_layout.md §3.3). The series themselves are declared in `app/core/metrics.py`, where any
 module may increment a counter without reaching upward.
 
@@ -34,7 +34,6 @@ async def refresh(session: AsyncSession) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     for name, read in (
         ("queue", _queue),
-        ("sync", _sync),
         ("assessment", _assessment),
         ("email", _email),
     ):
@@ -121,33 +120,6 @@ async def _queue(session: AsyncSession) -> dict[str, Any]:
         metrics.JOB_FAILURES.labels(task=str(task_name)).set(int(count))
 
     return {"depth": depths, "oldest_seconds": oldest}
-
-
-async def _sync(session: AsyncSession) -> dict[str, Any]:
-    from app.evidence.models import ConnectionState, Repository, SyncRun, SyncState
-
-    states = (
-        await session.execute(
-            select(Repository.connection_state, func.count(Repository.id)).group_by(
-                Repository.connection_state
-            )
-        )
-    ).all()
-    counts = {str(state): int(count) for state, count in states}
-    for state in ConnectionState:
-        metrics.REPOSITORIES.labels(state=state.value).set(counts.get(state.value, 0))
-
-    latest = (
-        await session.execute(
-            select(func.max(SyncRun.finished_at)).where(SyncRun.state == SyncState.COMPLETED)
-        )
-    ).scalar()
-    if latest is not None:
-        from app.core.clock import now
-
-        metrics.SYNC_STALENESS_SECONDS.set((now() - latest).total_seconds())
-
-    return {"repositories": counts, "last_successful_sync": latest}
 
 
 async def _assessment(session: AsyncSession) -> dict[str, Any]:

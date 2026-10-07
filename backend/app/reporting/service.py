@@ -1007,7 +1007,7 @@ async def entry_ids_for_period(
     """Job-level read: every version's entry for one student, project and week (ASSESS-01).
 
     A report entry belongs to a period by identity, not by when it was sent. The snapshot is built
-    from a time window, which is right for repository work and wrong for this: a report submitted
+    from a time window, which is right for attachments and wrong for this: a report submitted
     after the deadline has a `submitted_at` outside its own week, so a window alone would leave
     the student's own account of their work out of the assessment of it.
     """

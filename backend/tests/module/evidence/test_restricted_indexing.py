@@ -1,9 +1,8 @@
 """Architecture §10: a project marked `ai_restricted` sends nothing to a model provider.
 
 The restriction was enforced on the completion step only. Indexing is the other, larger door: it
-is the one place every report entry, every artifact's extracted text, and every repository diff
-passes through, and it ran through the registered — that is, provider-backed — embedder for every
-project alike.
+is the one place every report entry and every artifact's extracted text passes through, and it
+ran through the registered — that is, provider-backed — embedder for every project alike.
 """
 
 from __future__ import annotations

@@ -33,8 +33,8 @@ badly is invisible. Four gaps make the existing instruments unsuitable.
 
 **(1) Activity is not progress.** Commit counts, lines changed and report length are the signals
 that are easy to collect, and they are the signals least related to research value. A literature
-review week, a theory week and a rigorous negative result all produce little or no repository
-activity, and each can be the most valuable week of a term. Conversely, repetitive commits and
+review week, a theory week and a rigorous negative result all produce little or no code, and each
+can be the most valuable week of a term. Conversely, repetitive commits, piles of attachments and
 verbose prose can be produced without new substantive evidence (AC-14). Any framework that scores
 what it can count will reward the wrong weeks, and it will do so consistently enough that students
 learn to produce them.
@@ -47,8 +47,7 @@ agreement is unfalsifiable, and it quietly erases missed commitments as scope is
 the design. A language model asked how many reports are missing will answer, and it will usually be
 right; nothing in the answer distinguishes the usual case from the exception, and the professor acts
 on it either way ([ADR 0008](adr/0008-facts-outside-the-model.md)). The same holds for fabricated
-citations, for an index computed from missing evidence, and for a stale repository read as a week of
-no work. Each of these fails by producing something plausible, which is the worst available failure
+citations and for an index computed from missing evidence. Each of these fails by producing something plausible, which is the worst available failure
 mode for a record that a person's standing depends on.
 
 **(4) Supervision records are confidential in a way that is easy to leak.** One student's private
@@ -70,7 +69,7 @@ student–project–week, and the framework does not collapse different projects
 
 **Weekly cycle.** Obligations are derived from membership dates, project status and exemptions; the
 plan submitted last week freezes as this week's baseline; the package is accepted and versioned
-immutably; repository activity and attachments are ingested; a permission-labelled, time-bounded
+immutably; attachments are ingested; a permission-labelled, time-bounded
 evidence snapshot is built; claims are extracted and matched to that snapshot; the rubric is applied
 and the metrics computed; a draft assessment enters the professor's review queue; approval publishes
 it to the student (requirements §10, architecture §9.1).
@@ -127,9 +126,8 @@ unverifiable — never as verified because the model said so (REPO-08, ASSESS-07
 **I4 — Coverage and confidence are first-class outputs with rule-based reasons.** Each dimension
 records its evidence sufficiency; coverage is the percentage of applicable rubric weight supported
 well enough to rate; confidence is high/medium/low from a small versioned rule table with its
-reasons named, not an unexplained model probability (ASSESS-06). A project with no repository can
-reach full coverage through other artifacts, and a stale repository is reported as stale rather than
-read as zero work (AC-04, AC-05). Similarly, file extraction has three outcomes rather than two —
+reasons named, not an unexplained model probability (ASSESS-06). A project with no code can
+reach full coverage through its report and other artifacts (AC-05). Similarly, file extraction has three outcomes rather than two —
 `ok`, `unsupported`, `failed` — so that a figure is evidence whether or not OCR exists, and only a
 genuine read failure reduces coverage ([ADR 0010](adr/0010-presigned-uploads-verified-after-the-fact.md)).
 This is the unfairness nobody would have noticed: a week recorded as empty when it was merely
@@ -155,14 +153,13 @@ break rather than as a comparable series (AC-10). It is worth noting what this f
 has no path to publishing anything, because publication is a product action taken by a person
 (QA-07).
 
-**I7 — Attribution preserves joint work, and time is not one thing.** Author, committer, reviewer and
-merger are distinct roles; merging another person's change does not establish authorship; shared
-artifacts are deduplicated at the project level while remaining jointly attributed, and a correction
-to one student's contribution re-flags every assessment whose snapshot contained the affected event
-(REPO-03, REPO-04, AC-06). Commit author time, commit time, merge time and ingestion time are kept
-distinct, and an old commit merged this week is flagged as integration of earlier work (REPO-06).
-Each student can see the contributions and identity mappings attributed to them, which is what makes
-misattribution challengeable rather than merely regrettable.
+**I7 — Evidence belongs to whoever supplied it, and a week is the week it is about.** An attachment
+is indexed as private to the student who attached it, so a project-mate cannot retrieve through
+search what they could not open directly (AUTH-02, AC-02), and a report entry belongs to the week it
+describes even when it was sent after the deadline (ASSESS-01). The repository connector, which
+attributed commits by author, reviewer and merger and told integration apart from new work, was
+built and never connected, and is withdrawn ([ADR 0022](adr/0022-no-repository-connector.md));
+a student attaches what they want read.
 
 Two further design commitments are worth naming because they shape day-to-day use rather than the
 assessment contract. Professors are co-equal, and a professor may belong to several workspaces at
@@ -190,9 +187,7 @@ comparable.
 **For the student.** The framework makes the basis of an assessment inspectable: the frozen plan, the
 component ratings with rationales, the cited evidence, the stated limitations, and a correction
 channel with the right to add evidence (ASSESS-08). Negative and theoretical results are creditable
-without commits (AC-05), unavailable evidence never becomes a zero, and a week's standing does not
-depend on whether a repository connector happened to be healthy. Students also see what has been
-attributed to them, which is the precondition for contesting it.
+without code (AC-05), and unavailable evidence never becomes a zero.
 
 **For the group as a research record.** Reports, plans, decisions, contributions and assessments
 accumulate as versioned, permission-labelled records independent of chat history, which makes the

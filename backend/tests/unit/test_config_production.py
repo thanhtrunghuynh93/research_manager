@@ -64,7 +64,6 @@ def test_development_defaults_are_untouched_outside_production() -> None:
         # a relay nobody has chosen yet sends exactly as much mail as one that swallows it.
         ({"smtp_host": ""}, "RM_SMTP_HOST is empty"),
         ({"mail_from": ""}, "RM_MAIL_FROM is empty"),
-        ({"github_app_id": "12345"}, "webhook endpoint returns 503"),
     ],
 )
 def test_each_development_default_refuses_to_start(
@@ -90,14 +89,3 @@ def test_every_violation_is_reported_at_once() -> None:
     assert "RM_PUBLIC_URL" in message
     assert "RM_SMTP_HOST" in message
     assert "RM_METRICS_TOKEN" in message
-
-
-def test_a_configured_github_app_with_a_webhook_secret_is_accepted() -> None:
-    settings = Settings(
-        **{
-            **PRODUCTION,
-            "github_app_id": "12345",
-            "github_webhook_secret": SecretStr("a-real-hmac-key"),
-        }  # type: ignore[arg-type]
-    )
-    assert settings.github_app_id == "12345"

@@ -45,11 +45,10 @@ function renderPage(assessment: Record<string, unknown> = ASSESSMENT, approve = 
       HttpResponse.json([
         {
           evidence_ref_id: "e1",
-          text: "commit a1f3c9e — fixed the judgment parser",
-          locator: "/projects/pr1#commit",
-          visibility: "project_shared",
-          source_version: "a1f3c9e",
-          integration_of_earlier_work: false,
+          text: "parser-fix.md — fixed the judgment parser",
+          locator: "/artifacts/a9",
+          visibility: "student_private",
+          source_version: "1",
         },
       ]),
     ),

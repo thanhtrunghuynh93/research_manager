@@ -6,7 +6,9 @@ Requirements section 13 defines what must be true before routine AI assessments 
 
 De-identified student–project–weeks covering coding, literature, theory, experiments, and
 writing, including: incomplete evidence, shared contributions, negative results, changed plans,
-Vietnamese and English reports, and adversarial repository text (instructions inside a README).
+Vietnamese and English reports, and adversarial attachment text (instructions inside a README).
+Evidence files named after commits or pull requests stand for the text a student attached; there
+is no repository connector (ADR 0022).
 
 Layout:
 

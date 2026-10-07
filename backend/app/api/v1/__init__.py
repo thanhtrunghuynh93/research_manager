@@ -10,11 +10,11 @@ from app.api.v1 import (
     assessments,
     assistant,
     auth,
+    evidence,
     health,
     overview,
     projects,
     reports,
-    repositories,
     users,
     workspaces,
 )
@@ -33,7 +33,7 @@ def include_routers(app: FastAPI) -> None:
     v1.include_router(projects.router)
     v1.include_router(reports.router)
     v1.include_router(artifacts.router)
-    v1.include_router(repositories.router)
+    v1.include_router(evidence.router)
     v1.include_router(assessments.router)
     v1.include_router(overview.router)
     v1.include_router(assistant.router)

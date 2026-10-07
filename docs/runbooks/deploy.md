@@ -36,10 +36,6 @@ Trigger: a change on `main` is to go out, or a hotfix must. Nothing here is driv
    - `RM_METRICS_TOKEN` — with `RM_ENV=prod` and no token, `/api/metrics` refuses everybody and
      the api log says so at start-up. Prometheus scrapes the api container directly on the
      internal network; Caddy blocks `/api/metrics` at the edge either way.
-   - `RM_GITHUB_WEBHOOK_SECRET` — only if a GitHub App is configured. With an app id set and no
-     webhook secret, `POST /api/v1/webhooks/github` returns 503 rather than verifying deliveries
-     against an empty HMAC key, so pushes will not trigger a sync until it is set. It must match
-     the secret entered in the GitHub App itself.
 3. Get the images. **This host builds them; it pulls nothing.** `RM_BACKEND_IMAGE` and
    `RM_CADDY_IMAGE` in `infra/.env` are `rm-backend:local` and `rm-caddy:local`, which no registry
    holds, and the compose project's working directory *is* the checkout — so the deployed artifact

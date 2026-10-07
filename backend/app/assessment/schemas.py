@@ -39,7 +39,6 @@ class SnapshotItemOut(BaseModel):
     locator: str
     visibility: Visibility
     source_version: str
-    integration_of_earlier_work: bool
 
 
 class AssessmentOut(BaseModel):

@@ -54,7 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # has already picked a file and waited for it (REP-04).
         await store.ensure_bucket()
         # Without this every `defer_async` in the API process raises `AppNotOpen`, so a submitted
-        # report would enqueue no assessment and a webhook would enqueue no sync (app.core.jobs).
+        # report would enqueue no assessment (app.core.jobs).
         with ExitStack() as queue:
             queue.enter_context(procrastinate_app.replace_connector(connector_for(settings)))
             await procrastinate_app.open_async()

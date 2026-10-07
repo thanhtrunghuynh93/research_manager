@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.6 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.10
+Version 0.7 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.11
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -14,7 +14,6 @@ This document turns the logical boundaries in section 10 of the requirements int
 | Jobs | procrastinate (Postgres-backed queue) running periodic tasks in the worker | Transactional enqueue; no Redis to operate |
 | Files | MinIO (S3 API) on the same host | Presigned uploads, versioned bucket, easy offsite mirror |
 | LLM | OpenAI GPT API (responses + embeddings) behind one internal gateway module | Vendor isolated to one module; swappable |
-| Repository provider | GitHub App first; GitLab through the same connector protocol | Fine-grained read-only installation tokens, signed webhooks |
 | Hosting | Single VPS, Docker Compose, Caddy for TLS | 50 students and 30 projects fit one host with headroom |
 
 Out of scope for this document: UI visual design, exact prompt texts, and institutional SSO (deferred per section 12 of the requirements).
@@ -30,7 +29,6 @@ flowchart LR
         API[FastAPI api]
         WRK[Worker]
     end
-    GH[(GitHub)]
     OAI[(OpenAI API)]
     MAIL[(Mail provider)]
 
@@ -38,9 +36,7 @@ flowchart LR
     Stu -- "drafts and submits weekly package" --> SPA
     SPA -- "HTTPS JSON, SSE stream" --> API
     API -- "enqueues jobs in the same transaction" --> WRK
-    WRK -- "reads commits, PRs, diffs (read-only token)" --> GH
-    GH -- "signed webhooks" --> API
-    WRK -- "report text, diff excerpts, chunk text; never credentials" --> OAI
+    WRK -- "report text, attachment text, chunk text; never credentials" --> OAI
     WRK -- "missed-deadline and notification emails" --> MAIL
 ```
 
@@ -80,7 +76,7 @@ Service notes:
 - **minio** holds one versioned bucket per environment. The API never streams file bodies; it issues presigned PUT and GET URLs after an authorization check.
 - **backup** runs nightly `pg_dump -Fc`, encrypts with `age`, mirrors the MinIO bucket, and syncs both to an offsite bucket with `rclone`. Retention 30 daily and 12 monthly. A restore drill against a scratch Compose stack is part of the launch checklist (AC-16).
 - Health: `/api/healthz` (process up), `/api/readyz` (DB and MinIO reachable, queue lag under threshold). Compose `restart: unless-stopped`.
-- Secrets live in a root-owned `.env` file with mode 600 and are injected as environment variables. Provider credentials (GitHub App private key, OpenAI key, SMTP password) are referenced by name in application records and never stored in the database (requirements section 9).
+- Secrets live in a root-owned `.env` file with mode 600 and are injected as environment variables. Provider credentials (OpenAI key, SMTP password) are referenced by name in application records and never stored in the database (requirements section 9).
 
 ## 4 Code layout
 
@@ -93,8 +89,8 @@ backend/
     identity/       users, invitations, sessions, break-glass CLI
     projects/       projects, memberships, plan_baselines
     reporting/      reporting_periods, obligations, weekly_reports, report_versions, entries, artifacts
-    evidence/       repositories, connectors/{base,github}.py, developer_identities, repository_events, contributions,
-                    evidence_references, index/ (chunking, embeddings, fts)
+    evidence/       evidence_references, evidence_chunks, index/ (chunking, embeddings, fts); no repository
+                    connector since ADR 0022
     assessment/     rubrics, snapshot.py, pipeline/ (claims, matching, rating), metrics.py, versions, review
     assistant/      router.py, facts/ (SQL fact functions), retrieval.py, answer.py, conversations
     notifications/  notification records, email/{base,smtp}.py, templates, scheduler_tasks.py
@@ -118,9 +114,9 @@ A module reads another module's data only through that module's `service.py`; it
 
 | Route | Screen | Requirement |
 | --- | --- | --- |
-| `/overview` | Professor overview: current week, missing/late, review queue, attention list, sync issues | UI-01 |
+| `/overview` | Professor overview: current week, missing/late, review queue, attention list, stalled analyses | UI-01 |
 | `/me` | Student overview: obligations, draft state, next deadline, released feedback, timeline | UI-02 |
-| `/projects/:id` | Project workspace: goals, members, related documents, repositories; the stage is the professor's view only. Milestones and decisions were removed (requirements 0.8, 0.10) | UI-03 |
+| `/projects/:id` | Project workspace: goals, members, related documents, the repository link; the stage is the professor's view only. Milestones and decisions were removed (requirements 0.8, 0.10) | UI-03 |
 | `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
 | `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left, and the professor's revision request | REP-02, REP-05, UI-04 |
 | `/people` | The roll across every workspace the professor belongs to, grouped by workspace: invite, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
@@ -143,7 +139,7 @@ A module reads another module's data only through that module's `service.py`; it
 | Identity | `workspaces`, `workspace_members`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
 | Projects | `projects`, `project_memberships`, `plan_baselines`, `plan_baseline_items` |
 | Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
-| Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `webhook_deliveries`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
+| Evidence | `evidence_references`, `evidence_chunks` (the connector tables were dropped by migration 0028, ADR 0022) |
 | Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `supervision_notes` |
 | Assistant | `conversations`, `messages`, `answer_cache` |
 | Operations | `notifications`, `email_deliveries`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
@@ -152,7 +148,7 @@ Every table carries `workspace_id`; composite foreign keys `(workspace_id, x_id)
 
 `workspace_members` records which workspaces an account belongs to, which is plural for a professor; `users.workspace_id` records the one it is *working in*. The first is which workspaces a professor may switch into; the second is where both reads and writes go. `Scope` carries `workspace_ids` and `workspace_id`, which today are the same single workspace, and every visibility predicate is built on `Scope.within` (ADR 0015, ADR 0020). Archiving and the roll read the first; every per-user row is anchored to the second.
 
-Eight of those point at `users(workspace_id, id)`, split in two by ADR 0014. The four holding identity records — `invitations`, `sessions`, `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account when it joins another workspace. The four holding research history — `project_memberships`, `weekly_reports`, `developer_identities`, `contributions` — do not, so Postgres refuses to move an account that has written anything. That split is what makes "history stays in the workspace it was written in" a property of the schema, and why moving a student is only half-built: `POST /api/v1/users/{user_id}/workspace` moves an account that has written nothing, and the database refuses one that has (AUTH-06); see use_cases.md §2.1.
+Six of those point at `users(workspace_id, id)`, split in two by ADR 0014. The four holding identity records — `invitations`, `sessions`, `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account when it joins another workspace. The two holding research history — `project_memberships`, `weekly_reports` — do not (`developer_identities` and `contributions` were the other two until ADR 0022), so Postgres refuses to move an account that has written anything. That split is what makes "history stays in the workspace it was written in" a property of the schema, and why moving a student is only half-built: `POST /api/v1/users/{user_id}/workspace` moves an account that has written nothing, and the database refuses one that has (AUTH-06); see use_cases.md §2.1.
 
 ### 5.2 Central tables
 
@@ -185,7 +181,7 @@ Constraint `uq_entry (report_version_id, project_id)`. `content_hash` is SHA-256
 Constraint `uq_baseline_in_effect`: unique `(membership_id, period_id)` where `state IN ('frozen','accepted')`. Rows are immutable. `plan_baseline_items` holds `(baseline_id, planned_outcome, weight NUMERIC, acceptance_criteria)` — lines of the student's next-week plan — and a vestigial `task_id` with no foreign key, left when `tasks` was dropped (migration 0027). `proposed`, `accepted` and `superseded` remain in the enum and nothing writes them since requirements 0.10 withdrew the proposal flow.
 
 **evidence_references** — `id, workspace_id, project_id, owner_student_id NULL, visibility ENUM(professor_only, student_private, project_shared), source_kind ENUM(report_entry, artifact_version, repository_event, decision, feedback), source_id, source_version TEXT, locator TEXT, supported_claim TEXT NULL, source_time, ingested_at`
-Every indexed piece of evidence has exactly one row here, and `evidence_chunks` rows reference it. Visibility is copied from the source at ingestion and re-synced when the source changes.
+Every indexed piece of evidence has exactly one row here, and `evidence_chunks` rows reference it. Visibility is copied from the source at ingestion and re-synced when the source changes. Only `report_entry` and `artifact_version` are written; the other three labels name sources that are gone and stay in the enum because it has rows under it.
 
 **evidence_snapshots** — `id, workspace_id, student_id, project_id, period_id, window_start_utc, window_end_utc, integration_lag_days INT, built_at, item_count INT, coverage_notes JSONB`
 `evidence_snapshot_items` — `(snapshot_id, evidence_ref_id, source_version)`, primary key on both. Built only from `evidence_references` with `visibility <> 'professor_only'` and whose student-visible test passes for `student_id`. The builder never touches `supervision_notes` (ASSESS-01, QA-06).
@@ -198,7 +194,7 @@ Constraint `uq_one_approved`: unique `(assessment_version_id)` where `state = 'a
 
 ### 5.3 Immutability and audit
 
-Tables `report_versions`, `project_report_entries`, `plan_baselines`, `plan_baseline_items`, `evidence_snapshot_items`, `assessment_versions`, `repository_events`, `audit_events` get:
+Tables `report_versions`, `project_report_entries`, `plan_baselines`, `plan_baseline_items`, `evidence_snapshot_items`, `assessment_versions`, `audit_events` get:
 
 ```sql
 CREATE TRIGGER trg_immutable BEFORE UPDATE OR DELETE ON report_versions
@@ -217,7 +213,6 @@ The application layer also exposes no update path for these tables. Retention-dr
 | Unique entry per report version–project | `uq_entry` |
 | Unique obligation per membership–period | `uq_obligation` |
 | One baseline in effect per membership–period | `uq_baseline_in_effect` |
-| Idempotent external events | `uq_repo_event (repository_id, provider_event_id)` on `repository_events` |
 | Immutable submitted and approved versions | `trg_immutable` triggers; `uq_one_approved` |
 | Same-workspace foreign keys | Composite FKs including `workspace_id` |
 | Explicit access labels on indexed evidence | `evidence_chunks.visibility NOT NULL`, FK to `evidence_references` |
@@ -277,7 +272,6 @@ Every repository function accepts `scope` and applies `visible_to(scope, Model)`
 | Supervision note | All (co-supervisors share; `author_id` says whose) | Never |
 | Project | All | `project_id IN scope.project_ids` |
 | Evidence chunk | All except none | `visibility = 'project_shared' AND project_id IN scope.project_ids` OR `owner_student_id = scope.user_id` |
-| Repository event | All | Own attributed contributions only |
 
 Downloads reuse the same predicates: a presigned GET is issued only after `visible_to` selects the artifact version (AC-02). Search and AI retrieval build their `WHERE` clause from the same builder, so there is no second permission model (AUTH-02).
 
@@ -370,54 +364,7 @@ Withdrawn in requirements 0.10. `dispatch_due_reminders` wrote `reminder:{offset
 
 ## 8 Repository evidence
 
-### 8.1 Connector protocol (REPO-01)
-
-```python
-class RepositoryConnector(Protocol):
-    provider: Literal["github", "gitlab"]
-    def verify_webhook(self, headers: Mapping[str, str], body: bytes) -> WebhookEvent | None: ...
-    def list_commits(self, repo: RepoRef, since: datetime | None, cursor: str | None) -> Page[CommitMeta]: ...
-    def get_commit_diff(self, repo: RepoRef, sha: str, max_bytes: int) -> DiffResult: ...   # truncated flag
-    def list_pull_requests(self, repo: RepoRef, updated_since: datetime | None, cursor) -> Page[PullRequest]: ...
-    def list_reviews(self, repo: RepoRef, pr_number: int) -> list[Review]: ...
-    def list_issues(self, repo: RepoRef, updated_since: datetime | None, cursor) -> Page[Issue]: ...
-    def list_check_runs(self, repo: RepoRef, sha: str) -> list[CheckSummary]: ...
-    def repo_visibility(self, repo: RepoRef) -> Literal["private", "internal", "public"]: ...
-```
-
-GitHub implementation: a GitHub App installed by the professor on selected repositories, `contents: read`, `pull_requests: read`, `issues: read`, `checks: read`, `metadata: read`. Installation tokens are minted per sync run and never persisted. Webhook secret verification uses the `X-Hub-Signature-256` HMAC; deliveries are deduplicated on `X-GitHub-Delivery` before enqueueing.
-
-### 8.2 Normalised event
-
-`repository_events` — `id, workspace_id, repository_id, provider_event_id TEXT, kind ENUM(commit, pr_opened, pr_merged, review, issue, check_run, push_force), source_version TEXT (sha or object id), actors JSONB [{role: author|committer|reviewer|merger, login, email, is_bot}], authored_at NULL, committed_at NULL, merged_at NULL, event_at, ingested_at, paths TEXT[], stats JSONB {additions, deletions, files}, payload_key TEXT (MinIO), truncated BOOL, live_available BOOL`
-
-`uq_repo_event (repository_id, provider_event_id)` makes reprocessing idempotent (REPO-05, AC-09). Commit author time, commit time, merge time, and ingestion time are separate columns (REPO-06). A `push_force` event marks affected `repository_events.live_available = false` while their retained payloads stay in MinIO. Events carry their own database guard rather than the blanket immutability trigger: every column the provider gave us is frozen, and `live_available` is the single exception, because it records our observation that the object is gone rather than a fact the provider reported.
-
-### 8.3 Sync run lifecycle (REPO-05)
-
-```mermaid
-stateDiagram-v2
-    [*] --> queued
-    queued --> running
-    running --> completed: all pages fetched, watermark advanced
-    running --> partial: rate limit or page error after progress; watermark advanced to last good page
-    running --> failed: auth error or no progress
-    partial --> queued: scheduled retry (bounded) or manual resync
-    failed --> queued: manual resync after professor fixes authorization
-    completed --> [*]
-```
-
-`sync_runs` — `id, repository_id, kind ENUM(initial, incremental, webhook, manual), state, watermark JSONB {commits_since, prs_since, issues_since}, pages_done, error_summary, started_at, finished_at, attempt`. Incremental syncs run every 30 minutes per connected repository; webhooks trigger a targeted incremental run for the affected repository. The project workspace shows last successful sync, covered range, and partial or authorization errors from this table.
-
-### 8.4 Identity resolution and contributions (REPO-03, REPO-04, AC-06)
-
-`developer_identities` — `(student_id, provider, login NULL, email NULL, verification ENUM(pending, verified_oauth, confirmed_by_student, confirmed_by_prof), created_at)`. A student links a GitHub login through OAuth or confirms an email alias; the professor can confirm on their behalf. Bot logins and `noreply` addresses are marked in a workspace blocklist.
-
-The `resolve_contributions(repository_id, since)` job maps each `repository_events.actors[]` entry to a student and inserts `contributions` rows: `(student_id, project_id NULL, event_id, role, share ENUM(individual, joint), attribution_state ENUM(resolved, unresolved_identity, unresolved_project), provenance JSONB)`. Rules: `Co-authored-by` trailers produce joint rows for every resolved co-author; a `merger` role never creates an authorship row; if `project_repositories.path_rules` (glob → project) do not match a commit's paths and the repo serves more than one project, `attribution_state = unresolved_project`. Project totals count each `event_id` once regardless of how many students share it.
-
-### 8.5 Interpretation limits (REPO-07, REPO-08)
-
-Diff excerpts sent to the model exclude paths matching generated, vendored, and lockfile patterns and are capped per event (default 40 KB). Raw counts are stored in `stats` and shown as activity statistics only; the rubric prompt receives them under a label that names them as context, not evidence of progress (AC-14). No repository code is executed anywhere in the system.
+Withdrawn in requirements 0.11 ([ADR 0022](adr/0022-no-repository-connector.md)). The GitHub connector, its sync runs, webhook, normalised repository events, developer identities and contribution attribution were built and never connected to a repository on the running deployment; migration 0028 dropped their seven tables, the `repository_events` guard trigger and eight enum types. A project's repository is `projects.repo_url`, a link nothing reads (PROJ-01), and work a student wants assessed is attached to the report (REP-04) and indexed like any attachment (5.7). The section number is kept so that references to §9 onward stay valid.
 
 ## 9 Assessment pipeline
 
@@ -441,7 +388,7 @@ Each step is a procrastinate job keyed `assess:{student}:{project}:{period}:{rep
 
 ### 9.2 Snapshot window
 
-`window_start_utc = period.start_utc`, `window_end_utc = period.end_utc`, plus repository events whose `merged_at` falls in the window but `authored_at` earlier, flagged `integration_of_earlier_work` (REPO-06). Items: the entry's own evidence references, artifact versions attached to the entry, repository events attributed to the student in the project within the window, and the frozen baseline. Coverage notes record what was omitted: truncated diffs, extraction failures, stale sync (`last successful sync < window_end`), and unresolved attributions (REPO-08, ASSESS-06).
+`window_start_utc = period.start_utc`, `window_end_utc = period.end_utc`. Items: the entry's own evidence references, found by identity so a late report stays in its own week, artifact versions in the project within the window that the student may see, and the frozen baseline. Coverage notes record what was omitted, such as extraction failures (ASSESS-06). `evidence_snapshots.integration_lag_days` and `evidence_snapshot_items.integration_of_earlier_work` remain for the rows written before ADR 0022 and are now always 0 and false.
 
 ### 9.3 Structured rubric output
 
@@ -497,7 +444,7 @@ def coverage_pct(sufficiency: dict[str, bool], weights) -> Decimal
 def confidence(coverage: Decimal, source_status: SourceStatus) -> tuple[Level, list[str]]  # rule table, reasons listed
 ```
 
-Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25, 15 give 78.75 and display 79 (ASSESS-04). Confidence rules are a small table (for example: coverage ≥ 90 % and fresh sync → high; any `unverifiable` discrepancy on a rated dimension → at most medium; stale repository or missing baseline → low with the reason named), stored in `rubric_versions.calculation_rules` so a change is versioned (ASSESS-06, ASSESS-09). `SourceStatus.repository_fresh` is `None` when a project has no repository at all, which is not a gap in coverage: a literature or theory project reaches full coverage through other artifacts (AC-05).
+Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25, 15 give 78.75 and display 79 (ASSESS-04). Confidence rules are a small table (for example: coverage ≥ 90 % → high; any `unverifiable` discrepancy on a rated dimension → at most medium; missing report or missing baseline → low with the reason named), stored in `rubric_versions.calculation_rules` so a change is versioned (ASSESS-06, ASSESS-09). A project with no code is not a gap in coverage: a literature or theory project reaches full coverage through its report and other artifacts (AC-05).
 
 ### 9.5 Versioning triggers (ASSESS-08, ASSESS-09, AC-03, AC-17)
 
@@ -505,10 +452,9 @@ Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25
 | --- | --- |
 | New report version, entry content changed | New assessment version for that entry only |
 | New report version, entry unchanged | None; existing assessment keeps pointing at `content_changed_in_version_id` |
-| New evidence arrives after approval (late sync) | New draft version flagged `evidence_update`; the approved version stays published until the professor approves the new one |
+| New evidence arrives after approval (a late attachment) | New draft version flagged `evidence_update`; the approved version stays published until the professor approves the new one |
 | Rubric or model version change | No automatic rerun; the professor may request recalculation, producing a new version labelled with the new rubric |
 | Professor override | `assessment_reviews.override` on the same version with rationale; original model output stays in `assessment_versions` |
-| Correction to a shared contribution | `review_shared_attributions` job re-flags every assessment whose snapshot contains the affected `event_id` |
 
 Trends (ASSESS-10) are queries over `assessment_versions` joined to `assessment_reviews.state = 'approved'`, grouped by rubric version, so a rubric change appears as a labelled break rather than a comparable series (AC-10).
 
@@ -560,10 +506,10 @@ flowchart TB
 
 - **Library:** procrastinate with the async connector. Enqueue is a row insert, so `submit_report()` writes `report_versions`, `project_report_entries`, and the job rows in one transaction; either all persist or none (section 10 of the requirements, AC-13). The queue's own schema is applied by a migration from the installed library version, so `alembic upgrade head` is the only step a deploy needs; alembic's autogenerate ignores the `procrastinate_*` tables because the library owns them.
 - **Job key convention:** `{domain}:{ids}:{step}` as `queueing_lock`; procrastinate refuses a second queued job with the same lock. Completed jobs are retained for 30 days for observability.
-- **Retries:** transient errors retry with exponential backoff (max 5); permanent errors fail immediately. A domain record (`analysis_runs`, `sync_runs`, `email_deliveries`) carries the application state including `partial`.
+- **Retries:** transient errors retry with exponential backoff (max 5); permanent errors fail immediately. A domain record (`analysis_runs`, `email_deliveries`) carries the application state including `partial`.
 - **Manual retry:** `POST /api/v1/admin/assessments/retry` re-enqueues with the same lock; because every step is idempotent on its key, no duplicate assessments or notifications result.
-- **Periodic tasks** (in the worker, `procrastinate.periodic`), seven of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`, which expires stale cached answers and deletes jobs finished more than seven days ago with their events); `scan_due_reminders` `*/5` and `send_queued_emails` `*/2` (`app/notifications/scheduler_tasks.py`); `incremental_sync` `*/30` (`app/evidence/tasks.py`).
-- **Observability:** `/api/metrics` exposes queue depth, oldest queued age, failures by job name, sync staleness, model error rate, citation validation failures, and access denials (section 11 "Observability").
+- **Periodic tasks** (in the worker, `procrastinate.periodic`), six of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`, which expires stale cached answers and deletes jobs finished more than seven days ago with their events); `scan_due_reminders` `*/5` and `send_queued_emails` `*/2` (`app/notifications/scheduler_tasks.py`). The repository connector's `incremental_sync` `*/30` went with ADR 0022.
+- **Observability:** `/api/metrics` exposes queue depth, oldest queued age, failures by job name, model error rate, citation validation failures, and access denials (section 11 "Observability").
 
 ## 13 Notifications and email
 
@@ -599,8 +545,8 @@ class EmailSender(Protocol):
 | Data control | `retention_sweep` deletes expired drafts and artifacts and propagates to MinIO, chunks, answer cache, and snapshots via cascading service calls; backup expiry documented as 30 days | Deletion test asserts no orphan in bucket, chunks, or cache |
 | AI data boundary | Only `ai/gateway.py` reaches OpenAI; per-project `ai_restricted`; documented content list per prompt | Import-linter contract; unit test that restricted projects produce zero `ai_calls` |
 | Source integrity | Untrusted framing; no tools exposed; citation validation against snapshot; router entities validated against DB | Adversarial README and report fixtures in the evaluation set (AC-12) |
-| Cost control | `ai_calls` ledger; budgets; content-hash caches; diff caps | Monthly cost report per project; alert at 80 % budget |
-| Observability | Structured JSON logs with request and job ids; `/api/metrics`; no raw research text in logs | Log audit in review; dashboard for queue lag and sync staleness |
+| Cost control | `ai_calls` ledger; budgets; content-hash caches; extracted-text caps | Monthly cost report per project; alert at 80 % budget |
+| Observability | Structured JSON logs with request and job ids; `/api/metrics`; no raw research text in logs | Log audit in review; dashboard for queue lag |
 | Usability | Responsive layout; keyboard-accessible editor; autosave indicator; equation rendering | Manual checklist on desktop and phone width |
 | Portability | Gateway abstraction for model replacement; the research history stays in Postgres and object storage under stable ids | Provider swap exercised by the fake gateway in CI. *The export half was withdrawn with UI-06, so there is no bundle and no round-trip test* |
 
@@ -630,14 +576,14 @@ class EmailSender(Protocol):
 | REP-06 | 5.2 (`reporting_obligations`), 7.1, 7.2 |
 | REP-07 | 5.2 (`first_submitted_at`); pre-deadline reminders withdrawn in 0.10 (7.3) |
 | REP-08 | 7.2, 13 |
-| REPO-01 | 8.1 |
-| REPO-02 | 8.2 |
-| REPO-03 | 8.4 |
-| REPO-04 | 8.4 |
-| REPO-05 | 8.3 |
-| REPO-06 | 8.2, 9.2 |
-| REPO-07 | 8.5 |
-| REPO-08 | 8.5, 9.2 |
+| REPO-01 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
+| REPO-02 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
+| REPO-03 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
+| REPO-04 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
+| REPO-05 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
+| REPO-06 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
+| REPO-07 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
+| REPO-08 | Withdrawn in requirements 0.11 with the repository connector; tables dropped by migration 0028 (ADR 0022) |
 | ASSESS-01 | 5.2 (`evidence_snapshots`), 9.2 |
 | ASSESS-02 | 9.4, 14 (review workspace) |
 | ASSESS-03 | 9.3 |
@@ -666,17 +612,17 @@ class EmailSender(Protocol):
 | AC-01 | 5.2 (`uq_entry`), 9.1 |
 | AC-02 | 6.1 |
 | AC-03 | 5.3, 9.5 |
-| AC-04 | 8.3, 9.2 |
+| AC-04 | Withdrawn in requirements 0.11 with REPO-05 (ADR 0022) |
 | AC-05 | 9.3, 9.4 |
-| AC-06 | 8.4 |
+| AC-06 | Withdrawn in requirements 0.11 with REPO-03 and REPO-04 (ADR 0022) |
 | AC-07 | 9.3 |
 | AC-08 | 7.1, 7.2 |
-| AC-09 | 8.2, 12 |
+| AC-09 | Withdrawn in requirements 0.11 with REPO-05 (ADR 0022) |
 | AC-10 | 9.5, 11 |
 | AC-11 | 6.3 |
 | AC-12 | 9.3, 10 |
 | AC-13 | 9.1, 12 |
-| AC-14 | 8.5 |
+| AC-14 | 9.3, 9.4 (volume is context, never achievement); restated in requirements 0.11 for attachments |
 | AC-15 | 11 |
 | AC-16 | 3, 15 |
 | AC-17 | 5.2 (`content_changed_in_version_id`), 9.1, 9.5 |
@@ -705,7 +651,7 @@ Two corrections and one addition, each carried in
 
 Carried from section 14 of the requirements and from this design:
 
-1. Whether any pilot repository is on self-hosted GitLab, which would make GitLab the first connector.
+1. *Closed by ADR 0022:* there is no repository connector, so no first provider to choose.
 2. Whether any project needs a different weekly meeting day; the design assumes one workspace-wide day.
 3. Mail provider: SMTP relay of the institution versus a transactional API.
 4. OpenAI data-processing terms acceptable to the professor, and which projects need `ai_restricted`.

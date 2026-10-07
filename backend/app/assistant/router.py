@@ -55,10 +55,6 @@ _KEYWORD_FACTS: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"\breview\b.*\bqueue\b|\bwaiting\b.*\breview\b|\bto review\b", re.I),
         "review_queue",
     ),
-    (
-        re.compile(r"\bstale\b|\bnot synced\b|\bsync(ed|ing)? (failed|issues?)\b", re.I),
-        "stale_repositories",
-    ),
     (re.compile(r"\bblock(ed|ing|ers?)\b|\bstuck\b", re.I), "blockers"),
     (
         re.compile(r"\bprogress(ed)?\b.*\b(over|last|weeks?)\b|\btrajector|\btrend", re.I),

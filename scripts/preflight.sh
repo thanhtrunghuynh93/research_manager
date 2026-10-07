@@ -4,10 +4,10 @@
 # docs/runbooks/deploy.md step 2 asks an operator to compare the *keys* in infra/.env against
 # .env.example by eye. That check cannot see three of the things that actually break a deploy:
 #
-#   - a key present with an empty value (RM_METRICS_TOKEN, RM_GITHUB_WEBHOOK_SECRET)
+#   - a key present with an empty value (RM_METRICS_TOKEN)
 #   - a variable read by the Caddyfile but never passed into the caddy container (RM_ACME_EMAIL)
 #   - a bind-mounted file that does not exist, which Docker silently creates as a *directory*
-#     (infra/backup/age-recipients.txt, infra/backup/rclone.conf, infra/secrets/github-app.pem) —
+#     (infra/backup/age-recipients.txt, infra/backup/rclone.conf) —
 #     the backup container then fails on its first nightly run and nothing says so
 #
 # The application refuses to start on development defaults in prod (app/core/config.py), so this
@@ -65,10 +65,6 @@ else
   pass "RM_ACME_EMAIL is set"
 fi
 
-if [ -n "$(value RM_GITHUB_APP_ID)" ] && [ -z "$(value RM_GITHUB_WEBHOOK_SECRET)" ]; then
-  fail "RM_GITHUB_APP_ID is set without RM_GITHUB_WEBHOOK_SECRET; the webhook returns 503"
-fi
-
 if [ -z "$(value RM_OFFSITE_REMOTE)" ]; then
   warn "RM_OFFSITE_REMOTE is empty: backups stay on this host and die with its disk"
 fi
@@ -94,7 +90,7 @@ esac
 echo
 echo "Files that Docker would otherwise create as directories"
 
-for mount in infra/backup/age-recipients.txt infra/backup/rclone.conf infra/secrets/github-app.pem; do
+for mount in infra/backup/age-recipients.txt infra/backup/rclone.conf; do
   if [ -d "$mount" ]; then
     fail "$mount is a DIRECTORY — Docker created it from a missing bind mount; remove it and create the file"
   elif [ ! -f "$mount" ]; then

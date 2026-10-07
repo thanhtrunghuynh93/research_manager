@@ -1,6 +1,6 @@
 # ADR 0005 — GitHub App as the first repository connector
 
-Status: accepted — 2026-09-11
+Status: withdrawn by [ADR 0022](0022-no-repository-connector.md) — 2026-10-07 (accepted 2026-09-11)
 
 ## Context
 

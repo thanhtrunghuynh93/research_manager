@@ -1,6 +1,6 @@
 """AC-05 — A student documents a rigorous negative result or a useful theoretical result without
-commits | The rubric can credit learning, rigor, and relevant artifacts without requiring
-repository activity.
+code | The rubric can credit learning, rigor, and relevant artifacts without requiring code
+activity.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ async def test_ac_05_a_negative_result_without_code_can_be_rated_fully(
         ],
     )
 
-    # There is no repository on this project at all, and no commit anywhere.
+    # There is no code on this project at all, only the report.
     gateway = FakeGateway(
         responses={
             "rate_rubric": RubricOutput(
@@ -111,7 +111,7 @@ async def test_ac_05_a_negative_result_without_code_can_be_rated_fully(
     assert assessment is not None
     assert assessment.progress_index == 89, "a negative result is creditable work"
     assert all(rating["rating"] != "unknown" for rating in assessment.ratings.values()), (
-        "no dimension was withheld for want of commits"
+        "no dimension was withheld for want of code"
     )
-    # The absence of a repository is not a gap in coverage.
+    # The absence of code is not a gap in coverage.
     assert all("repository" not in reason for reason in assessment.confidence_reasons)

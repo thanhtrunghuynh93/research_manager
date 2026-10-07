@@ -53,8 +53,8 @@ def _workspace_scoped_user_fk() -> ForeignKeyConstraint:
     when they join another workspace (ADR 0014). Without it the move is refused outright, since
     every account has an invitation row from the moment it is created.
 
-    The four tables holding research history — `project_memberships`, `weekly_reports`,
-    `developer_identities`, `contributions` — deliberately do not cascade. That is what still
+    The two tables holding research history — `project_memberships` and `weekly_reports` —
+    deliberately do not cascade. That is what still
     pins a student who has written anything, and what makes "history stays behind" a property of
     the schema rather than a rule someone has to remember.
     """

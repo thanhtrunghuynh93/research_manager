@@ -1,23 +1,9 @@
 # Host secrets
 
-Mounted read-only into the api and worker containers. Nothing in this directory is committed:
-`.gitignore` covers it, and `gitleaks` runs on every commit and in CI.
-
-| File | What it is | Without it |
-| --- | --- | --- |
-| `github-app.pem` | The GitHub App's private key, downloaded once when the App was created | The connector falls back to the in-memory one, and a connected repository reports no activity — which looks exactly like a student who did nothing (REPO-01, AC-04) |
-
-The path inside the container is fixed at `/run/secrets/github-app.pem` and is what
-`RM_GITHUB_APP_PRIVATE_KEY_PATH` points at. `RM_GITHUB_APP_PRIVATE_KEY_HOST_PATH` says where it
-comes from on this host, so the key can live outside the repository entirely.
-
-Compose needs the path to exist even when no App is configured, so create an empty placeholder:
-
-```bash
-touch infra/secrets/github-app.pem
-```
-
-An empty file is not a key: the factory checks that it can read one and logs the fallback.
+Nothing in this directory is mounted any more. It held `github-app.pem`, the GitHub App key for the
+repository connector, which was removed (ADR 0022); a copy left on a host can be deleted once the
+release without the mount is deployed. The directory stays gitignored, and `gitleaks` runs on
+every commit and in CI, so a secret dropped here by habit is still not committed.
 
 ## The backup key lives next door, and is the one that fails quietly
 
@@ -33,6 +19,6 @@ age-keygen -o rm-backup-identity.key     # NOT on the VPS
 ```
 
 `scripts/preflight.sh` fails when the file is missing, is a directory, or holds no `age1…` key.
-The three files under this heading are all bind mounts, and Docker creates a missing bind source
+The two files `preflight.sh` checks are both bind mounts, and Docker creates a missing bind source
 as a *directory* — which is why "the file does not exist" and "the file is a directory" are
 separate checks there.

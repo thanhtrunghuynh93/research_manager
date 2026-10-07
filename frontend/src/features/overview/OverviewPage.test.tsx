@@ -21,7 +21,6 @@ const EMPTY = {
   },
   outstanding: { count: 0, as_of: "2026-09-21T03:00:00Z", entries: [], note: "" },
   review_queue: [],
-  sync_issues: [],
   stalled_analyses: [],
   ai_budget: {
     analysis_delayed: false,
@@ -67,7 +66,6 @@ test("keeps every section on screen when there is nothing to do", async () => {
     await screen.findByText(/Every obligation for this week has been met/),
   ).toBeInTheDocument();
   expect(screen.getByText(/Nothing is waiting for review/)).toBeInTheDocument();
-  expect(screen.getByText(/Every connected repository synced recently/)).toBeInTheDocument();
   expect(screen.getByText(/Every analysis completed/)).toBeInTheDocument();
 });
 
@@ -85,26 +83,6 @@ test("lists who still owes a report and when the count was true", async () => {
   expect(await screen.findByText(/Baselines/)).toBeInTheDocument();
   expect(screen.getByText(/after exemptions and extensions/)).toBeInTheDocument();
   expect(screen.getByText(/as of/)).toBeInTheDocument();
-});
-
-test("labels a quiet repository as a sync problem, not as a quiet week", async () => {
-  renderPage({
-    ...EMPTY,
-    sync_issues: [
-      {
-        repository_id: "r1",
-        full_name: "lab/retrieval",
-        state: "failed",
-        last_finished_at: null,
-        error_summary: "credentials revoked",
-      },
-    ],
-  });
-
-  expect(await screen.findByTestId("freshness-badge")).toHaveTextContent(/failed/i);
-  expect(
-    screen.getByText(/means the evidence is incomplete, not that no work was done/),
-  ).toBeInTheDocument();
 });
 
 test("says plainly when a spent budget is holding up analysis", async () => {

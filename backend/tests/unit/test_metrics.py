@@ -159,50 +159,20 @@ def test_coverage_of_nothing_is_zero() -> None:
     assert coverage_pct({}, WEIGHTS) == Decimal("0.00")
 
 
-def test_full_coverage_with_fresh_sources_is_high_confidence() -> None:
+def test_full_coverage_with_a_report_and_a_baseline_is_high_confidence() -> None:
     level, reasons = confidence(
         Decimal("95.00"),
-        SourceStatus(report_submitted=True, repository_fresh=True, baseline_available=True),
+        SourceStatus(report_submitted=True, baseline_available=True),
     )
 
     assert level is Confidence.HIGH
     assert reasons == []
 
 
-def test_a_project_without_a_repository_can_still_be_high_confidence() -> None:
-    # ASSESS-06: a project without a repository can have full coverage through other artifacts.
-    level, _ = confidence(
-        Decimal("95.00"),
-        SourceStatus(report_submitted=True, repository_fresh=None, baseline_available=True),
-    )
-
-    assert level is Confidence.HIGH
-
-
-def test_a_stale_repository_lowers_confidence_and_says_why() -> None:
-    level, reasons = confidence(
-        Decimal("95.00"),
-        SourceStatus(report_submitted=True, repository_fresh=False, baseline_available=True),
-    )
-
-    assert level is Confidence.LOW
-    assert any("repository" in reason for reason in reasons)
-
-
-def test_a_stale_repository_is_never_read_as_zero_work() -> None:
-    # AC-04: it reduces confidence; it does not reduce the rating.
-    _, reasons = confidence(
-        Decimal("95.00"),
-        SourceStatus(report_submitted=True, repository_fresh=False, baseline_available=True),
-    )
-
-    assert all("no work" not in reason for reason in reasons)
-
-
 def test_a_missing_baseline_lowers_confidence_and_says_why() -> None:
     level, reasons = confidence(
         Decimal("95.00"),
-        SourceStatus(report_submitted=True, repository_fresh=True, baseline_available=False),
+        SourceStatus(report_submitted=True, baseline_available=False),
     )
 
     assert level is Confidence.LOW
@@ -215,7 +185,6 @@ def test_an_unverifiable_claim_caps_confidence_at_medium() -> None:
         Decimal("95.00"),
         SourceStatus(
             report_submitted=True,
-            repository_fresh=True,
             baseline_available=True,
             unverifiable_claims=1,
         ),
@@ -228,7 +197,7 @@ def test_an_unverifiable_claim_caps_confidence_at_medium() -> None:
 def test_thin_coverage_is_low_confidence() -> None:
     level, reasons = confidence(
         Decimal("40.00"),
-        SourceStatus(report_submitted=True, repository_fresh=True, baseline_available=True),
+        SourceStatus(report_submitted=True, baseline_available=True),
     )
 
     assert level is Confidence.LOW
@@ -238,7 +207,7 @@ def test_thin_coverage_is_low_confidence() -> None:
 def test_a_missing_report_is_low_confidence() -> None:
     level, reasons = confidence(
         Decimal("60.00"),
-        SourceStatus(report_submitted=False, repository_fresh=True, baseline_available=True),
+        SourceStatus(report_submitted=False, baseline_available=True),
     )
 
     assert level is Confidence.LOW
@@ -251,7 +220,6 @@ def test_every_reason_is_a_stated_rule_rather_than_a_probability() -> None:
         Decimal("50.00"),
         SourceStatus(
             report_submitted=False,
-            repository_fresh=False,
             baseline_available=False,
             unverifiable_claims=2,
             truncated_evidence=True,
@@ -262,29 +230,12 @@ def test_every_reason_is_a_stated_rule_rather_than_a_probability() -> None:
     assert all(isinstance(reason, str) and reason for reason in reasons)
 
 
-def test_an_unresolved_attribution_lowers_confidence_and_names_itself() -> None:
-    """REPO-04/ASSESS-06: work we could not attribute is a limit on the assessment, not on the
-    student. The reason says how many, so the professor can go and look."""
-    level, reasons = confidence(
-        Decimal("100.00"),
-        SourceStatus(
-            report_submitted=True,
-            baseline_available=True,
-            repository_fresh=True,
-            unresolved_attributions=3,
-        ),
-    )
-
-    assert level is Confidence.MEDIUM
-    assert any("3 contribution(s) could not be attributed" in reason for reason in reasons)
-
-
 def test_coverage_between_the_two_thresholds_is_medium_and_says_which_threshold() -> None:
     """ASSESS-06: the band between "low" and "high" is the common case, and the reason has to be
     specific enough to act on — 80 % coverage with a named threshold, not a bare "medium"."""
     level, reasons = confidence(
         Decimal("80.00"),
-        SourceStatus(report_submitted=True, baseline_available=True, repository_fresh=True),
+        SourceStatus(report_submitted=True, baseline_available=True),
     )
 
     assert level is Confidence.MEDIUM

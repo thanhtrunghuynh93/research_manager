@@ -2,8 +2,8 @@
  * Badges that keep the limits of the evidence visible beside whatever rests on them (UI-01, UI-05).
  *
  * Each of these exists because the same pixel-space would otherwise be filled by a number that
- * looks more certain than it is: a confidence level without its reasons, a rating whose evidence
- * has gone, a repository that is quiet because nobody synced it rather than because nobody worked.
+ * looks more certain than it is: a confidence level without its reasons, or a rating whose
+ * evidence has gone.
  *
  * They are set in mono and upper case because they are the system speaking, not the author.
  */
@@ -80,25 +80,6 @@ export function ConfidenceReasons({
         </li>
       ))}
     </ul>
-  );
-}
-
-/** AC-04: a stale source is stale evidence. It is never rendered as an absence of work. */
-export function FreshnessBadge({
-  state,
-  lastFinishedAt,
-}: {
-  state: string;
-  lastFinishedAt?: string | null;
-}) {
-  const { t } = useTranslation();
-  const stale = state !== "completed";
-  return (
-    <Badge tone={stale ? "warn" : "good"} data-testid="freshness-badge">
-      {stale
-        ? t("evidence.stale", { state })
-        : t("evidence.fresh", { when: lastFinishedAt?.slice(0, 10) ?? "" })}
-    </Badge>
   );
 }
 

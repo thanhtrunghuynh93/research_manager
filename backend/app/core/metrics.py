@@ -47,12 +47,6 @@ QUEUE_OLDEST_SECONDS = Gauge(
 JOB_FAILURES = Gauge(
     "rm_job_failures", "Jobs in a failed state, by task name.", labelnames=("task",)
 )
-SYNC_STALENESS_SECONDS = Gauge(
-    "rm_sync_staleness_seconds", "Time since the most recent successful repository sync."
-)
-REPOSITORIES = Gauge(
-    "rm_repositories", "Connected repositories, by connection state.", labelnames=("state",)
-)
 ANALYSIS_RUNS = Gauge("rm_analysis_runs", "Assessment runs by state.", labelnames=("state",))
 ASSESSMENT_VERSIONS = Gauge("rm_assessment_versions", "Assessment versions written.")
 REVIEW_QUEUE = Gauge("rm_review_queue", "Draft assessments awaiting the professor.")

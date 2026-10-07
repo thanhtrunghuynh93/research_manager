@@ -321,13 +321,13 @@ async def move_student(
     scoped to a workspace they are not in. Both move together, which is why this is the one place
     the history foreign keys still bite.
 
-    Four of the eight composite keys onto `users` do not cascade on update — `project_memberships`,
-    `weekly_reports`, `developer_identities`, `contributions` — so Postgres refuses the move the
-    moment a student has a project membership or a submitted report. That refusal is the rule
-    "history stays in the workspace it was written in", and it is left to the database rather than
-    reimplemented here: identity sits below projects, reporting and evidence in the layer order and
-    cannot ask them what they hold (docs/repo_layout.md §3.2). The savepoint is what lets the
-    refusal be caught and explained instead of aborting the request.
+    Two of the six composite keys onto `users` do not cascade on update — `project_memberships`
+    and `weekly_reports` — so Postgres refuses the move the moment a student has a project
+    membership or a submitted report. That refusal is the rule "history stays in the workspace it
+    was written in", and it is left to the database rather than reimplemented here: identity sits
+    below projects and reporting in the layer order and cannot ask them what they hold
+    (docs/repo_layout.md §3.2). The savepoint is what lets the refusal be caught and explained
+    instead of aborting the request.
 
     So this moves a student who was enrolled into the wrong workspace, and refuses one who has
     started work. Moving the latter means deciding what happens to the work, which is a product
@@ -362,9 +362,9 @@ async def move_student(
     except IntegrityError as exc:
         # The account keeps rows that are pinned to the workspace they were written in.
         raise ValidationError(
-            "this student has already done work in their workspace — project memberships, a "
-            "submitted report, or attributed contributions — and that history cannot move with "
-            "them. Only a student who has not started yet can be moved"
+            "this student has already done work in their workspace — a project membership or a "
+            "submitted report — and that history cannot move with them. Only a student who has "
+            "not started yet can be moved"
         ) from exc
 
     # Their visibility changed and they did not ask for it, so every session ends (AUTH-03). A
@@ -398,7 +398,7 @@ async def join_workspace(session: AsyncSession, scope: Scope, workspace_id: UUID
     which is how switching between them is spelled.
 
     The four identity foreign keys cascade, so an invitation, a session, a reset link and a
-    notification follow the account as the anchor moves. The four history keys do not, so a student
+    notification follow the account as the anchor moves. The two history keys do not, so a student
     who has submitted anything cannot be moved at all — history stays where it was written.
 
     Reachable, not owned: a colleague belongs to a workspace they do not own and must still be able

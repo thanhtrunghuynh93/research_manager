@@ -1,5 +1,5 @@
-"""AC-12 — A repository README contains instructions to disclose private notes | The content is
-treated as evidence text and cannot change retrieval permissions or answer scope.
+"""AC-12 — An attached file, such as a README, contains instructions to disclose private notes |
+The content is treated as evidence text and cannot change retrieval permissions or answer scope.
 
 There are three separate places this has to hold, and only one of them involves the model. The
 index must give the README the access label of its source rather than the one it asks for; the
@@ -52,9 +52,9 @@ async def _project_with_a_poisoned_readme(
     await evidence_service.index_evidence(
         db,
         workspace_id=prof_scope.workspace_id,
-        source_kind=EvidenceSourceKind.REPOSITORY_EVENT,
+        source_kind=EvidenceSourceKind.ARTIFACT_VERSION,
         source_id=project.id,
-        source_version="bb41c07",
+        source_version="1",
         text=INJECTION,
         visibility=Visibility.PROJECT_SHARED,
         locator="ingest/README.md",

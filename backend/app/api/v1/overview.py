@@ -110,8 +110,6 @@ class OverviewOut(BaseModel):
     # from: a student who has reported does not appear in it at all.
     week: list[WeekWorkspace] = Field(default_factory=list)
     review_queue: list[dict[str, Any]] = Field(default_factory=list)
-    # AC-04: named as stale evidence, never rendered as an absence of work.
-    sync_issues: list[dict[str, Any]] = Field(default_factory=list)
     # AC-13: runs that stopped short, with the reason, so a retry is an informed decision.
     stalled_analyses: list[dict[str, Any]] = Field(default_factory=list)
     ai_budget: BudgetState
@@ -127,7 +125,6 @@ async def overview(scope: ProfScopeDep, session: SessionDep) -> OverviewOut:
     outstanding = await facts.run(session, "missing_reports", query)
     week = await facts.run(session, "week_reports", query)
     queue = await facts.run(session, "review_queue", query)
-    stale = await facts.run(session, "stale_repositories", query)
     stalled = await facts.run(session, "stalled_analyses", query)
     budgets = await ops.ai_budgets(session, scope)
     mail = await notifications_service.mail_health(session, scope)
@@ -154,7 +151,6 @@ async def overview(scope: ProfScopeDep, session: SessionDep) -> OverviewOut:
         ),
         week=await _week_board(session, scope, week),
         review_queue=queue.rows if queue is not None else [],
-        sync_issues=stale.rows if stale is not None else [],
         stalled_analyses=stalled.rows if stalled is not None else [],
         ai_budget=BudgetState(
             analysis_delayed=budgets.analysis_delayed,

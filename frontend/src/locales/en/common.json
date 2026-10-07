@@ -167,9 +167,6 @@
     "reviewQueue": "Assessments awaiting review",
     "nothingToReview": "Nothing is waiting for review.",
     "draftFor": "Draft for {{student}}",
-    "syncIssues": "Repository sync",
-    "syncHealthy": "Every connected repository synced recently.",
-    "syncNote": "A stale repository means the evidence is incomplete, not that no work was done.",
     "stalled": "Analyses that did not complete",
     "retry": "Retry",
     "nothingStalled": "Every analysis completed.",
@@ -202,8 +199,6 @@
     }
   },
   "evidence": {
-    "stale": "Sync {{state}}",
-    "fresh": "Synced {{when}}",
     "noLongerAvailable": "no longer available to you",
     "privateNote": "Private supervision note",
     "noCitations": "No citations — nothing here rests on a retrieved record."
@@ -217,7 +212,6 @@
     "noDiscrepancies": "No claim was left unresolved.",
     "evidence": "Evidence snapshot",
     "noEvidence": "The snapshot is empty. Ratings cannot rest on anything.",
-    "integrated": "integrated earlier work",
     "draft": "Draft assessment",
     "rationale": "Reason for any change",
     "rationalePlaceholder": "Why you are changing a rating. Recorded with the approval.",

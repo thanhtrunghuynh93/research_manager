@@ -129,8 +129,8 @@ def check_cited_api_paths_exist() -> list[str]:
     version prefix — and no test could notice, because prose is not called.
     """
     served = set(json.loads(OPENAPI.read_text(encoding="utf-8"))["paths"])
-    # Registered with include_in_schema=False, so they are absent from the export by intent.
-    served |= {"/api/metrics", "/api/v1/webhooks/github"}
+    # Registered with include_in_schema=False, so it is absent from the export by intent.
+    served |= {"/api/metrics"}
     templated = {re.sub(r"\{[^}]+\}", "{}", path) for path in served}
 
     problems: list[str] = []

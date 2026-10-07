@@ -126,9 +126,9 @@ a shared counter rather than a rewrite. Accepted on that basis.
 raises when `RM_ENV=prod` and any shipped default survives: either development password, a
 localhost database, public URL or object endpoint, a plain-http public URL, an empty metrics
 token, the `example.edu` sender, a `mailpit`/`localhost` relay, or a GitHub App id without its
-webhook secret. Every violation is collected and reported together — one at a time would turn a
-single edit of `infra/.env` into a deploy loop. Development is untouched, which is what the
-defaults exist for.
+webhook secret (that last rule went with the repository connector, ADR 0022). Every violation is
+collected and reported together — one at a time would turn a single edit of `infra/.env` into a
+deploy loop. Development is untouched, which is what the defaults exist for.
 `Settings` carries no production validation. The application boots with `RM_ENV=prod` and every
 shipped default in place; only `/api/metrics` self-disables. deploy.md step 2 lists the variables
 that must be non-empty, which makes correctness depend on an operator reading a checklist.
@@ -218,7 +218,8 @@ audit because they are properties of the deployment rather than of the code:
 - **Three bind-mounted files did not exist**: `infra/backup/age-recipients.txt`,
   `infra/backup/rclone.conf` and `infra/secrets/github-app.pem`. Docker creates a missing bind
   source as a *directory*, so the backup container would have failed on its first nightly run
-  with nothing watching it. `scripts/preflight.sh` now fails on each.
+  with nothing watching it. `scripts/preflight.sh` now fails on each. *Since ADR 0022* the
+  connector's key is no longer mounted, and preflight checks only the two backup files.
 - **No release tag had ever been cut**, so `ghcr.io/.../rm-backend` held no images and deploy.md
   step 3 (`docker compose pull`) had nothing to pull. *Corrected on 21 September 2026:* that step
   was the runbook describing a deployment this host does not do. It builds from the checkout into

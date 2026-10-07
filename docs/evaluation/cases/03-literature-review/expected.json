@@ -28,5 +28,5 @@
     "no commits",
     "no repository activity"
   ],
-  "notes": "AC-05 and REPO-01: a literature week with zero commits must reach full coverage. Any rationale that treats the absence of commits as a shortfall is a calibration failure."
+  "notes": "AC-05: a literature week with zero commits must reach full coverage. Any rationale that treats the absence of commits as a shortfall is a calibration failure."
 }

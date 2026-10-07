@@ -130,9 +130,7 @@ class Project(UUIDPrimaryKeyMixin, Base):
     target_on: Mapped[date | None]
     venue_target: Mapped[str | None] = mapped_column(Text)
     # Where the code lives, as a link for the people on the project (PROJ-01, shared resources).
-    # Deliberately *not* a connected repository: REPO-01's `repositories` table is a sync — it
-    # needs a provider, an external id and a credential, it pulls events and attributes
-    # contributions, and only a professor may set one up. This is a URL somebody typed. Nothing
+    # A URL somebody typed, nothing more: there is no repository connector (ADR 0022), so nothing
     # reads it but a human, and filling it in attributes no commits to anybody.
     repo_url: Mapped[str | None] = mapped_column(Text)
     shared_resources: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)

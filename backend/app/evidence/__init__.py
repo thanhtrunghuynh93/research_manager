@@ -1,4 +1,4 @@
-"""Repository connectors, developer identities, repository events, contributions, evidence index.
+"""The evidence index: citable references to report entries and attachments, and their chunks.
 
-Requirements REPO-01..08. See docs/repo_layout.md §3.2 for the module file shape.
+See docs/repo_layout.md §3.2 for the module file shape.
 """

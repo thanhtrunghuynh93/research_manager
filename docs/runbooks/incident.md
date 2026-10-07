@@ -17,7 +17,6 @@ suspected data exposure.
 | `object_storage: fail` | MinIO down | Restart minio; uploads fail but report text submission still works |
 | Assessments stuck in `queued` | Worker down or OpenAI budget/timeouts | Check worker logs; `/api/metrics` queue depth; retry from the admin jobs page after the cause is fixed |
 | Missed-deadline emails not sent | SMTP failure | `email_deliveries.state = failed` rows; fix SMTP; the in-app notification is already visible; resend from admin |
-| Repository sync stale | Installation token or rate limit | Project workspace shows the error; re-authorize the GitHub App; manual resync |
 | Suspected data exposure | Authorization bug | Disable the affected endpoint at Caddy (`respond /api/v1/<path>* 503`), export `audit_events` and access logs for the window, fix, then notify the professor with the scope of what was visible |
 
 ## After

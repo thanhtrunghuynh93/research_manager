@@ -69,30 +69,22 @@ async def test_the_professor_has_drafts_waiting_and_one_released_week(db: AsyncS
     assert released, "one week should already be released to the student"
 
 
-async def test_the_repository_evidence_is_present_and_attributed(db: AsyncSession) -> None:
-    """REPO-04/AC-06: joint work is joint, and merging is not authorship."""
+async def test_the_project_shared_evidence_is_searchable(db: AsyncSession) -> None:
+    """QA-02: the demo's shared evidence is retrievable, so the search has something to find."""
     result = await load_demo(db)
     professor = await db.get(User, result.professor_id)
     assert professor is not None
     prof_scope = await identity_service.scope_for(db, professor)
 
-    repositories = await evidence_service.list_repositories(db, prof_scope)
-    assert repositories
-    contributions = await evidence_service.list_contributions(
-        db, prof_scope, project_id=result.project_ids[0]
+    hits = await evidence_service.search_evidence(
+        db,
+        prof_scope,
+        query="evaluation split frozen",
+        mode="lexical",
+        project_id=result.project_ids[0],
     )
 
-    assert contributions
-    # The co-authored commit produced joint rows rather than crediting one student with both.
-    assert any(row.share == "joint" for row in contributions)
-    # The merge is recorded as a merge. It is a contribution, and it is not authorship.
-    assert any(row.role == "merger" for row in contributions)
-    assert all(row.role != "merger" or row.share == "individual" for row in contributions)
-    # AC-06: however many students share an artifact, the project counts it once.
-    distinct = await evidence_service.distinct_event_count(
-        db, prof_scope, project_id=result.project_ids[0]
-    )
-    assert distinct < len(contributions)
+    assert any("evaluation split is frozen" in hit.text for hit in hits)
 
 
 async def test_the_demo_includes_a_claim_the_evidence_cannot_support(db: AsyncSession) -> None:

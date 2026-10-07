@@ -45,18 +45,12 @@ class PlanItem:
 
 @dataclass(frozen=True, slots=True)
 class SourceStatus:
-    """What the sources looked like when the assessment was built (ASSESS-06).
-
-    `repository_fresh` is None when the project has no repository at all, which is not a gap: a
-    literature or theory project can have full coverage through other artifacts.
-    """
+    """What the sources looked like when the assessment was built (ASSESS-06)."""
 
     report_submitted: bool
     baseline_available: bool
-    repository_fresh: bool | None = None
     unverifiable_claims: int = 0
     truncated_evidence: bool = False
-    unresolved_attributions: int = 0
     extra_reasons: list[str] = field(default_factory=list)
 
 
@@ -148,10 +142,6 @@ def confidence(coverage: Decimal, status: SourceStatus) -> tuple[Confidence, lis
     elif coverage < HIGH_COVERAGE:
         reasons.append(f"evidence coverage is {coverage}%, below the {HIGH_COVERAGE}% threshold")
         level = min(level, Confidence.MEDIUM, key=_severity)
-    if status.repository_fresh is False:
-        # AC-04: this says the evidence is stale, not that no work happened.
-        reasons.append("the connected repository has not synced recently, so its evidence is stale")
-        level = Confidence.LOW
     if not status.baseline_available:
         reasons.append("no plan baseline was in effect, so commitment completion is unavailable")
         level = Confidence.LOW
@@ -163,12 +153,6 @@ def confidence(coverage: Decimal, status: SourceStatus) -> tuple[Confidence, lis
         level = min(level, Confidence.MEDIUM, key=_severity)
     if status.truncated_evidence:
         reasons.append("some evidence was truncated by a size limit and was read only in part")
-        level = min(level, Confidence.MEDIUM, key=_severity)
-    if status.unresolved_attributions:
-        reasons.append(
-            f"{status.unresolved_attributions} contribution(s) could not be attributed with"
-            " confidence"
-        )
         level = min(level, Confidence.MEDIUM, key=_severity)
     reasons.extend(status.extra_reasons)
 

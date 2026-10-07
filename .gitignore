@@ -26,7 +26,7 @@ infra/.env
 infra/.env.*
 *.pem
 *.key
-# Host secrets mounted into the containers. The README explaining them is kept.
+# Host secrets; none is mounted today (ADR 0022), but the directory stays ignored. The README is kept.
 infra/secrets/*
 !infra/secrets/README.md
 # The offsite backup credential. The tracked .example carries the shape and no secret; this one

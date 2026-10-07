@@ -1,6 +1,6 @@
 """Operations, professor only (architecture §12, docs/repo_layout.md §3.1).
 
-What a stalled worker, a revoked GitHub credential, or a spent budget have in common is that the
+What a stalled worker or a spent budget have in common is that the
 student-facing symptom is the same: an assessment that never appeared. These routes exist so the
 cause is visible in the product rather than in a log on the host.
 """
@@ -19,8 +19,6 @@ from app.api.deps import ProfScopeDep, SessionDep
 from app.assessment import ops
 from app.assessment import service as assessment_service
 from app.assessment.schemas import AssessmentOut
-from app.evidence import service as evidence_service
-from app.evidence.schemas import SyncRunOut
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
@@ -53,14 +51,6 @@ class AiBudgetsIn(BaseModel):
     project_monthly_usd: dict[str, str] = Field(default_factory=dict)
 
 
-class RepositoryHealth(BaseModel):
-    """One repository's sync state, so a stale source is named rather than read as no work."""
-
-    repository_id: UUID
-    full_name: str
-    last_run: SyncRunOut | None = None
-
-
 @router.get("/ai/usage", summary="Model spend this month")
 async def ai_usage(
     scope: ProfScopeDep,
@@ -87,20 +77,6 @@ async def set_ai_budgets(
         project_monthly_usd=payload.project_monthly_usd,
     )
     return AiBudgetsOut(**asdict(budgets))
-
-
-@router.get("/sync", summary="Repository sync health")
-async def sync_health(scope: ProfScopeDep, session: SessionDep) -> list[RepositoryHealth]:
-    """UI-01: last successful sync, covered range, and authorization errors (REPO-05)."""
-    repositories = await evidence_service.list_repositories(session, scope)
-    return [
-        RepositoryHealth(
-            repository_id=repository.id,
-            full_name=repository.full_name,
-            last_run=await evidence_service.sync_status(session, scope, repository.id),
-        )
-        for repository in repositories
-    ]
 
 
 @router.post("/assessments/retry", summary="Re-run one assessment pipeline")

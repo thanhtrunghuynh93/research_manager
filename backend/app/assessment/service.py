@@ -145,7 +145,8 @@ async def build_snapshot(
         period_id=period_id,
         window_start_utc=period.start_utc,
         window_end_utc=period.end_utc,
-        integration_lag_days=snapshot.INTEGRATION_LAG.days,
+        # Always 0 since the repository connector went (ADR 0022); older rows keep their 14.
+        integration_lag_days=0,
         item_count=len(draft.items),
         coverage_notes=draft.coverage_notes,
         access_epoch=epoch,
@@ -160,7 +161,6 @@ async def build_snapshot(
                 evidence_ref_id=item.evidence_ref_id,
                 workspace_id=student.workspace_id,
                 source_version=item.source_version,
-                integration_of_earlier_work=item.integration_of_earlier_work,
             )
         )
     await session.flush()
@@ -290,10 +290,6 @@ async def run_pipeline(
             "id": str(item.evidence_ref_id),
             "text": item.text,
             "locator": item.locator,
-            # REPO-06: work merged this week but written earlier is real and is not this week's
-            # progress. The snapshot records the distinction; dropping it here left the rating
-            # step unable to make it.
-            "integration_of_earlier_work": item.integration_of_earlier_work,
         }
         for item in items
     ]
@@ -639,7 +635,6 @@ async def _record_assessment(
         SourceStatus(
             report_submitted=report_version_id is not None,
             baseline_available=baseline is not None,
-            repository_fresh=await _repository_freshness(session, system, project_id),
             unverifiable_claims=int(source_status_extras.get("unverifiable_claims", 0)),
             extra_reasons=(
                 ["this project is restricted from model processing"] if restricted else []
@@ -684,22 +679,6 @@ async def _record_assessment(
     await repo.supersede_other_reviews(session, student_id, project_id, period_id, assessment.id)
     await session.flush()
     return await _assessment_out(session, assessment)
-
-
-async def _repository_freshness(
-    session: AsyncSession, scope: Scope, project_id: UUID
-) -> bool | None:
-    """None when the project has no repository, which is not a gap in evidence (ASSESS-06)."""
-    from app.evidence import service as evidence_service
-
-    repositories = await evidence_service.list_repositories(session, scope, project_id=project_id)
-    if not repositories:
-        return None
-    for repository in repositories:
-        status = await evidence_service.sync_status(session, scope, repository.id)
-        if status is None or status.state.value in ("failed", "partial"):
-            return False
-    return True
 
 
 # ------------------------------------------------------------------ review (ASSESS-08)

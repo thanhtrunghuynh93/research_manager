@@ -1,6 +1,6 @@
 # How professor, student, workspace, project and reports are organized
 
-Version 0.4 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.10, [architecture.md](architecture.md) v0.6, [use_cases.md](use_cases.md) v0.18, and the [ADRs](adr/)
+Version 0.5 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.11, [architecture.md](architecture.md) v0.7, [use_cases.md](use_cases.md) v0.19, and the [ADRs](adr/)
 
 This document is an orientation to the central relations: what belongs to what, which of those
 relations are plural, and where each one is enforced. It is derived from the documents above and
@@ -65,12 +65,13 @@ Four rules follow from the boundary rather than from taste:
 - **Leaving needs somewhere to land.** `users.workspace_id` is not nullable, so leaving an account's
   only membership is refused; leaving is also refused when it would leave active accounts in a
   workspace with no active professor — AUTH-01's rule applied to an ordinary API call.
-- **Moving an account is decided by the schema** (AUTH-06). Of the eight tables keyed on
+- **Moving an account is decided by the schema** (AUTH-06). Of the six tables keyed on
   `users(workspace_id, id)`, the four holding identity records — `invitations`, `sessions`,
-  `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account; the four
-  holding research history — `project_memberships`, `weekly_reports`, `developer_identities`,
-  `contributions` — do not. So `POST /users/{user_id}/workspace` moves an account that has written
-  nothing and Postgres refuses one that has. That is the rule, not a gap
+  `password_resets`, `notifications` — carry `ON UPDATE CASCADE` and follow the account; the two
+  holding research history — `project_memberships`, `weekly_reports` — do not
+  (`developer_identities` and `contributions` were two more until the repository connector went,
+  [ADR 0022](adr/0022-no-repository-connector.md)). So `POST /users/{user_id}/workspace` moves an
+  account that has written nothing and Postgres refuses one that has. That is the rule, not a gap
   ([ADR 0014](adr/0014-joining-and-leaving-a-workspace.md), [use_cases.md](use_cases.md) §2.1).
 
 ## 3 Professor
@@ -110,8 +111,8 @@ Four rules follow from the boundary rather than from taste:
   ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)): joining adds work to a student's
   week and ending one removes an obligation, and only the second is a supervision decision.
 - **Reads:** their own reports and drafts; their own assessments, and only once a review has
-  approved them; the projects they are a member of; the contributions and identity mappings
-  attributed to them, which is the precondition for raising misattribution (REPO-04).
+  approved them; the projects they are a member of; the evidence they or their project may
+  see, through search.
 - **Never reads:** another student's report or assessment, supervision notes, or the assistant, which is professor-facing by decision rather than by omission.
 - **Removal** ends every open project membership and deactivates the account in one transaction,
   which is what stops obligations deriving. Deactivation alone is suspension and leaves memberships
@@ -122,8 +123,8 @@ Four rules follow from the boundary rather than from taste:
 `projects` holds title, description, `research_questions[]`, `intended_contributions[]`, `stage`,
 `status`, `start_on` and `target_on`, `venue_target`, `repo_url`, `shared_resources`,
 `ai_restricted`, `open_to_join`, `created_by`. `repo_url` is a pointer for the people on the project
-and nothing more: it is not a connected repository, nothing is ingested from it, and no contribution
-is attributed from it (PROJ-01).
+and nothing more: there is no repository connector (ADR 0022), nothing is ingested from it, and no
+work is attributed from it (PROJ-01).
 
 - **Pinned to one workspace at creation, forever.** A student's projects are therefore the projects
   of their one workspace.
@@ -144,7 +145,7 @@ is attributed from it (PROJ-01).
   ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)).
 - **A membership is the entire grant of access to a project.** The predicate is same workspace and
   `project_id IN scope.project_ids`, with no second gate, so joining hands over the project record,
-  its documents, its repositories, its shared evidence, and the member
+  its documents, its shared evidence, and the member
   list, which is otherwise the only route by which one student learns another's name. That is why
   `open_to_join` defaults false and discovery is a separate, narrower read returning title, stage,
   status and a member count only ([ADR 0017](adr/0017-students-own-their-projects.md)).

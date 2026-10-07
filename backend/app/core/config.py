@@ -46,10 +46,6 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4.1"
     openai_embed_model: str = "text-embedding-3-small"
 
-    github_app_id: str = ""
-    github_app_private_key_path: str = ""
-    github_webhook_secret: SecretStr = SecretStr("")
-
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_user: str = ""
@@ -128,12 +124,6 @@ class Settings(BaseSettings):
             bad.append(
                 f"RM_SMTP_HOST is {self.smtp_host}, which accepts every message and delivers "
                 "none; no student would ever receive an invitation"
-            )
-
-        if self.github_app_id and not self.github_webhook_secret.get_secret_value():
-            bad.append(
-                "RM_GITHUB_APP_ID is set without RM_GITHUB_WEBHOOK_SECRET, so the webhook "
-                "endpoint returns 503 and pushes never trigger a sync"
             )
 
         if bad:

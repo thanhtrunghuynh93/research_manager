@@ -32,7 +32,7 @@
 		respond 404
 	}
 
-	# API and webhooks; SSE needs flushing without buffering.
+	# API; SSE needs flushing without buffering.
 	handle /api/* {
 		reverse_proxy api:8000 {
 			flush_interval -1

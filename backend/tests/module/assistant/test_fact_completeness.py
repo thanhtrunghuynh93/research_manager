@@ -15,10 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.assistant import router
 from app.assistant.facts.base import FactQuery
 from app.assistant.facts.members import members
-from app.assistant.facts.sources import stale_repositories
 from app.core.authz import Scope
-from app.evidence import service as evidence_service
-from app.evidence.connectors.fake import FakeRepositoryConnector
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -77,41 +74,6 @@ async def test_the_professor_sees_the_same_members(
     fact = await members(db, FactQuery(scope=prof_scope, as_of=AS_OF, project_id=project.id))
 
     assert fact is not None and fact.value == 2
-
-
-async def test_stale_repositories_cites_the_stale_ones(db: AsyncSession, prof_scope: Scope) -> None:
-    """Twenty citations to healthy repositories beside "one is stale" is worse than none."""
-    project = await make_project(db, prof_scope)
-
-    healthy = await evidence_service.connect_repository(
-        db,
-        prof_scope,
-        provider="github",
-        external_id="1",
-        full_name="lab/healthy",
-        connector=FakeRepositoryConnector(),
-    )
-    stale = await evidence_service.connect_repository(
-        db,
-        prof_scope,
-        provider="github",
-        external_id="2",
-        full_name="lab/stale",
-        connector=FakeRepositoryConnector(),
-    )
-    for repository in (healthy, stale):
-        await evidence_service.link_project(db, prof_scope, repository.id, project.id)
-    # Only one has ever synced; the other has never run and is therefore stale.
-    await evidence_service.sync_repository(
-        db, prof_scope, healthy.id, connector=FakeRepositoryConnector()
-    )
-
-    fact = await stale_repositories(
-        db, FactQuery(scope=prof_scope, as_of=datetime.now(UTC), project_id=project.id)
-    )
-
-    assert fact.value == 1
-    assert [citation.label for citation in fact.citations] == ["lab/stale"]
 
 
 async def test_a_student_past_the_first_page_is_still_found(

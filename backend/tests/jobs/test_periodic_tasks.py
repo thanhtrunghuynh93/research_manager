@@ -125,7 +125,7 @@ async def test_freezing_twice_leaves_the_first_baseline_in_place(
 async def test_refreshing_the_metrics_reads_every_section(db: AsyncSession) -> None:
     summary = await observability.refresh(db)
 
-    assert set(summary) == {"queue", "sync", "assessment", "email"}
+    assert set(summary) == {"queue", "assessment", "email"}
 
 
 async def test_the_queue_gauges_are_populated_from_the_queue_tables(db: AsyncSession) -> None:
@@ -183,8 +183,8 @@ async def test_a_failing_section_does_not_take_the_refresh_with_it(
 
 
 async def test_the_metrics_endpoint_exposes_the_named_series(db: AsyncSession) -> None:
-    """Requirements §11 observability: queue latency, sync staleness, model errors, citation
-    validation failures, and access denials."""
+    """Requirements §11 observability: queue latency, model errors, citation validation
+    failures, and access denials."""
     from prometheus_client import generate_latest
 
     await observability.refresh(db)
@@ -193,7 +193,6 @@ async def test_the_metrics_endpoint_exposes_the_named_series(db: AsyncSession) -
     for series in (
         "rm_queue_depth",
         "rm_queue_oldest_seconds",
-        "rm_sync_staleness_seconds",
         "rm_model_calls_total",
         "rm_citation_validation_failures_total",
         "rm_access_denials_total",
@@ -213,7 +212,6 @@ def test_no_metric_label_can_identify_a_person() -> None:
         metrics.ACCESS_DENIALS,
         metrics.QUEUE_DEPTH,
         metrics.JOB_FAILURES,
-        metrics.REPOSITORIES,
         metrics.ANALYSIS_RUNS,
         metrics.EMAIL_DELIVERIES,
     ):

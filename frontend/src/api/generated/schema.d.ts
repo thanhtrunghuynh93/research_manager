@@ -98,26 +98,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Repository sync health
-         * @description UI-01: last successful sync, covered range, and authorization errors (REPO-05).
-         */
-        get: operations["sync_health_api_v1_admin_sync_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/artifacts": {
         parameters: {
             query?: never;
@@ -537,65 +517,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/contributions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Contributions attributed to the caller or a student
-         * @description REPO-04: each student can see what was attributed to them, so misattribution can be
-         *     challenged under ASSESS-08.
-         */
-        get: operations["list_contributions_api_v1_contributions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/developer-identities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Identities the caller may see */
-        get: operations["list_identities_api_v1_developer_identities_get"];
-        put?: never;
-        /**
-         * Link a provider account to a student
-         * @description A student may claim their own account; only the professor may map someone else's.
-         */
-        post: operations["map_identity_api_v1_developer_identities_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/developer-identities/{identity_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Confirm a claimed identity */
-        post: operations["confirm_identity_api_v1_developer_identities__identity_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/evidence/references/{reference_id}": {
         parameters: {
             query?: never;
@@ -984,75 +905,6 @@ export interface paths {
         get: operations["list_versions_api_v1_reports__report_id__versions_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/repositories": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Connected repositories */
-        get: operations["list_repositories_api_v1_repositories_get"];
-        put?: never;
-        /**
-         * Connect a repository the professor has granted read-only access to
-         * @description REPO-01: read-only, and the product stays fully usable without ever calling this.
-         */
-        post: operations["connect_repository_api_v1_repositories_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/repositories/{repository_id}/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Projects this repository serves */
-        get: operations["list_project_links_api_v1_repositories__repository_id__projects_get"];
-        put?: never;
-        /**
-         * Say which project this repository's work belongs to
-         * @description REPO-04: a repository serving several projects leaves unmatched paths unresolved rather
-         *     than guessing, so the path rules are how attribution gets decided.
-         */
-        post: operations["link_project_api_v1_repositories__repository_id__projects_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/repositories/{repository_id}/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Last sync, its range, and any error
-         * @description REPO-05: never-synced is a state the screen shows, not an absence it hides.
-         */
-        get: operations["sync_status_api_v1_repositories__repository_id__sync_get"];
-        put?: never;
-        /**
-         * Resync now
-         * @description REPO-05: a manual resync is idempotent.
-         *
-         *     Reprocessing the same range adds no event, no contribution and no score (AC-09).
-         */
-        post: operations["sync_now_api_v1_repositories__repository_id__sync_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1670,11 +1522,6 @@ export interface components {
             /** Version No */
             version_no: number;
         };
-        /**
-         * AttributionState
-         * @enum {string}
-         */
-        AttributionState: "resolved" | "unresolved_identity" | "unresolved_project";
         /** BudgetState */
         BudgetState: {
             /** Analysis Delayed */
@@ -1772,69 +1619,6 @@ export interface components {
              */
             source_version: string;
         };
-        /** ConnectIn */
-        ConnectIn: {
-            /** Credential Ref */
-            credential_ref?: string | null;
-            /** Default Branch */
-            default_branch?: string | null;
-            /** External Id */
-            external_id: string;
-            /** Full Name */
-            full_name: string;
-            /**
-             * Provider
-             * @default github
-             */
-            provider: string;
-        };
-        /**
-         * ConnectionState
-         * @enum {string}
-         */
-        ConnectionState: "connected" | "unauthorized" | "disconnected";
-        /** ContributionOut */
-        ContributionOut: {
-            attribution_state: components["schemas"]["AttributionState"];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Project Id */
-            project_id?: string | null;
-            /** Provenance */
-            provenance: {
-                [key: string]: unknown;
-            };
-            role: components["schemas"]["ContributionRole"];
-            share: components["schemas"]["ContributionShare"];
-            /**
-             * Student Id
-             * Format: uuid
-             */
-            student_id: string;
-        };
-        /**
-         * ContributionRole
-         * @enum {string}
-         */
-        ContributionRole: "author" | "committer" | "reviewer" | "merger";
-        /**
-         * ContributionShare
-         * @enum {string}
-         */
-        ContributionShare: "individual" | "joint";
         /** ConversationOut */
         ConversationOut: {
             /**
@@ -2055,6 +1839,10 @@ export interface components {
         /**
          * EvidenceSourceKind
          * @description Where a piece of evidence came from (architecture §5.7).
+         *
+         *     The Postgres enum keeps all five labels: `repository_event`, `decision` and `feedback` name
+         *     sources that no longer exist (repository events since ADR 0022), and dropping a label from an
+         *     enum means rebuilding the type under a table that has rows. Nothing writes them.
          * @enum {string}
          */
         EvidenceSourceKind: "report_entry" | "artifact_version" | "repository_event" | "decision" | "feedback";
@@ -2110,53 +1898,6 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** IdentityIn */
-        IdentityIn: {
-            /** Email */
-            email?: string | null;
-            /** Login */
-            login?: string | null;
-            /**
-             * Provider
-             * @default github
-             */
-            provider: string;
-            /** Student Id */
-            student_id?: string | null;
-        };
-        /** IdentityOut */
-        IdentityOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Email */
-            email?: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Bot */
-            is_bot: boolean;
-            /** Login */
-            login?: string | null;
-            /** Provider */
-            provider: string;
-            /**
-             * Student Id
-             * Format: uuid
-             */
-            student_id: string;
-            verification: components["schemas"]["IdentityVerification"];
-        };
-        /**
-         * IdentityVerification
-         * @description REPO-03: how far we trust that this provider account is this student.
-         * @enum {string}
-         */
-        IdentityVerification: "pending" | "verified_oauth" | "confirmed_by_student" | "confirmed_by_prof" | "rejected";
         /**
          * InvitationIn
          * @description `role` is the role the account is created with. A professor may invite a colleague as a
@@ -2229,16 +1970,6 @@ export interface components {
             status: components["schemas"]["ProjectStatus"];
             /** Title */
             title: string;
-        };
-        /** LinkProjectIn */
-        LinkProjectIn: {
-            /** Path Rules */
-            path_rules?: string[];
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
         };
         /** LoginIn */
         LoginIn: {
@@ -2466,10 +2197,6 @@ export interface components {
             stalled_analyses?: {
                 [key: string]: unknown;
             }[];
-            /** Sync Issues */
-            sync_issues?: {
-                [key: string]: unknown;
-            }[];
             /** Week */
             week?: components["schemas"]["WeekWorkspace"][];
         };
@@ -2588,26 +2315,6 @@ export interface components {
             title: string;
             /** Venue Target */
             venue_target?: string | null;
-        };
-        /** ProjectLinkOut */
-        ProjectLinkOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Path Rules */
-            path_rules: string[];
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            /**
-             * Repository Id
-             * Format: uuid
-             */
-            repository_id: string;
         };
         /** ProjectOut */
         ProjectOut: {
@@ -2739,44 +2446,6 @@ export interface components {
          */
         ReportState: "draft" | "submitted" | "revision_requested" | "resubmitted" | "reviewed";
         /**
-         * RepositoryHealth
-         * @description One repository's sync state, so a stale source is named rather than read as no work.
-         */
-        RepositoryHealth: {
-            /** Full Name */
-            full_name: string;
-            last_run?: components["schemas"]["SyncRunOut"] | null;
-            /**
-             * Repository Id
-             * Format: uuid
-             */
-            repository_id: string;
-        };
-        /** RepositoryOut */
-        RepositoryOut: {
-            connection_state: components["schemas"]["ConnectionState"];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Default Branch */
-            default_branch?: string | null;
-            /** External Id */
-            external_id: string;
-            /** Full Name */
-            full_name: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Provider */
-            provider: string;
-            /** Visibility */
-            visibility: string;
-        };
-        /**
          * ResearchStage
          * @description The stages the system must support (requirements §1); the rubric adapts to each (PROJ-05).
          * @enum {string}
@@ -2870,8 +2539,6 @@ export interface components {
              * Format: uuid
              */
             evidence_ref_id: string;
-            /** Integration Of Earlier Work */
-            integration_of_earlier_work: boolean;
             /** Locator */
             locator: string;
             /** Source Version */
@@ -2895,66 +2562,6 @@ export interface components {
             project_id?: string | null;
             /** Student Id */
             student_id?: string | null;
-        };
-        /**
-         * SyncKind
-         * @enum {string}
-         */
-        SyncKind: "initial" | "incremental" | "webhook" | "manual";
-        /** SyncRunOut */
-        SyncRunOut: {
-            /** Attempt */
-            attempt: number;
-            /** Error Summary */
-            error_summary?: string | null;
-            /** Events Ingested */
-            events_ingested: number;
-            /** Finished At */
-            finished_at?: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            kind: components["schemas"]["SyncKind"];
-            /** Pages Done */
-            pages_done: number;
-            /**
-             * Repository Id
-             * Format: uuid
-             */
-            repository_id: string;
-            /** Retry After Seconds */
-            retry_after_seconds?: number | null;
-            /**
-             * Started At
-             * Format: date-time
-             */
-            started_at: string;
-            state: components["schemas"]["SyncState"];
-            /** Watermark */
-            watermark: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * SyncState
-         * @description Job states the requirements ask to be distinguishable (requirements §10).
-         * @enum {string}
-         */
-        SyncState: "queued" | "running" | "completed" | "partial" | "failed";
-        /** SyncStatusOut */
-        SyncStatusOut: {
-            /** Connection State */
-            connection_state: string;
-            /** Full Name */
-            full_name: string;
-            last_run?: components["schemas"]["SyncRunOut"] | null;
-            /**
-             * Repository Id
-             * Format: uuid
-             */
-            repository_id: string;
         };
         /**
          * TimingStatus
@@ -3404,26 +3011,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sync_health_api_v1_admin_sync_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RepositoryHealth"][];
                 };
             };
         };
@@ -4106,133 +3693,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarConfigOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_contributions_api_v1_contributions_get: {
-        parameters: {
-            query?: {
-                student_id?: string | null;
-                project_id?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ContributionOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_identities_api_v1_developer_identities_get: {
-        parameters: {
-            query?: {
-                student_id?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IdentityOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    map_identity_api_v1_developer_identities_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["IdentityIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IdentityOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirm_identity_api_v1_developer_identities__identity_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                identity_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IdentityOut"];
                 };
             };
             /** @description Validation Error */
@@ -5068,200 +4528,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionSummaryOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_repositories_api_v1_repositories_get: {
-        parameters: {
-            query?: {
-                project_id?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RepositoryOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    connect_repository_api_v1_repositories_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ConnectIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RepositoryOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_project_links_api_v1_repositories__repository_id__projects_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                repository_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectLinkOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    link_project_api_v1_repositories__repository_id__projects_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                repository_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LinkProjectIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectLinkOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sync_status_api_v1_repositories__repository_id__sync_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                repository_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SyncStatusOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sync_now_api_v1_repositories__repository_id__sync_post: {
-        parameters: {
-            query?: {
-                full?: boolean;
-            };
-            header?: never;
-            path: {
-                repository_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SyncRunOut"];
                 };
             };
             /** @description Validation Error */

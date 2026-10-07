@@ -1,14 +1,14 @@
 """The demo dataset (docs/repo_layout.md §6, `make seed`).
 
 A workspace that looks like a term in progress: a professor, six students, four projects at
-different research stages, eight weeks of periods, submitted reports, a connected repository with
-commits and a pull request, and drafts waiting to be reviewed. It exists so the screens can be
-opened, the end-to-end tests have something to act on, and a new contributor can see the product
-rather than an empty shell.
+different research stages, eight weeks of periods, submitted reports, and drafts waiting to be
+reviewed. It exists so the screens can be opened, the end-to-end tests have something to act on,
+and a new contributor can see the product rather than an empty shell.
 
 Two things it deliberately includes because they are where the product's judgement shows: a week
-with no repository evidence at all, and a week whose report claims more than the evidence supports.
-A demo that only contains the happy path teaches the wrong thing about what this system does.
+with nothing but the report to go on, and a week whose report claims more than the evidence
+supports. A demo that only contains the happy path teaches the wrong thing about what this system
+does.
 
 Everything goes through the ordinary services, so the seed cannot create a state the application
 could not, and it is idempotent on the professor's address: running it twice is refused rather than
@@ -32,8 +32,6 @@ from app.core.db import run_in_session
 from app.core.errors import ConflictError
 from app.core.types import Role, Visibility
 from app.evidence import service as evidence_service
-from app.evidence.connectors.base import Actor, CommitMeta, PullRequest
-from app.evidence.connectors.fake import FakeRepositoryConnector
 from app.evidence.models import EvidenceSourceKind
 from app.identity import service as identity_service
 from app.identity.models import User
@@ -130,7 +128,7 @@ async def load_demo(session: AsyncSession) -> Seeded:
     projects = await _projects(session, prof_scope)
     await _memberships(session, prof_scope, students, projects)
     periods = await _calendar(session, prof_scope)
-    await _repository(session, prof_scope, students, projects)
+    await _project_evidence(session, prof_scope, projects)
     reports = await _reports(session, students, projects, periods)
     assessments = await _assessments(session, prof_scope, students, projects, periods)
 
@@ -199,7 +197,7 @@ async def _projects(session: AsyncSession, prof_scope: Any) -> list[Any]:
 async def _memberships(
     session: AsyncSession, prof_scope: Any, students: list[User], projects: list[Any]
 ) -> None:
-    # Two students share the first project so joint attribution has something to resolve (AC-06),
+    # Two students share the first project so its evidence has more than one owner (AUTH-02),
     # and one student is on two projects so a weekly package has two entries (AC-01).
     assignments = [
         (students[0], projects[0], "baselines and evaluation"),
@@ -246,74 +244,9 @@ async def _calendar(session: AsyncSession, prof_scope: Any) -> list[Any]:
     return periods
 
 
-async def _repository(
-    session: AsyncSession, prof_scope: Any, students: list[User], projects: list[Any]
-) -> None:
-    """A connected repository on the fake connector: no credential, no network, real events."""
+async def _project_evidence(session: AsyncSession, prof_scope: Any, projects: list[Any]) -> None:
+    """One project-shared piece of evidence, so retrieval has something every member may see."""
     at = datetime.combine(FIRST_MONDAY, datetime.min.time(), tzinfo=UTC) + timedelta(days=2)
-    connector = FakeRepositoryConnector(
-        commits=[
-            CommitMeta(
-                sha="a1f3c9e",
-                message="loader: read the judgment file with 1-based query ids",
-                authored_at=at,
-                committed_at=at,
-                actors=[Actor(role="author", login="an-nguyen", email=STUDENTS[0][0])],
-                paths=["data/loader.py", "tests/test_loader.py"],
-                additions=52,
-                deletions=6,
-                files_changed=2,
-            ),
-            CommitMeta(
-                sha="3d9f001",
-                message="metrics: nDCG, MRR, recall with per-query output",
-                authored_at=at + timedelta(days=1),
-                committed_at=at + timedelta(days=1),
-                actors=[
-                    Actor(role="author", login="an-nguyen", email=STUDENTS[0][0]),
-                    Actor(role="author", login="bao-tran", email=STUDENTS[1][0]),
-                ],
-                paths=["eval/metrics.py"],
-                additions=140,
-                deletions=0,
-                files_changed=1,
-            ),
-        ],
-        pull_requests=[
-            PullRequest(
-                number=212,
-                title="evaluation pipeline",
-                state="merged",
-                created_at=at,
-                updated_at=at + timedelta(days=2),
-                merged_at=at + timedelta(days=2),
-                merge_commit_sha="3d9f001",
-                actors=[
-                    Actor(role="author", login="an-nguyen"),
-                    # REPO-03: merging is its own role and never transfers authorship (AC-06).
-                    Actor(role="merger", login="bao-tran"),
-                ],
-            )
-        ],
-    )
-    repository = await evidence_service.connect_repository(
-        session,
-        prof_scope,
-        provider="github",
-        external_id="demo-1",
-        full_name="demo-lab/retrieval",
-        connector=connector,
-    )
-    await evidence_service.link_project(
-        session, prof_scope, repository.id, project_id=projects[0].id
-    )
-    for student, login in ((students[0], "an-nguyen"), (students[1], "bao-tran")):
-        await evidence_service.map_identity(
-            session, prof_scope, student_id=student.id, provider="github", login=login
-        )
-    await evidence_service.sync_repository(session, prof_scope, repository.id, connector=connector)
-    await evidence_service.resolve_contributions(session, repository.id)
-
     await evidence_service.index_evidence(
         session,
         workspace_id=prof_scope.workspace_id,

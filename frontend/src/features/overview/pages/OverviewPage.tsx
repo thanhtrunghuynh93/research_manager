@@ -2,14 +2,13 @@
  * UI-01: the professor's current week — what is missing, what is waiting, what is in the way.
  *
  * The design rule for this page is that nothing appears as a bare number. An outstanding count
- * carries the instant it was true; a quiet repository is labelled as a sync problem rather than
- * shown as a week with no work (AC-04); and analysis that did not run says whether the model
- * failed or the budget ran out, because those need different responses.
+ * carries the instant it was true, and analysis that did not run says whether the model failed or
+ * the budget ran out, because those need different responses.
  */
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Badge, FreshnessBadge } from "@/components/evidence/Badges";
+import { Badge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { useEnsureObligations, useOverview, useRetryAnalysis } from "@/features/overview/queries";
 import type { WeekStudent, WeekWorkspace } from "@/features/overview/types";
@@ -32,7 +31,6 @@ export function OverviewPage() {
     outstanding: { ...raw.outstanding, entries: raw.outstanding.entries ?? [] },
     week: raw.week ?? [],
     review_queue: raw.review_queue ?? [],
-    sync_issues: raw.sync_issues ?? [],
     stalled_analyses: raw.stalled_analyses ?? [],
     // Absent means "this deployment predates the mail section", not "mail is broken". The whole
     // screen is the professor's week; it must not go blank over a field it did not get.
@@ -132,23 +130,6 @@ export function OverviewPage() {
                   defaultValue: String(draft.confidence),
                 })}
               </Badge>
-            </li>
-          ))}
-        </Section>
-
-        <Section
-          title={t("overview.syncIssues")}
-          empty={t("overview.syncHealthy")}
-          count={data.sync_issues.length}
-          note={t("overview.syncNote")}
-        >
-          {data.sync_issues.map((issue, index) => (
-            <li key={`${String(issue.repository_id)}:${index}`} className="row">
-              <span className="font-mono text-note">{String(issue.full_name)}</span>
-              <FreshnessBadge
-                state={String(issue.state)}
-                lastFinishedAt={issue.last_finished_at as string | null}
-              />
             </li>
           ))}
         </Section>

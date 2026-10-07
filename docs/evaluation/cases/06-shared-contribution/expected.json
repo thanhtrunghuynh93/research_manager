@@ -28,5 +28,5 @@
     "sole author",
     "single-handedly"
   ],
-  "notes": "AC-06: joint work stays joint. The merge by Student B must not read as B's authorship, and the shared artifact must not be counted twice for the project."
+  "notes": "QA-04 (AC-06 was withdrawn with the repository connector in requirements 0.11, but the rule stands for attached evidence): joint work stays joint. The merge by Student B must not read as B's authorship, and the shared artifact must not be counted twice for the project."
 }

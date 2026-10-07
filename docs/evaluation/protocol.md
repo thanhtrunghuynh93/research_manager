@@ -13,7 +13,7 @@ Two different questions, measured separately:
 
 1. **Does the assessor obey its own contract?** Does it withhold an index when evidence is missing,
    refuse to cite what is not in the snapshot, keep joint work joint, and treat an instruction
-   found inside a repository as text? These are pass/fail properties of the system and they are
+   found inside an attached file as text? These are pass/fail properties of the system and they are
    checked on every CI run against the deterministic gateway, because they must never regress.
 2. **Does the assessor agree with the professor?** This is a calibration question about the rubric
    and the prompts. It needs the real provider and it needs the professor's own ratings, so it runs
@@ -29,13 +29,13 @@ system which cites fabricated evidence but agrees with the professor on average.
 | File | Content |
 | --- | --- |
 | `report.md` | The student's weekly entry as written, in the language it was written in |
-| `evidence/*.md` | The evidence snapshot: commits, PRs, run logs, notes, READMEs |
+| `evidence/*.md` | The evidence snapshot: the text of what was attached — commit logs, PR descriptions, run logs, notes, READMEs |
 | `expected.json` | The professor's ratings and what the draft must and must not say |
 
 The ten cases in this repository are the **seed set**: de-identified constructions that cover the
 categories requirements §13 names — coding, literature, theory, experiments, writing, incomplete
 evidence, shared contributions, negative results, changed plans, multilingual reports, and
-adversarial repository text. Their `professor_ratings` are the specification's anchors applied by
+adversarial attachment text. Their `professor_ratings` are the specification's anchors applied by
 the author of the set, not the professor's judgement.
 
 **They are not the pilot.** The pilot gate is 30 student–project–weeks rated by the professor on

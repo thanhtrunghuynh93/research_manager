@@ -217,15 +217,6 @@ async def test_blockers_are_quoted_from_the_entry_and_carry_a_citation(
     assert "report" in fact.note.lower()
 
 
-async def test_a_workspace_with_no_repository_reports_no_stale_ones(
-    db: AsyncSession, prof_scope: Scope
-) -> None:
-    """REPO-01: the product is fully usable without a repository, this answer included."""
-    fact = await facts.run(db, "stale_repositories", _query(prof_scope))
-
-    assert fact is not None and fact.value == 0
-
-
 async def test_the_review_queue_of_a_student_is_empty_by_construction(
     db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
 ) -> None:

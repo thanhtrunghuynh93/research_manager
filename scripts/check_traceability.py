@@ -4,7 +4,7 @@
 Checks:
   1. docs/architecture.md section 16 lists the ID.
   2. Once the acceptance tests exist (backend/tests/acceptance), every AC-xx has a test file or
-     docstring naming it. This check is a warning until the first acceptance test lands.
+     docstring naming it, unless its scenario row is marked withdrawn. This check is a warning.
 Exit code 1 on a missing architecture mapping.
 """
 
@@ -33,7 +33,11 @@ def main() -> int:
     acceptance = TESTS / "acceptance"
     test_text = "\n".join(p.read_text(encoding="utf-8") for p in acceptance.glob("test_*.py"))
     if test_text.strip():
-        untested = [i for i in spec_ids if i.startswith("AC-") and i not in test_text]
+        spec = SPEC.read_text(encoding="utf-8")
+        withdrawn = set(re.findall(r"^\|\s*(AC-\d{2})\s*\|\s*\*Withdrawn", spec, re.MULTILINE))
+        untested = [
+            i for i in spec_ids if i.startswith("AC-") and i not in test_text and i not in withdrawn
+        ]
         print(f"acceptance scenarios without a test: {untested or 'none'}")
     else:
         print("acceptance tests not present yet; skipping test coverage check")

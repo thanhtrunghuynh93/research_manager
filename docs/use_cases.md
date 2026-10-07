@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.18 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.10, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.19 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.11, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -37,6 +37,12 @@ offsets and student correction requests are removed with their endpoints and tab
 0.10, migration 0027): each was built, had no screen that wrote it or none that read it, and held no
 rows. So is the baseline proposal flow, which had no route at all. The rows below that named them
 are gone (§2.3, §2.4, §2.6, §3).
+
+**v0.19 takes away the repository connector** (requirements 0.11, ADR 0022, migration 0028). It was
+built for GitHub and never connected to a repository: its seven tables held no rows. §2.7 keeps only
+the evidence search and the citation-open reference, which moved to `api/v1/evidence.py`;
+`/admin/sync`, the overview's sync section, the student's identity and contribution rows, the
+webhook and `incremental_sync` are gone. A project still records its repository as a link.
 
 ## How to read the tables
 
@@ -96,7 +102,7 @@ dead end rather than about security.
 | `/me/profile` | student | a link on `/me` — it is not on the navigation bar, and `/me` no longer lists assessments itself | Trajectory per project, every released assessment |
 | `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: its week, ratings and rationales |
 | `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments, which are files (REP-04); submit |
-| `/overview` | professor | nav, and the professor's home | Budget and mail warnings, this week's reports by workspace, project and student, outstanding reports, review queue, sync issues, stalled analyses |
+| `/overview` | professor | nav, and the professor's home | Budget and mail warnings, this week's reports by workspace, project and student, outstanding reports, review queue, stalled analyses |
 | `/people` | professor | nav | Everyone in the workspace they are working in (ADR 0020); invite, move, suspend / restore / remove |
 | `/workspaces` | professor | nav | The workspace being worked in first — its name (rename, for its owner) and its weekly schedule, shown as a sentence and the coming weeks' deadlines. Then the other workspaces they belong to (join, leave, archive with a confirmation), and creating one, folded. *Switching* between them is the workspace name in the header, on every screen (§2.1) |
 | `/projects` | signed in | nav (both roles since PROJ-07; a student's bar is their week, then this); a project title on `/me` | Every project the caller may see; create one. For a student, the projects a professor has opened to joining, and a Join on each |
@@ -208,17 +214,17 @@ Leaving the last member out is allowed, and is the path to archiving.
 
 **The last row was ◻️ from v0.3 to v0.8, and is now half-built — because half of it is refused.**
 
-`users.workspace_id` is the parent of a composite foreign key on eight tables, and v0.7 split them
-in half (ADR 0014):
+`users.workspace_id` is the parent of a composite foreign key on six tables (eight until v0.19), and
+v0.7 split them in two (ADR 0014):
 
 | | Tables | On update |
 | --- | --- | --- |
 | Identity — belongs to the person | `invitations`, `sessions`, `password_resets`, `notifications` | **cascade**, so they follow the account |
-| History — belongs to the work | `project_memberships`, `weekly_reports`, `developer_identities`, `contributions` | **refuse**, so the account cannot leave them |
+| History — belongs to the work | `project_memberships`, `weekly_reports` (and, until ADR 0022 dropped them, `developer_identities`, `contributions`) | **refuse**, so the account cannot leave them |
 
 A professor has only identity rows, so they move. A student who has submitted anything has history
 rows, so Postgres refuses — and *that* is now what "history stays in the workspace it was written
-in" means. It is not a route that was never written; it is four constraints that say no.
+in" means. It is not a route that was never written; it is two constraints that say no.
 
 So v0.9 builds the half that is reachable. `POST /users/{id}/workspace` moves a student who has not
 started — the case that matters in practice, an account enrolled into the wrong workspace — and
@@ -463,22 +469,17 @@ recorded reason and keeps the model's own output beside it. Supervision notes li
 nothing indexes and are read through a function the student branch never calls, so their
 confidentiality is structural rather than a matter of filtering.
 
-### 2.7 Repository evidence (REPO-01..08)
+### 2.7 Evidence (QA-02, QA-03)
 
 | Use case | Endpoint | |
 | --- | --- | --- |
-| Connect a repository the professor has read access to | `POST /repositories` | ⚙️ |
-| List connected repositories | `GET /repositories` | ⚙️ |
-| Say which project a repository's work belongs to | `POST /repositories/{id}/projects` | ⚙️ |
-| See a repository's last sync, its range and any error | `GET /repositories/{id}/sync` | ⚙️ |
-| Resync now | `POST /repositories/{id}/sync` | ⚙️ |
-| Confirm a student's claimed developer identity | `POST /developer-identities/{id}/confirm` | ⚙️ |
-| See contributions attributed to a student | `GET /contributions` | ⚙️ |
 | Search the evidence index | `GET /evidence/search` | ⚙️ |
 | Open one citable evidence reference | `GET /evidence/references/{id}` | ⚙️ |
 
-Nothing in this section can be done from the app either, which means repository evidence cannot be
-switched on by the person it was built for.
+Until v0.19 this section was the repository connector (REPO-01..08): connect a repository, link it
+to a project, read and trigger its sync, confirm developer identities, list attributed
+contributions. None of it had a screen, and none of it was ever used; it was removed with its
+tables (ADR 0022). What is indexed now is report entries and attachments.
 
 ### 2.8 The assistant (QA-01..07)
 
@@ -502,10 +503,9 @@ actually retrieved, and an invented one is dropped and the drop is stated.
 
 | Use case | Endpoint | |
 | --- | --- | --- |
-| The current week at a glance — **this week's reports by workspace, project and student**, outstanding reports, review queue, stale repositories, stalled analyses, AI budget, failed mail | `GET /overview` | 🖥️ |
+| The current week at a glance — **this week's reports by workspace, project and student**, outstanding reports, review queue, stalled analyses, AI budget, failed mail | `GET /overview` | 🖥️ |
 | See model spend this month | `GET /admin/ai/usage` | ⚙️ — no screen since v0.17 |
 | See and set the monthly AI budgets | `GET`/`PUT /admin/ai/budgets` | ⚙️ — no screen since v0.17; with none set nothing is capped |
-| See repository sync health | `GET /admin/sync` | ⚙️ |
 
 The week's board is the section a professor opens this screen for, and §2.4 has why it replaced the
 outstanding list as the answer to *what is happening this week*. Both are still here: the board is
@@ -541,8 +541,6 @@ reported **$0 spent** in exactly the case where nothing was capping the bill.
 | **Read an approved assessment** | `GET /assessments`, `/assessments/{id}` | 🖥️ |
 | **See their own trajectory per project** | `GET /trends` | 🖥️ |
 | Read an assessment's evidence snapshot | `GET /assessments/{id}/evidence` | ⚙️ |
-| Claim a provider account as their own | `POST /developer-identities` | ⚙️ |
-| See contributions attributed to them | `GET /contributions` | ⚙️ |
 | Search the evidence they can see | `GET /evidence/search` | ⚙️ |
 
 The student's surface was two screens and is now five: `/me` is the week — what is owed, when it is
@@ -624,7 +622,6 @@ account able to clear it.
 | Request a password reset | `POST /auth/password-reset` | 5 per hour; answers identically for a known and an unknown address |
 | Liveness and readiness | `GET /healthz`, `/readyz` | `readyz` covers database, object storage, worker and mail relay |
 | Prometheus metrics | `GET /metrics` | Bearer token required in production; blocked at the edge |
-| Signed GitHub delivery | `POST /webhooks/github` | HMAC-verified; an unknown repository is accepted, recorded and reported as unmatched |
 
 ## 6 Operator
 
@@ -666,7 +663,6 @@ No human initiates these. They run in the worker and are why the product advance
 | `freeze_baselines` | daily | Fixes each membership's plan once its period opens |
 | `scan_due_reminders` | 5 min | Finds weeks whose deadline has passed and queues the missed-deadline email |
 | `send_queued_emails` | 2 min | Drains the email delivery table |
-| `incremental_sync` | 30 min | Pulls new repository evidence |
 | `queue_health` | 5 min | Warns when the oldest queued job is over ten minutes old; its runs are the worker heartbeat `/readyz` reads |
 | `retention_sweep` | nightly | Expires the assistant's answer cache, and deletes queue jobs finished over seven days ago |
 
@@ -681,11 +677,10 @@ that it is now the only way out as well.
 
 ## 8 What this inventory shows
 
-One capability area still has no screens at all — **repository evidence** (§2.7), which means the
-professor cannot switch on the feature that was built for them. Operations (§2.9) was a second
-until v0.13, when model spend, the budget that caps it and the retry on a stalled analysis each got
-one; what is left ⚙️ there is repository sync health, which belongs to §2.7 anyway. Project setup
-(§2.3) and calendar administration (§2.4) were two more until v0.11, and workspace management was a
+Repository evidence (§2.7) was the one capability area with no screens at all; it went in v0.19
+with the connector rather than gaining one, and leaves §2.7 its two ⚙️ evidence routes. Operations
+(§2.9) was another until v0.13, when model spend, the budget that caps it and the retry on a
+stalled analysis each got one. Project setup (§2.3) and calendar administration (§2.4) were two more until v0.11, and workspace management was a
 fourth until v0.5. §8.3 is what the v0.3 scope decision did to the same balance.
 
 ### 8.1 Nothing can become due — *closed in v0.11*
@@ -737,7 +732,7 @@ and 🚧 marks exist to make.
 
 The assistant makes this worse rather than working around it. It is professor-only, and the fact
 layer builds a locator for every citation it returns, which `CitationLink` renders as a `Link`.
-Six locator shapes exist; three of them go nowhere:
+Five locator shapes exist; two of them go nowhere:
 
 | Locator | Built in | What a professor gets |
 | --- | --- | --- |
@@ -745,7 +740,6 @@ Six locator shapes exist; three of them go nowhere:
 | `/students/{id}#notes` | `assistant/retrieval.py` | The student's profile |
 | `/projects/{id}` | `assistant/facts/members.py` | The project screen — the one inbound link it has |
 | `/report/{period_id}` | `assistant/facts/obligations.py`, `facts/reports.py` | The student guard: `/overview` — though the record is now readable, one route along |
-| `/projects?repository={id}` | `assistant/facts/sources.py` | Not a route: `/overview` |
 | `/artifacts/{id}` | `evidence/service.py` | Not a route: `/overview` |
 
 They go nowhere quietly, for the reason §1 gives: the guard and the catch-all both redirect, so the
@@ -816,8 +810,7 @@ it moves is not, and the reason is that **a membership is the entire grant of ac
 `_in_scope` is `same_workspace AND project_id IN scope.project_ids`, with no second gate and no
 status test, so inserting the row is the whole decision.
 
-A student who joins an open project can therefore read, for that project: the record, its
-repositories and their sync errors, its shared
+A student who joins an open project can therefore read, for that project: the record, its shared
 evidence, **the documents anyone on it has attached** ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)),
 and the member list including past members. That last one matters more than it looks:
 `user_visible_to` restricts a student to their own account, and `MembershipOut.student_name` is the

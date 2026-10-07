@@ -80,7 +80,6 @@ async def snapshot_items_with_text(session: AsyncSession, snapshot_id: UUID) -> 
             EvidenceReference.locator,
             EvidenceChunk.visibility,
             EvidenceSnapshotItem.source_version,
-            EvidenceSnapshotItem.integration_of_earlier_work,
         )
         .join(EvidenceReference, EvidenceReference.id == EvidenceSnapshotItem.evidence_ref_id)
         .join(EvidenceChunk, EvidenceChunk.evidence_ref_id == EvidenceReference.id)
@@ -97,7 +96,6 @@ async def snapshot_items_with_text(session: AsyncSession, snapshot_id: UUID) -> 
                 "locator": row[2],
                 "visibility": row[3],
                 "source_version": row[4],
-                "integration_of_earlier_work": row[5],
             },
         )()
         for row in rows

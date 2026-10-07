@@ -111,7 +111,7 @@ class RoutePlan(BaseModel):
     fact_functions: list[str] = Field(default_factory=list)
     student_names: list[str] = Field(default_factory=list)
     project_names: list[str] = Field(default_factory=list)
-    # A free-text search over report and repository evidence; empty for a pure fact question.
+    # A free-text search over report and attachment evidence; empty for a pure fact question.
     search_query: str = ""
     # ISO dates when the question named a period; the service resolves relative phrases itself.
     since: str = ""

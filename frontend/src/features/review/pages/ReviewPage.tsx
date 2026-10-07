@@ -166,10 +166,7 @@ export function ReviewPage() {
             {evidence.data?.map((item) => (
               <li key={item.evidence_ref_id} className="card">
                 <p className="line-clamp-4 text-note leading-relaxed text-ink2">{item.text}</p>
-                <p className="stamp mt-2.5">
-                  {item.locator}
-                  {item.integration_of_earlier_work ? ` · ${t("review.integrated")}` : ""}
-                </p>
+                <p className="stamp mt-2.5">{item.locator}</p>
               </li>
             ))}
             {evidence.data?.length === 0 && (

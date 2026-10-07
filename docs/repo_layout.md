@@ -86,18 +86,13 @@ backend/
 │   ├── reporting/
 │   │   ├── artifacts.py       uploads, links, versions, download (REP-04)
 │   │   ├── extraction.py      text from markdown, csv, pdf, docx, notebooks
-│   ├── evidence/
-│   │   ├── connectors/
-│   │   │   ├── base.py        RepositoryConnector protocol, RepoRef, Page, DiffResult, WebhookEvent
-│   │   │   ├── github.py      GitHub App implementation
-│   │   │   ├── factory.py     picks a connector for a stored repository; falls back loudly
-│   │   │   └── fake.py        in-memory connector for tests and demo seed
+│   ├── evidence/              the evidence index only; no repository connector (ADR 0022)
 │   │   └── index/
 │   │       ├── chunking.py
 │   │       ├── embeddings.py  Embedder protocol + registry; content-hash cache (ai registers the
 │   │       │                gateway-backed one at start-up, so evidence never imports app.ai)
 │   │       └── retrieval.py   hybrid SQL (permission predicate first, then rank fusion)
-│   │   └── tasks.py           incremental_sync (30 min), targeted sync from a webhook
+│   │   └── tasks.py           retries of report-entry and attachment indexing
 │   ├── assessment/
 │   │   ├── snapshot.py        build_snapshot()
 │   │   ├── metrics.py         progress_index, plan_completion, coverage_pct, confidence — pure functions
@@ -160,13 +155,11 @@ backend/
 │           ├── reports.py     calendar, periods, obligations, excuse/extend, draft, submit,
 │           │                  versions, revisions — there is no periods.py
 │           ├── artifacts.py   presigned upload, confirm, links, versions, download (REP-04)
-│           ├── repositories.py  repositories, sync, developer identities, contributions,
-│           │                  evidence search and references, and the signed GitHub webhook
-│           │                  (no session auth; signature only). No webhooks.py or evidence.py
+│           ├── evidence.py    evidence search and the citation-open reference (QA-02, QA-03)
 │           ├── assessments.py  drafts, approve, withdraw, evidence, supervision notes, trends
 │           ├── assistant.py   ask, ask/stream (SSE), conversations
 │           ├── overview.py    the professor's current week (UI-01)
-│           ├── admin.py       assessment retry, sync status, AI usage and budgets — prof only
+│           ├── admin.py       assessment retry, AI usage and budgets — prof only
 │           └── health.py      /api/healthz, /api/readyz, /api/metrics
 └── tests/                     section 3.4
 ```
@@ -234,17 +227,17 @@ forbidden_modules = ["app.identity.models", "app.projects.models", "app.reportin
 ```
 backend/tests/
 ├── conftest.py               Postgres via testcontainers (pgvector image), transactional session per test,
-│                             FakeAIGateway, FakeConnector, frozen clock fixture, scope fixtures (prof, student_a, student_b)
+│                             FakeAIGateway, frozen clock fixture, scope fixtures (prof, student_a, student_b)
 ├── factories.py              factory_boy factories for every model
 ├── unit/                     pure functions: metrics, calendar, redaction, chunking, validate_output
 │   └── test_metrics.py       includes the spec example: ratings 3,4,3,2 → 78.75 → 79
-├── module/                   service-level tests per bounded context, real DB, fakes for AI and GitHub
+├── module/                   service-level tests per bounded context, real DB, fakes for AI
 │   ├── identity/  projects/  reporting/  evidence/  assessment/  assistant/  notifications/
 │                             (identity/test_user_visibility.py: one predicate decides every read of a user record;
 │                             the access scenarios AC-02, AC-11, QA-06 live in acceptance/, Scope.within in unit/test_authz.py)
 ├── api/                      HTTP tests through the ASGI app; OpenAPI schema snapshot
-├── jobs/                     idempotency and retry: duplicate webhook, retried sync range, killed worker (AC-09, AC-13)
-├── acceptance/               test_ac_01.py … test_ac_19.py, each named after the requirements scenario it proves
+├── jobs/                     idempotency and retry: periodic tasks, the defer seam, killed worker (AC-13)
+├── acceptance/               test_ac_01.py … test_ac_19.py, each named after the requirements scenario it proves (04, 06, 09 withdrawn)
 └── evaluation/               AI evaluation harness; skipped in CI unless RM_EVAL=1; reads docs/evaluation set
 ```
 
@@ -273,7 +266,6 @@ All read once by `core/config.py`. Prefix `RM_`.
 | `RM_PUBLIC_URL` | api, worker | Absolute links in emails |
 | `RM_S3_ENDPOINT`, `RM_S3_BUCKET`, `RM_S3_ACCESS_KEY`, `RM_S3_SECRET_KEY` | api, worker | MinIO |
 | `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL`, `RM_OPENAI_EMBED_MODEL` | worker, api (assistant) | Gateway only |
-| `RM_GITHUB_APP_ID`, `RM_GITHUB_APP_PRIVATE_KEY_PATH`, `RM_GITHUB_WEBHOOK_SECRET` | api (webhooks), worker | Connector |
 | `RM_SMTP_HOST`, `RM_SMTP_PORT`, `RM_SMTP_USER`, `RM_SMTP_PASSWORD`, `RM_MAIL_FROM` | worker | Email |
 | `RM_UPLOAD_MAX_FILE_MB` | api | Default 25 |
 | `RM_LOG_LEVEL`, `RM_LOG_JSON` | all | Observability |
@@ -399,7 +391,7 @@ The first pull requests, in dependency order, so that the tree above fills in wi
 2. `identity/`: users, invitations, sessions, `authz.Scope`, first migration, authz test harness.
 3. `projects/` and `reporting/` with periods, obligations, drafts, submission, versions, artifacts; frontend report editor and student overview.
 4. `notifications/` with scheduler tasks and the missed-deadline email (REP-08) on the console sender; e2e for AC-19.
-5. `evidence/` with the fake connector, then the GitHub App connector; identity mapping; indexing and retrieval.
+5. `evidence/`: indexing and retrieval. (The repository connector built here was removed by ADR 0022.)
 6. `assessment/`: snapshot, metrics with unit tests, pipeline on the fake gateway, review workspace.
 7. `ai/` gateway against OpenAI, prompt registry, cost ledger; evaluation harness.
 8. `assistant/`, professor overview polish, backup container and restore drill, release workflow.

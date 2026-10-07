@@ -7,7 +7,7 @@ a near-neighbour of the question asked is worse than saying nothing.
 
 from __future__ import annotations
 
-from app.assistant.facts import members, obligations, reports, scores, sources  # noqa: F401
+from app.assistant.facts import members, obligations, reports, scores  # noqa: F401
 from app.assistant.facts.base import (
     Citation,
     Fact,

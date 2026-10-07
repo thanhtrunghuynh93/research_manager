@@ -126,7 +126,6 @@ async def test_the_overview_shows_an_empty_review_queue_rather_than_omitting_it(
     body = (await client.get("/api/v1/overview")).json()
 
     assert body["review_queue"] == []
-    assert body["sync_issues"] == []
     assert body["stalled_analyses"] == []
 
 

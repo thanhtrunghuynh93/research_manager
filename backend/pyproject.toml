@@ -24,8 +24,9 @@ dependencies = [
   "openai>=1.50",
   "prometheus-client>=0.21",
   "orjson>=3.10",
-  "pyjwt[crypto]>=2.9",
-  "pypdf",
+  # [crypto]: a PDF with only an owner password is AES-encrypted, and pypdf opens it with the
+  # empty user password only if `cryptography` is installed. It used to arrive through pyjwt.
+  "pypdf[crypto]",
   "python-docx",
   "python-pptx",
 ]

@@ -178,15 +178,9 @@ def coverage_gaps(
     gaps = list(plan_notes)
     if not passages:
         gaps.append(
-            "no report or repository text matched this question, so the answer rests only on the "
+            "no report or attachment text matched this question, so the answer rests only on the "
             "computed facts"
         )
-    for fact in computed:
-        if fact.name == "stale_repositories" and fact.value:
-            gaps.append(
-                f"{fact.value} repository connection(s) are stale or failing, so repository "
-                "evidence for this period is incomplete"
-            )
     return gaps
 
 

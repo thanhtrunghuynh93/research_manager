@@ -92,26 +92,6 @@ async def test_the_budget_endpoint_reports_whether_analysis_is_currently_delayed
     assert "budget" in response.json()["reason"]
 
 
-async def test_a_student_may_not_read_the_sync_health(
-    client: AsyncClient, student_a: identity_models.User
-) -> None:
-    await login(client, student_a)
-
-    assert (await client.get("/api/v1/admin/sync")).status_code == 403
-
-
-async def test_sync_health_is_empty_rather_than_absent_without_repositories(
-    client: AsyncClient, prof: identity_models.User
-) -> None:
-    """REPO-01: the product is fully usable without a repository, including this screen."""
-    await login(client, prof)
-
-    response = await client.get("/api/v1/admin/sync")
-
-    assert response.status_code == 200
-    assert response.json() == []
-
-
 async def test_the_retry_route_refuses_a_student_from_another_workspace(
     client: AsyncClient,
     db: AsyncSession,

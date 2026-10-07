@@ -1,7 +1,8 @@
-"""Evidence tables: repositories, sync runs, normalised events, identities, contributions.
+"""Evidence tables: the citable references and the chunks retrieval ranks.
 
-Requirements REPO-01..08. `repository_events` is immutable: an event we have already attributed and
-cited cannot change underneath the assessment that cites it (architecture §5.3, §8.2).
+A report entry or an attachment version becomes an `EvidenceReference`; its text is split into
+`EvidenceChunk` rows carrying the same access label, so retrieval filters on it without a join
+(architecture §5.7). The repository connector that once fed this index is gone (ADR 0022).
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Boolean,
     Computed,
     Enum,
     ForeignKey,
@@ -24,7 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UUIDPrimaryKeyMixin
@@ -32,41 +32,13 @@ from app.core.types import Visibility
 from app.evidence.index.embeddings import EMBEDDING_DIMENSIONS
 
 
-class ConnectionState(StrEnum):
-    CONNECTED = "connected"
-    UNAUTHORIZED = "unauthorized"
-    DISCONNECTED = "disconnected"
-
-
-class SyncKind(StrEnum):
-    INITIAL = "initial"
-    INCREMENTAL = "incremental"
-    WEBHOOK = "webhook"
-    MANUAL = "manual"
-
-
-class SyncState(StrEnum):
-    """Job states the requirements ask to be distinguishable (requirements §10)."""
-
-    QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    PARTIAL = "partial"
-    FAILED = "failed"
-
-
-class EventKind(StrEnum):
-    COMMIT = "commit"
-    PR_OPENED = "pr_opened"
-    PR_MERGED = "pr_merged"
-    REVIEW = "review"
-    ISSUE = "issue"
-    CHECK_RUN = "check_run"
-    PUSH_FORCE = "push_force"
-
-
 class EvidenceSourceKind(StrEnum):
-    """Where a piece of evidence came from (architecture §5.7)."""
+    """Where a piece of evidence came from (architecture §5.7).
+
+    The Postgres enum keeps all five labels: `repository_event`, `decision` and `feedback` name
+    sources that no longer exist (repository events since ADR 0022), and dropping a label from an
+    enum means rebuilding the type under a table that has rows. Nothing writes them.
+    """
 
     REPORT_ENTRY = "report_entry"
     ARTIFACT_VERSION = "artifact_version"
@@ -75,257 +47,14 @@ class EvidenceSourceKind(StrEnum):
     FEEDBACK = "feedback"
 
 
-class IdentityVerification(StrEnum):
-    """REPO-03: how far we trust that this provider account is this student."""
-
-    PENDING = "pending"
-    VERIFIED_OAUTH = "verified_oauth"
-    CONFIRMED_BY_STUDENT = "confirmed_by_student"
-    CONFIRMED_BY_PROF = "confirmed_by_prof"
-    REJECTED = "rejected"
-
-
-class ContributionRole(StrEnum):
-    AUTHOR = "author"
-    COMMITTER = "committer"
-    REVIEWER = "reviewer"
-    MERGER = "merger"
-
-
-class ContributionShare(StrEnum):
-    INDIVIDUAL = "individual"
-    JOINT = "joint"
-
-
-class AttributionState(StrEnum):
-    RESOLVED = "resolved"
-    UNRESOLVED_IDENTITY = "unresolved_identity"
-    UNRESOLVED_PROJECT = "unresolved_project"
-
-
 def _enum(enum_type: type[StrEnum], name: str) -> Enum:
     return Enum(enum_type, name=name, values_callable=lambda e: [m.value for m in e])
 
 
-CONNECTION_STATE_ENUM = _enum(ConnectionState, "connection_state")
-SYNC_KIND_ENUM = _enum(SyncKind, "sync_kind")
-SYNC_STATE_ENUM = _enum(SyncState, "sync_state")
-EVENT_KIND_ENUM = _enum(EventKind, "event_kind")
-IDENTITY_VERIFICATION_ENUM = _enum(IdentityVerification, "identity_verification")
-CONTRIBUTION_ROLE_ENUM = _enum(ContributionRole, "contribution_role")
-CONTRIBUTION_SHARE_ENUM = _enum(ContributionShare, "contribution_share")
-ATTRIBUTION_STATE_ENUM = _enum(AttributionState, "attribution_state")
 EVIDENCE_SOURCE_KIND_ENUM = _enum(EvidenceSourceKind, "evidence_source_kind")
 VISIBILITY_ENUM = Enum(
     Visibility, name="visibility", values_callable=lambda e: [m.value for m in e]
 )
-
-
-class Repository(UUIDPrimaryKeyMixin, Base):
-    """REPO-01: a connected repository. Credentials are referenced, never stored here."""
-
-    __tablename__ = "repositories"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "provider", "external_id"),
-        UniqueConstraint("workspace_id", "id"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    provider: Mapped[str] = mapped_column(Text)
-    external_id: Mapped[str] = mapped_column(Text)
-    full_name: Mapped[str] = mapped_column(Text)
-    visibility: Mapped[str] = mapped_column(Text, default="private")
-    connection_state: Mapped[ConnectionState] = mapped_column(
-        CONNECTION_STATE_ENUM, default=ConnectionState.CONNECTED
-    )
-    # The name of a secret in the protected store, never the secret (requirements §9).
-    credential_ref: Mapped[str | None] = mapped_column(Text)
-    default_branch: Mapped[str | None] = mapped_column(Text)
-    connected_by: Mapped[UUID | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class ProjectRepository(UUIDPrimaryKeyMixin, Base):
-    """REPO-04: which project a repository's work belongs to, and how to tell when it serves more
-    than one. Unmatched paths leave the attribution unresolved rather than guessing."""
-
-    __tablename__ = "project_repositories"
-    __table_args__ = (
-        UniqueConstraint("repository_id", "project_id"),
-        ForeignKeyConstraint(
-            ["workspace_id", "repository_id"],
-            ["repositories.workspace_id", "repositories.id"],
-            ondelete="CASCADE",
-        ),
-        ForeignKeyConstraint(
-            ["workspace_id", "project_id"],
-            ["projects.workspace_id", "projects.id"],
-            ondelete="CASCADE",
-        ),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    repository_id: Mapped[UUID]
-    project_id: Mapped[UUID]
-    path_rules: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class SyncRun(UUIDPrimaryKeyMixin, Base):
-    """REPO-05: what was covered, how far it got, and why it stopped (architecture §8.3)."""
-
-    __tablename__ = "sync_runs"
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["workspace_id", "repository_id"],
-            ["repositories.workspace_id", "repositories.id"],
-            ondelete="CASCADE",
-        ),
-        Index("ix_sync_runs_repository_id_started_at", "repository_id", "started_at"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    repository_id: Mapped[UUID]
-    kind: Mapped[SyncKind] = mapped_column(SYNC_KIND_ENUM)
-    state: Mapped[SyncState] = mapped_column(SYNC_STATE_ENUM, default=SyncState.QUEUED)
-    watermark: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    pages_done: Mapped[int] = mapped_column(Integer, default=0)
-    events_ingested: Mapped[int] = mapped_column(Integer, default=0)
-    error_summary: Mapped[str | None] = mapped_column(Text)
-    # What the provider asked us to wait, when it asked. The worker retries on it; an operator
-    # reads it to tell "rate limited, coming back" apart from "stuck" (REPO-05).
-    retry_after_seconds: Mapped[int | None] = mapped_column(Integer)
-    attempt: Mapped[int] = mapped_column(Integer, default=1)
-    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    finished_at: Mapped[datetime | None]
-
-
-class RepositoryEvent(UUIDPrimaryKeyMixin, Base):
-    """REPO-02/06: one normalised source event, with every date the provider gave us kept apart.
-
-    `provider_event_id` is the idempotency key: reprocessing the same source event inserts nothing
-    (REPO-05, AC-09).
-    """
-
-    __tablename__ = "repository_events"
-    __table_args__ = (
-        UniqueConstraint("repository_id", "provider_event_id"),
-        UniqueConstraint("workspace_id", "id"),
-        ForeignKeyConstraint(
-            ["workspace_id", "repository_id"],
-            ["repositories.workspace_id", "repositories.id"],
-            ondelete="CASCADE",
-        ),
-        Index("ix_repository_events_repository_id_event_at", "repository_id", "event_at"),
-        Index("ix_repository_events_source_version", "source_version"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    repository_id: Mapped[UUID]
-    provider_event_id: Mapped[str] = mapped_column(Text)
-    kind: Mapped[EventKind] = mapped_column(EVENT_KIND_ENUM)
-    source_version: Mapped[str | None] = mapped_column(Text)
-    title: Mapped[str] = mapped_column(Text, default="")
-    # [{role, login, email, name, is_bot}] exactly as the provider reported them (REPO-03).
-    actors: Mapped[list[Any]] = mapped_column(JSONB, default=list)
-    authored_at: Mapped[datetime | None]
-    committed_at: Mapped[datetime | None]
-    merged_at: Mapped[datetime | None]
-    event_at: Mapped[datetime]
-    ingested_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    paths: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
-    # Raw counts are activity statistics only, never evidence of progress (REPO-07, AC-14).
-    stats: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    payload_key: Mapped[str | None] = mapped_column(Text)
-    truncated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    live_available: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    source_url: Mapped[str | None] = mapped_column(Text)
-
-
-class WebhookDelivery(UUIDPrimaryKeyMixin, Base):
-    """REPO-05: deliveries are deduplicated on the provider's delivery id before any work."""
-
-    __tablename__ = "webhook_deliveries"
-    __table_args__ = (
-        UniqueConstraint("provider", "delivery_id"),
-        Index("ix_webhook_deliveries_received_at", "received_at"),
-    )
-
-    workspace_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE")
-    )
-    provider: Mapped[str] = mapped_column(Text)
-    delivery_id: Mapped[str] = mapped_column(Text)
-    event: Mapped[str] = mapped_column(Text)
-    external_repo_id: Mapped[str] = mapped_column(Text)
-    received_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class DeveloperIdentity(UUIDPrimaryKeyMixin, Base):
-    """REPO-03: which provider account is which student, and how well we know it."""
-
-    __tablename__ = "developer_identities"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "provider", "login"),
-        UniqueConstraint("workspace_id", "provider", "email"),
-        ForeignKeyConstraint(
-            ["workspace_id", "student_id"],
-            ["users.workspace_id", "users.id"],
-            ondelete="CASCADE",
-        ),
-        Index("ix_developer_identities_student_id", "student_id"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    student_id: Mapped[UUID]
-    provider: Mapped[str] = mapped_column(Text)
-    login: Mapped[str | None] = mapped_column(Text)
-    email: Mapped[str | None] = mapped_column(Text)
-    verification: Mapped[IdentityVerification] = mapped_column(
-        IDENTITY_VERIFICATION_ENUM, default=IdentityVerification.PENDING
-    )
-    is_bot: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    confirmed_by: Mapped[UUID | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class Contribution(UUIDPrimaryKeyMixin, Base):
-    """REPO-04: what one student did in one event, and how confident the attribution is.
-
-    A row per (student, event, role): merging someone else's change records a `merger` role, which
-    is not authorship (AC-06).
-    """
-
-    __tablename__ = "contributions"
-    __table_args__ = (
-        UniqueConstraint("event_id", "student_id", "role"),
-        ForeignKeyConstraint(
-            ["workspace_id", "event_id"],
-            ["repository_events.workspace_id", "repository_events.id"],
-            ondelete="CASCADE",
-        ),
-        ForeignKeyConstraint(
-            ["workspace_id", "student_id"],
-            ["users.workspace_id", "users.id"],
-            ondelete="CASCADE",
-        ),
-        Index("ix_contributions_student_id_project_id", "student_id", "project_id"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    event_id: Mapped[UUID]
-    student_id: Mapped[UUID]
-    project_id: Mapped[UUID | None]
-    role: Mapped[ContributionRole] = mapped_column(CONTRIBUTION_ROLE_ENUM)
-    share: Mapped[ContributionShare] = mapped_column(
-        CONTRIBUTION_SHARE_ENUM, default=ContributionShare.INDIVIDUAL
-    )
-    attribution_state: Mapped[AttributionState] = mapped_column(
-        ATTRIBUTION_STATE_ENUM, default=AttributionState.RESOLVED
-    )
-    # How the attribution was reached, so a student can challenge it (REPO-04).
-    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class EvidenceReference(UUIDPrimaryKeyMixin, Base):

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -22,10 +22,6 @@ from app.evidence.models import EvidenceSourceKind
 
 log = logging.getLogger(__name__)
 
-# Repository work merged inside the window but authored before it is included and flagged, so the
-# assessment can tell integration apart from this week's work (REPO-06).
-INTEGRATION_LAG = timedelta(days=14)
-
 
 @dataclass(slots=True)
 class SnapshotItem:
@@ -37,7 +33,6 @@ class SnapshotItem:
     locator: str
     visibility: Visibility
     source_time: datetime
-    integration_of_earlier_work: bool = False
 
 
 @dataclass(slots=True)
@@ -102,30 +97,6 @@ async def collect(
                 locator=hit.locator,
                 visibility=hit.visibility,
                 source_time=hit.source_time,
-            )
-        )
-
-    # Work merged this week but written earlier: real, and not this week's progress (REPO-06).
-    earlier = await evidence_service.search_evidence_window(
-        session,
-        scope,
-        project_id=project_id,
-        since=window_start - INTEGRATION_LAG,
-        until=window_start,
-        merged_within=(window_start, window_end),
-    )
-    for hit in earlier:
-        draft.items.append(
-            SnapshotItem(
-                evidence_ref_id=hit.evidence_ref_id,
-                text=hit.text,
-                source_kind=hit.source_kind,
-                source_id=hit.source_id,
-                source_version=hit.source_version,
-                locator=hit.locator,
-                visibility=hit.visibility,
-                source_time=hit.source_time,
-                integration_of_earlier_work=True,
             )
         )
 

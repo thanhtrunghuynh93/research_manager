@@ -269,14 +269,14 @@ def _visibility_checker(session: AsyncSession, scope: Scope) -> object:
 
     The epoch check in `cache.get` catches the structural changes; this catches an individual
     record that moved out of reach without the epoch moving — relabelled, or removed. Every
-    citation that points at evidence (a report entry, an artifact version, a repository event, a
-    decision, feedback) is resolved to its evidence references and checked in one query against
-    the same reference policy the citation-open endpoint uses, so the cache and the link cannot
-    disagree. A source with no visible reference left is a miss, which fails closed.
+    citation that points at evidence (a report entry, an artifact version) is resolved to its
+    evidence references and checked in one query against the same reference policy the
+    citation-open endpoint uses, so the cache and the link cannot disagree. A source with no
+    visible reference left is a miss, which fails closed.
 
     The other kinds are not re-checked here: they are the computed facts' anchors (a reporting
-    period, a project, a repository, an assessment or report version) and the professor's own
-    supervision notes. A fact is a number computed under the asker's scope and every fact
+    period, a project, an assessment or report version) and the professor's own supervision
+    notes. A fact is a number computed under the asker's scope and every fact
     function reads through the owning module's policy; what can take one out of reach is a
     membership, role, or deactivation change, which is exactly what the epoch moves on, and the
     TTL bounds the rest. Re-checking them would mean the assistant reaching into every module's

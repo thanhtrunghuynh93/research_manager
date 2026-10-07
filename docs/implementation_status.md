@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.10 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.10, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.18
+Version 0.11 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.11, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.19
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -14,11 +14,11 @@ layout. Update it in the pull request that changes what it describes.
 | 2 | `identity/`: users, invitations, sessions, authz, break-glass | Done |
 | 3 | `projects/` and `reporting/`: periods, obligations, drafts, submission, versions, plan baselines, artifacts; student frontend | Done |
 | 4 | `notifications/`: scheduler tasks, missed-deadline email, notification records | Done |
-| 5 | `evidence/`: connectors, identity mapping, indexing and retrieval | Done |
+| 5 | `evidence/`: indexing and retrieval (the connectors and identity mapping built here were removed, ADR 0022) | Done |
 | 6 | `assessment/`: snapshot, metrics, pipeline, review | Done |
 | 7 | `ai/` against OpenAI, cost ledger, evaluation harness | Done |
 | 8 | `assistant/`, professor overview, backup drill, release | Done |
-| 9 | The seams: assessment triggering, the periodic tasks, the repository API | Done |
+| 9 | The seams: assessment triggering, the periodic tasks, the evidence API (the repository half removed, ADR 0022) | Done |
 | 10 | A full review of the branch, and the defects it found | Done |
 | 11 | Deployment preparation: readiness checks, production config refusal, auth rate limits, mail warnings | Done |
 | 12 | `workspaces/`: ownership, joining and leaving, plural membership, reads that span it | Done |
@@ -29,6 +29,14 @@ backend tests and 91.3 % coverage, and both had drifted by the time anyone read 
 table that replaced it was checked by `scripts/check_docs.py` and cost an edit on every change, so
 0.10 dropped it. Section 6 says how to obtain the
 current figures, and CI enforces the 85 % gate rather than a sentence.
+
+**7 October 2026 — the repository connector is removed** ([ADR 0022](adr/0022-no-repository-connector.md),
+requirements 0.11). Built for GitHub in step 5 and given routes in step 9, it was never connected
+to a repository: migration 0028 dropped its seven tables — every one empty on the running
+deployment — with the `repository_events` guard and eight enum types. `incremental_sync`,
+`/admin/sync`, the webhook, the overview's sync section, the stale-repository fact and confidence
+rule, and the snapshot's merged-this-week pass went with it. `evidence/` keeps the index; its two
+read routes moved to `api/v1/evidence.py`. AC-04, AC-06 and AC-09 are withdrawn with REPO-01..08.
 
 **7 October 2026 — what had no screen and no reader is removed.** Tasks, dated research decisions,
 pre-deadline reminder offsets and student correction requests went with their endpoints, and
@@ -193,6 +201,10 @@ make a repeat a no-op.
 
 ### Step 5 — `evidence/` (REPO-01..08)
 
+*Requirements 0.11 withdrew REPO-01..08 and the connector half of this step was removed
+([ADR 0022](adr/0022-no-repository-connector.md)); what follows is what was built. The index, in
+the last paragraph, stays.*
+
 A read-only connector protocol with two implementations: an in-memory one that the tests, the demo
 seed and the end-to-end stack run against, and the GitHub App connector, which mints an installation
 token per run and never persists it.
@@ -278,12 +290,14 @@ a manual retry are the same job. An enqueue that fails is logged and swallowed: 
 version is the thing that cannot be lost, and a missing draft is recoverable from the retry
 endpoint (requirements §10, AC-13).
 
-Seven periodic tasks now run: `ensure_periods` and `freeze_baselines` daily, `scan_due_reminders`
-and `send_queued_emails` on their short cycles, `incremental_sync` every thirty, `queue_health` every five, and `retention_sweep` nightly. The two
+Seven periodic tasks ran: `ensure_periods` and `freeze_baselines` daily, `scan_due_reminders`
+and `send_queued_emails` on their short cycles, `incremental_sync` every thirty, `queue_health` every
+five, and `retention_sweep` nightly. Six since ADR 0022 removed `incremental_sync`. The two
 calendar tasks are idempotent by construction, so a worker that was down for a day catches up
 rather than skipping a week.
 
-The repository routes close REPO-01 through REPO-05 as a *product* rather than a module: connect,
+*Removed in requirements 0.11 (ADR 0022), except evidence search, now in `api/v1/evidence.py`:*
+the repository routes closed REPO-01 through REPO-05 as a *product* rather than a module: connect,
 link to a project, map a developer identity, resync, search the evidence index, and the signed
 GitHub webhook — which also enqueues the targeted run architecture §8.3 describes and reports
 whether the delivery matched anything, because one landing nowhere looks identical to one working.
@@ -364,7 +378,7 @@ was a place where two parts of the product answered the same question on differe
 | Gap | Requirement | Why |
 | --- | --- | --- |
 | OCR for scanned documents | REP-04 | Explicitly later work in the specification. A scanned PDF is recorded as "no text layer", not as an extraction failure |
-| Second repository provider, experiment trackers | §12 next release | Out of MVP scope by the specification |
+| A repository connector, experiment trackers | §12 next release | The connector was built and withdrawn unused (ADR 0022); trackers are out of MVP scope by the specification |
 | Row-Level Security | §11 | ADR 0004: application-level authorization first, RLS as defence in depth after the MVP |
 | Student-side assistant | §2, §12 | Next release; the retrieval path and the predicate are already shared, so it is a surface rather than a rebuild |
 | Rubric calibration | ASSESS-03, §13 | Needs the professor's own ratings on real weeks. The harness and the protocol are ready for them |
@@ -375,8 +389,10 @@ was a place where two parts of the product answered the same question on differe
 
 ### Acceptance scenarios
 
-All nineteen have tests: AC-01 through AC-19. `scripts/check_traceability.py` asserts it on every
-CI run and prints the list.
+All sixteen that stand have tests: AC-01 through AC-19 less AC-04, AC-06 and AC-09, which
+requirements 0.11 withdrew with the repository connector; AC-14 was restated for attachments.
+`scripts/check_traceability.py` asserts it on every CI run, skips a row marked withdrawn, and
+prints the list.
 
 AC-16 runs a real `pg_dump` and `pg_restore` cycle and reads the restored database back through the
 ordinary services. It claims what a test can claim — that the records, the permission boundary and
@@ -394,7 +410,7 @@ produced something wrong. Each is reflected in the code and in the document it c
 | `project_memberships.left_on` is exclusive | With an inclusive end, "remove this student now" left their access alive until midnight |
 | Embeddings come from a registered `Embedder`, not a direct gateway call | repo_layout §3.1 said otherwise, but §3.3 forbids `evidence` importing `ai`, and a restricted project must be able to index without a provider |
 | The index tells the embedder who to bill, through `EmbedContext` | Same contract: `evidence` cannot write an `ai_calls` row, but it can say which workspace a batch is for and leave the accounting to whoever makes the vectors |
-| `repository_events` and `plan_baselines` carry targeted guards rather than the blanket immutability trigger | REPO-06 must record that a force push removed an object upstream, and a proposed baseline must be acceptable; the guards allow exactly those transitions and nothing else |
+| `plan_baselines` carries a targeted guard rather than the blanket immutability trigger (`repository_events` did too, until ADR 0022) | A proposed baseline had to be acceptable; the guard allows exactly that transition and nothing else |
 | Email delivery is a queued row drained by a periodic task, not one job per message | Same at-least-once behaviour, with the attempt count and the last error in one place |
 | Two import contracts scoped to direct imports | The API reaches models through `service.py` and the gateway through `assessment.service`; that is the intended arrangement, and the contracts now forbid what they meant to forbid |
 | Full-text search uses the `simple` configuration | Reports are written in English and Vietnamese; English stemming distorts the latter. Revisit with the retrieval benchmark |
@@ -408,8 +424,8 @@ produced something wrong. Each is reflected in the code and in the document it c
 | Attachment text is indexed `student_private`, matching the artifact record | The artifact is readable by its owner and the professor; indexing its text as project-shared would let a project-mate retrieve through search what they cannot open directly |
 | A link is extracted by the server's `Content-Type`, not by the URL's last path segment | `/abs/2401.00001` has no extension worth reading, and the response says what it actually sent |
 | A failed enqueue is logged and swallowed, not raised | Requirements §10: report acceptance must not wait on anything downstream. A missing draft is recoverable from the retry endpoint; an unrecorded submission is not recoverable at all |
-| The connector factory falls back to the in-memory connector and says so in the log | A misconfigured key should surface as stale evidence on the dashboard, not as a dead worker that stops syncing every repository. Silently syncing nothing is the one outcome that must not happen, because it is indistinguishable from a student who did nothing (AC-04) |
-| A webhook for an unknown repository is accepted, recorded, and reported as unmatched | Asking GitHub to retry something that will never match is noise rather than resilience; but a webhook landing nowhere looks identical to one working, so the response says which it was |
+| ~~The connector factory falls back to the in-memory connector and says so in the log~~ — removed with the connector (ADR 0022) | A misconfigured key should surface as stale evidence on the dashboard, not as a dead worker that stops syncing every repository. Silently syncing nothing is the one outcome that must not happen, because it is indistinguishable from a student who did nothing (AC-04) |
+| ~~A webhook for an unknown repository is accepted, recorded, and reported as unmatched~~ — removed with the connector (ADR 0022) | Asking GitHub to retry something that will never match is noise rather than resilience; but a webhook landing nowhere looks identical to one working, so the response says which it was |
 | Metric labels may never identify a person | A metric is scraped into a system with different access rules from this one, so a student id in a label would be a disclosure through the monitoring stack |
 | `retention_sweep` expires only the answer cache | It is the one record with a defined lifetime. Inventing a deletion schedule for reports and assessments would be irreversible and is the professor's decision (requirements §14) |
 | An entry with every field empty is refused, not just an empty package | The check was per package on the reading that judging one entry's substance is the professor's. That reading holds — the test is emptiness, not adequacy — but at package level a blank entry passed whenever a sibling tab had text, and *that project's* obligation was then marked submitted. One press of one button could report every project a student is on with nothing written for any of them. The granularity now matches the thing being discharged |
@@ -438,7 +454,7 @@ Carried from requirements §14 and architecture §17, narrowed to what is still 
 6. **Whether to add Row-Level Security** as defence in depth after the MVP.
 7. **Chunking parameters and embedding model**, to be fixed by the retrieval benchmark.
 
-The first repository provider is settled: GitHub, as ADR 0005 assumed.
+There is no repository provider left to choose: ADR 0022 withdrew the connector ADR 0005 chose.
 
 ## 6 How to verify the current state
 

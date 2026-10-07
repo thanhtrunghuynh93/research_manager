@@ -110,9 +110,10 @@ class EvidenceSnapshot(UUIDPrimaryKeyMixin, Base):
     period_id: Mapped[UUID]
     window_start_utc: Mapped[datetime]
     window_end_utc: Mapped[datetime]
+    # 0 since the repository connector went (ADR 0022); older rows keep the 14 they were built with.
     integration_lag_days: Mapped[int] = mapped_column(Integer, default=0)
     item_count: Mapped[int] = mapped_column(Integer, default=0)
-    # What was left out and why: truncated diffs, extraction failures, stale sync (ASSESS-06).
+    # What was left out and why, e.g. extraction failures (ASSESS-06).
     coverage_notes: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     access_epoch: Mapped[int] = mapped_column(Integer, default=0)
     built_at: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -134,8 +135,7 @@ class EvidenceSnapshotItem(Base):
     evidence_ref_id: Mapped[UUID] = mapped_column(primary_key=True)
     workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     source_version: Mapped[str] = mapped_column(Text, default="")
-    # Repository work merged this week but authored earlier is flagged, never counted as new
-    # work of the week (REPO-06).
+    # Always false since the repository connector went (ADR 0022); kept for the rows written before.
     integration_of_earlier_work: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
