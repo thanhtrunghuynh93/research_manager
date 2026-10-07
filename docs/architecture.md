@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.5 — 21 September 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.9
+Version 0.6 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.10
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -91,7 +91,7 @@ backend/
   app/
     core/           config, db session, migrations hook, authz (Scope, visible_to), audit, jobs (procrastinate app), clock
     identity/       users, invitations, sessions, break-glass CLI
-    projects/       projects, memberships, tasks, plan_baselines
+    projects/       projects, memberships, plan_baselines
     reporting/      reporting_periods, obligations, weekly_reports, report_versions, entries, artifacts
     evidence/       repositories, connectors/{base,github}.py, developer_identities, repository_events, contributions,
                     evidence_references, index/ (chunking, embeddings, fts)
@@ -120,7 +120,7 @@ A module reads another module's data only through that module's `service.py`; it
 | --- | --- | --- |
 | `/overview` | Professor overview: current week, missing/late, review queue, attention list, sync issues | UI-01 |
 | `/me` | Student overview: obligations, draft state, next deadline, released feedback, timeline | UI-02 |
-| `/projects/:id` | Project workspace: goals, members, related documents, repositories; the stage is the professor's view only. Milestone completion and decisions are not shown — neither has a screen that writes it (use_cases.md §2.3) | UI-03 |
+| `/projects/:id` | Project workspace: goals, members, related documents, repositories; the stage is the professor's view only. Milestones and decisions were removed (requirements 0.8, 0.10) | UI-03 |
 | `/students/:id` | Student research profile (professor); permitted subset at `/me/profile` | UI-04 |
 | `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left, and the professor's revision request | REP-02, REP-05, UI-04 |
 | `/people` | The roll across every workspace the professor belongs to, grouped by workspace: invite, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
@@ -141,12 +141,12 @@ A module reads another module's data only through that module's `service.py`; it
 | Group | Tables |
 | --- | --- |
 | Identity | `workspaces`, `workspace_members`, `users`, `invitations`, `sessions`, `password_resets`, `audit_events` |
-| Projects | `projects`, `project_memberships`, `tasks`, `plan_baselines`, `plan_baseline_items`, `research_decisions` |
+| Projects | `projects`, `project_memberships`, `plan_baselines`, `plan_baseline_items` |
 | Reporting | `calendar_configs`, `reporting_periods`, `reporting_obligations`, `weekly_reports`, `report_versions`, `project_report_entries`, `revision_requests`, `artifacts`, `artifact_versions` |
 | Evidence | `repositories`, `project_repositories`, `developer_identities`, `repository_events`, `webhook_deliveries`, `contributions`, `evidence_references`, `evidence_chunks`, `sync_runs` |
-| Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `feedback`, `supervision_notes` |
+| Assessment | `rubric_versions`, `evidence_snapshots`, `evidence_snapshot_items`, `analysis_runs`, `assessment_versions`, `assessment_reviews`, `supervision_notes` |
 | Assistant | `conversations`, `messages`, `answer_cache` |
-| Operations | `notifications`, `email_deliveries`, `reminder_rules`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
+| Operations | `notifications`, `email_deliveries`, `ai_calls`, `procrastinate_*` (queue, managed by the library) |
 
 Every table carries `workspace_id`; composite foreign keys `(workspace_id, x_id)` enforce the same-workspace invariant from requirements section 9.
 
@@ -182,7 +182,7 @@ Constraints `uq_report_version (report_id, version_no)`, `uq_report_idem (report
 Constraint `uq_entry (report_version_id, project_id)`. `content_hash` is SHA-256 over the canonical JSON of the entry fields excluding `hours`. On resubmission, if the hash equals the previous version's entry, `content_changed_in_version_id` is copied forward; otherwise it is set to the new version. Immutable.
 
 **plan_baselines** — `id, workspace_id, membership_id, period_id, version_no INT, state ENUM(frozen, empty, proposed, accepted, superseded), frozen_at, source_entry_id NULL, change_reason TEXT NULL, proposed_by NULL, approved_by NULL, approved_at NULL`
-Constraint `uq_baseline_in_effect`: unique `(membership_id, period_id)` where `state IN ('frozen','accepted')`. Rows are immutable; a change inserts a new version and marks the old one `superseded` through a new row, never an update. `plan_baseline_items` holds `(baseline_id, task_id, planned_outcome, weight NUMERIC, acceptance_criteria)`.
+Constraint `uq_baseline_in_effect`: unique `(membership_id, period_id)` where `state IN ('frozen','accepted')`. Rows are immutable. `plan_baseline_items` holds `(baseline_id, planned_outcome, weight NUMERIC, acceptance_criteria)` — lines of the student's next-week plan — and a vestigial `task_id` with no foreign key, left when `tasks` was dropped (migration 0027). `proposed`, `accepted` and `superseded` remain in the enum and nothing writes them since requirements 0.10 withdrew the proposal flow.
 
 **evidence_references** — `id, workspace_id, project_id, owner_student_id NULL, visibility ENUM(professor_only, student_private, project_shared), source_kind ENUM(report_entry, artifact_version, repository_event, decision, feedback), source_id, source_version TEXT, locator TEXT, supported_claim TEXT NULL, source_time, ingested_at`
 Every indexed piece of evidence has exactly one row here, and `evidence_chunks` rows reference it. Visibility is copied from the source at ingestion and re-synced when the source changes.
@@ -228,15 +228,9 @@ The application layer also exposes no update path for these tables. Retention-dr
 stateDiagram-v2
     [*] --> frozen: previous report's next_plan exists at freeze point
     [*] --> empty: no plan at freeze point (new member, missing or late report, paused project)
-    empty --> proposed: student enters first plan in current report
-    proposed --> accepted: professor accepts (approved_by, approved_at)
-    frozen --> superseded: change with reason -> new version row
-    accepted --> superseded: change with reason -> new version row
-    superseded --> frozen: new version marked professor-approved
-    superseded --> proposed: new version marked student-proposed
 ```
 
-The freeze point is `reporting_periods.start_utc` by default. A periodic task `freeze_baselines(period_id)` runs at period start and inserts a `frozen` or `empty` row per required obligation; it is idempotent, so a membership that already has a baseline for the period keeps it. Baseline rows carry their own database guard rather than the blanket immutability trigger: the content columns can never change, and the only state moves the guard admits are the two in the diagram above — a proposal the professor accepts, and a version a later one supersedes. Commitment completion (ASSESS-05) is computed only against rows in state `frozen` or `accepted`; otherwise the assessment shows completion as unavailable.
+The freeze point is `reporting_periods.start_utc` by default. A periodic task `freeze_baselines(period_id)` runs at period start and inserts a `frozen` or `empty` row per required obligation; it is idempotent, so a membership that already has a baseline for the period keeps it. Baseline rows carry their own database guard rather than the blanket immutability trigger: the content columns can never change. Commitment completion (ASSESS-05) is computed only against a row in state `frozen` (or a historical `accepted` one); otherwise — an `empty` week — the assessment shows completion as unavailable. The first-plan proposal, its acceptance and versioned changes were withdrawn in requirements 0.10: they had no route and no screen.
 
 ### 5.6 File storage
 
@@ -255,27 +249,22 @@ Each request resolves a `Scope`:
 ```python
 @dataclass(frozen=True, slots=True)
 class Scope:
-    workspace_id: UUID                        # where a write goes. One, always.
+    workspace_id: UUID                        # where a write goes and what a read sees
     user_id: UUID
     role: Literal["prof", "student"]
     project_ids: frozenset[UUID]              # active memberships for a student; empty for a prof,
                                               # whose predicates branch on the role instead
     access_epoch: int                         # the anchor workspace's counter, see 6.3
-    workspace_ids: frozenset[UUID]            # what a read may see: the workspace worked in
-    access_epochs: frozenset[tuple[UUID,int]] # the counter of each, for validating a spanning read
     is_system: bool                           # a job borrowing an identity, not an author
 ```
 
-`Scope.within(column)` is the workspace half of every visibility predicate — `column.in_(workspace_ids)` —
-and the only place the read-set is compared, so widening what a read may see is one diff rather than
-thirty-three (ADR 0016). `workspace_id` is where a write lands; `workspace_ids` is what a read may
-see, and for every account it is `{workspace_id}` (ADR 0020). A professor belongs to as many
-workspaces as they have joined, but sees the one the header switcher names; switching changes what
-every screen shows. The invariant that keeps the two apart from each other's records is not in this
-Scope at all — it is the composite foreign keys, which refuse a membership, report or assessment
-whose workspace does not match both the project and the account it names. Both `workspace_ids` and
-`access_epochs` default to the anchor alone, which keeps a hand-built Scope — a job's, a test's —
-single-workspace unless it says otherwise.
+`Scope.within(column)` is the workspace half of every visibility predicate — `column = workspace_id`
+— and the only place the read-set is compared, so changing what a read may see is one diff rather
+than thirty-three. A professor belongs to as many workspaces as they have joined, but sees the one
+the header switcher names; switching changes what every screen shows (ADR 0020, ADR 0021). The
+invariant that keeps workspaces apart from each other's records is not in this Scope at all — it is
+the composite foreign keys, which refuse a membership, report or assessment whose workspace does not
+match both the project and the account it names.
 
 Every repository function accepts `scope` and applies `visible_to(scope, Model)`, a SQLAlchemy predicate builder with one implementation per aggregate:
 
@@ -286,7 +275,7 @@ Every repository function accepts `scope` and applies `visible_to(scope, Model)`
 | Artifact — a project document (no period, no entry) | All in workspace | `project_id IN scope.project_ids` ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)) |
 | Assessment version | All | Own, and only where an `approved` review exists |
 | Supervision note | All (co-supervisors share; `author_id` says whose) | Never |
-| Project, task, decision | All | `project_id IN scope.project_ids` |
+| Project | All | `project_id IN scope.project_ids` |
 | Evidence chunk | All except none | `visibility = 'project_shared' AND project_id IN scope.project_ids` OR `owner_student_id = scope.user_id` |
 | Repository event | All | Own attributed contributions only |
 
@@ -308,7 +297,7 @@ Downloads reuse the same predicates: a presigned GET is issued only after `visib
 
 ### 6.4 Confidentiality of professor material (QA-06)
 
-`supervision_notes` and `feedback` with `visibility = professor_only` are excluded from `evidence_references` and therefore from chunks, snapshots, and student-facing answers by construction. The assistant may include them only when `scope.role = 'prof'`, via a separate retrieval path over `supervision_notes` that is compiled into the professor-only branch of the router (section 11).
+`supervision_notes` are excluded from `evidence_references` and therefore from chunks, snapshots, and student-facing answers by construction. The assistant may include them only when `scope.role = 'prof'`, via a separate retrieval path over `supervision_notes` that is compiled into the professor-only branch of the router (section 11).
 
 ### 6.5 Workspaces and the tenant boundary (AUTH-04, AUTH-05, AUTH-06, UI-08)
 
@@ -319,7 +308,7 @@ A workspace is the tenant boundary, and two different relations describe an acco
 
 The two differ in practice, which is why neither alone is the right gate. A professor invited as a colleague belongs to a workspace they do not own; one who created a workspace and later left owns one they do not belong to. `GET /workspaces` returns the union, and entering or reading one is gated on that union, while renaming and archiving stay with ownership.
 
-Reads and writes both follow the workspace being worked in (ADR 0020, superseding ADR 0016's spanning read). `Scope.workspace_ids` is what a read may see and `Scope.workspace_id` is where a write goes; today they agree, and the comparison lives in `Scope.within(column)` so widening it is a single diff. Archiving counts memberships rather than the column, the roll is keyed by membership, and leaving an account's only membership is refused because `users.workspace_id` is not nullable.
+Reads and writes both follow the workspace being worked in (ADR 0020): `Scope.workspace_id` is where a write goes and the only workspace a read sees, compared in `Scope.within(column)` (ADR 0021). Archiving counts memberships rather than the column, the roll is keyed by membership, and leaving an account's only membership is refused because `users.workspace_id` is not nullable.
 
 Moving a student between workspaces is decided by the schema, not by a check: section 5.1's four-and-four foreign-key split refuses any account that has written history (AUTH-06).
 
@@ -377,9 +366,7 @@ keyed. A send is attempted five times; after that the notification row remains w
 
 ### 7.3 Pre-deadline reminders (REP-07)
 
-`dispatch_due_reminders` runs every fifteen minutes, evaluates `reminder_rules` (workspace-configurable offsets such as 48 h and 6 h before `deadline_utc`) and writes `notifications` rows with `kind = 'reminder:{offset}'` under the same unique key pattern. Extensions shift the effective deadline for that obligation only.
-
-**These rows are written and not read.** Use cases v0.4 withdrew the in-app surface (UI-07), and `missed_deadline` is the only kind that queues an email, so a pre-deadline reminder reaches nobody today; the endpoint that configures the offsets, `PUT /notifications/reminder-offsets`, has no screen either. The machinery is kept rather than deleted because the unique key is what makes a retried dispatch a no-op, so restoring a surface is a screen rather than a feature. Recorded here because a reader of this section would otherwise reasonably conclude that students are being reminded.
+Withdrawn in requirements 0.10. `dispatch_due_reminders` wrote `reminder:{offset}` notification rows from workspace-configured `reminder_rules`, and nothing displayed or emailed them, so they reached nobody. The table, the job and `PUT /notifications/reminder-offsets` were removed (migration 0027). The missed-deadline email in 7.2 is the one reminder.
 
 ## 8 Repository evidence
 
@@ -521,7 +508,6 @@ Unit test fixed by the specification: ratings 3, 4, 3, 2 with weights 30, 30, 25
 | New evidence arrives after approval (late sync) | New draft version flagged `evidence_update`; the approved version stays published until the professor approves the new one |
 | Rubric or model version change | No automatic rerun; the professor may request recalculation, producing a new version labelled with the new rubric |
 | Professor override | `assessment_reviews.override` on the same version with rationale; original model output stays in `assessment_versions` |
-| Student correction request with evidence | New `feedback` row; professor decides whether to trigger a new version |
 | Correction to a shared contribution | `review_shared_attributions` job re-flags every assessment whose snapshot contains the affected `event_id` |
 
 Trends (ASSESS-10) are queries over `assessment_versions` joined to `assessment_reviews.state = 'approved'`, grouped by rubric version, so a rubric change appears as a labelled break rather than a comparable series (AC-10).
@@ -576,7 +562,7 @@ flowchart TB
 - **Job key convention:** `{domain}:{ids}:{step}` as `queueing_lock`; procrastinate refuses a second queued job with the same lock. Completed jobs are retained for 30 days for observability.
 - **Retries:** transient errors retry with exponential backoff (max 5); permanent errors fail immediately. A domain record (`analysis_runs`, `sync_runs`, `email_deliveries`) carries the application state including `partial`.
 - **Manual retry:** `POST /api/v1/admin/assessments/retry` re-enqueues with the same lock; because every step is idempotent on its key, no duplicate assessments or notifications result.
-- **Periodic tasks** (in the worker, `procrastinate.periodic`), eight of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`); `scan_due_reminders` `*/5`, `send_queued_emails` `*/2` and `dispatch_due_reminders` `*/15` (`app/notifications/scheduler_tasks.py`); `incremental_sync` `*/30` (`app/evidence/tasks.py`).
+- **Periodic tasks** (in the worker, `procrastinate.periodic`), seven of them, with the cron each is registered under: `ensure_periods` `15 0 * * *` and `freeze_baselines` `30 0 * * *` (`app/tasks.py`, which also holds `queue_health` `*/5` logging queue lag and serving as the worker heartbeat `/readyz` reads — the gauges themselves are read by `/api/metrics` in the api process, at most every 30 s, and `retention_sweep` `45 1 * * *`, which expires stale cached answers and deletes jobs finished more than seven days ago with their events); `scan_due_reminders` `*/5` and `send_queued_emails` `*/2` (`app/notifications/scheduler_tasks.py`); `incremental_sync` `*/30` (`app/evidence/tasks.py`).
 - **Observability:** `/api/metrics` exposes queue depth, oldest queued age, failures by job name, sync staleness, model error rate, citation validation failures, and access denials (section 11 "Observability").
 
 ## 13 Notifications and email
@@ -631,8 +617,8 @@ class EmailSender(Protocol):
 | AUTH-07 | 5.1 (`projects.created_by`), 6.3 |
 | PROJ-01 | 5.1 |
 | PROJ-02 | 5.2 (`project_memberships`), 7.1 |
-| PROJ-03 | 5.1 (`tasks`), 5.5; milestones withdrawn in requirements 0.8 |
-| PROJ-04 | 5.2 (`plan_baselines`), 5.5 |
+| PROJ-03 | Withdrawn in requirements 0.10; `tasks` dropped by migration 0027 (milestones went in 0.8) |
+| PROJ-04 | 5.2 (`plan_baselines`), 5.5; the proposal flow withdrawn in 0.10 |
 | PROJ-05 | 9.3, 9.4 (`rubric_versions.stage_applicability`) |
 | PROJ-06 | Withdrawn in requirements 0.8 with the milestones it computed from (migration 0026) |
 | PROJ-07 | 5.1 (`projects.open_to_join`, `project_memberships.origin`), 6.3, 4.2 (`/projects`) |
@@ -642,7 +628,7 @@ class EmailSender(Protocol):
 | REP-04 | 5.6, 14 |
 | REP-05 | 5.2 (`report_versions`, `content_changed_in_version_id`), 5.3, 9.5 |
 | REP-06 | 5.2 (`reporting_obligations`), 7.1, 7.2 |
-| REP-07 | 7.3, 5.2 (`first_submitted_at`) |
+| REP-07 | 5.2 (`first_submitted_at`); pre-deadline reminders withdrawn in 0.10 (7.3) |
 | REP-08 | 7.2, 13 |
 | REPO-01 | 8.1 |
 | REPO-02 | 8.2 |
@@ -659,7 +645,7 @@ class EmailSender(Protocol):
 | ASSESS-05 | 5.5, 9.4 |
 | ASSESS-06 | 9.2, 9.4 |
 | ASSESS-07 | 9.3 |
-| ASSESS-08 | 5.2 (`assessment_reviews`), 9.5 |
+| ASSESS-08 | 5.2 (`assessment_reviews`), 9.5; correction requests withdrawn in 0.10 |
 | ASSESS-09 | 5.2 (`assessment_versions`), 9.5, 10 |
 | ASSESS-10 | 9.5 |
 | QA-01 | 11 |

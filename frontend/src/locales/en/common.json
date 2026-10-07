@@ -199,11 +199,6 @@
       "learning": "Research learning and reasoning",
       "rigor": "Rigor and evidence quality",
       "artifacts": "Usable research artifacts"
-    },
-    "feedbackKind": {
-      "professor_comment": "From your professor",
-      "student_response": "Your response",
-      "correction_request": "Your correction request"
     }
   },
   "evidence": {
@@ -369,7 +364,6 @@
       "deactivated": "Closed"
     },
     "workspace": "Workspace",
-    "elsewhere": "Join its workspace to act on this account",
     "moveTo": "Move to…",
     "resend": "Resend invitation",
     "resent": "Invitation resent"
@@ -455,13 +449,6 @@
     "index": "Progress index",
     "indexNote": "Read the index beside its components below, not on its own.",
     "ratings": "Ratings",
-    "feedback": "Feedback",
-    "noFeedback": "No written feedback on this assessment.",
-    "correction": "Ask for a correction",
-    "correctionPlaceholder": "What is wrong, and what evidence supports your account?",
-    "correctionSend": "Send correction request",
-    "correctionSent": "Sent.",
-    "correctionNote": "Your request is recorded with your evidence and sent to your professor. It does not by itself change a rating.",
     "unavailable": "This assessment is not available to you."
   },
   "myProfile": {

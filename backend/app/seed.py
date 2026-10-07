@@ -193,15 +193,6 @@ async def _projects(session: AsyncSession, prof_scope: Any) -> list[Any]:
     # panel (PROJ-07). The rest stay closed, which is the default and the safer half of the rule.
     await projects_service.update_project(session, prof_scope, projects[-1].id, open_to_join=True)
 
-    # A dated decision, so the project workspace has something real to show (PROJ-01).
-    await projects_service.record_decision(
-        session,
-        prof_scope,
-        projects[0].id,
-        decision="Freeze the evaluation split at the September snapshot.",
-        rationale="Comparability across the term matters more than a slightly larger test set.",
-        decided_on=FIRST_MONDAY + timedelta(days=2),
-    )
     return projects
 
 

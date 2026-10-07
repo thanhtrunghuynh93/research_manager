@@ -35,10 +35,8 @@ def message_visible_to(scope: Scope) -> ColumnElement[bool]:
 def answer_cache_visible_to(scope: Scope) -> ColumnElement[bool]:
     """An answer cached for one person is never served to another, whatever their role (QA-06).
 
-    The workspace test is the anchor rather than `within`: a cached answer belongs to the workspace
-    its asker was working in, and the same professor working elsewhere is a different entitlement.
-    The fingerprint then stands in for the epoch, because a read that spanned workspaces has to be
-    invalidated when any of them moves, not only the anchor (ADR 0016).
+    A cached answer belongs to the workspace its asker was working in, and the same professor
+    working elsewhere is a different entitlement; the fingerprint carries that workspace's epoch.
     """
     return and_(
         AnswerCache.workspace_id == scope.workspace_id,

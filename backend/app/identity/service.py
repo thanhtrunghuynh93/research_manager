@@ -83,10 +83,8 @@ async def scope_for(session: AsyncSession, user: User) -> Scope:
     predicates in each module's policies.py branch on the role.
 
     The workspace the account is working in is both where a write goes and what a read may see
-    (ADR 0020, superseding ADR 0016's spanning read). A professor belonging to several sees the one
-    the header switcher names, and switching changes what every screen shows — which is what the
-    switcher has claimed all along. `workspace_ids` stays on `Scope` as the one seam a wider read
-    would go through, but nothing here widens it.
+    (ADR 0020, ADR 0021). A professor belonging to several sees the one the header switcher
+    names, and switching changes what every screen shows.
 
     `project_ids` stays keyed to the single workspace. A student's project memberships live where
     their account does, and a professor does not use it — the predicates branch on the role.
@@ -96,17 +94,12 @@ async def scope_for(session: AsyncSession, user: User) -> Scope:
         if user.role is Role.PROF
         else await load_project_ids(session, user.workspace_id, user.id)
     )
-    workspace_ids = frozenset({user.workspace_id})
-    epochs = await repository.access_epochs(session, workspace_ids)
-
     return Scope(
         workspace_id=user.workspace_id,
         user_id=user.id,
         role=user.role,
         project_ids=project_ids,
-        access_epoch=epochs.get(user.workspace_id, 0),
-        workspace_ids=workspace_ids,
-        access_epochs=frozenset(epochs.items()),
+        access_epoch=await repository.access_epoch(session, user.workspace_id),
     )
 
 
@@ -123,12 +116,7 @@ async def get_user(session: AsyncSession, scope: Scope, user_id: UUID) -> UserOu
 async def list_users(
     session: AsyncSession, scope: Scope, *, limit: int | None = None, cursor: str | None = None
 ) -> Page[UserOut]:
-    """The roll, across every workspace the caller belongs to (ADR 0016).
-
-    No flag: the User policy spans because `Scope.workspace_ids` does, so this is one read with one
-    predicate rather than a widened variant of a narrow one. A student belongs to one workspace, so
-    for them the answer is what it always was.
-    """
+    """The roll of the workspace the caller is in (ADR 0020)."""
     size = clamp_limit(limit)
     rows, next_cursor = await repository.list_visible_users(
         session, scope, limit=size, cursor=cursor

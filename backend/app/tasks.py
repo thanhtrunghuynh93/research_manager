@@ -71,11 +71,13 @@ async def queue_health(timestamp: int = 0) -> None:
 async def retention_sweep(timestamp: int = 0) -> None:
     """Expire what has a defined lifetime (requirements §11 "Data control").
 
-    Only the answer cache has one today. Retention for reports, assessments and artifacts waits on
-    the professor's retention policy, and inventing a schedule for deleting research records would
-    be the wrong kind of initiative — the deletion is irreversible and the decision is theirs
-    (requirements §14, implementation_status §5).
+    Two things have one: the answer cache, and finished jobs in the queue's own tables, kept for
+    `observability.FINISHED_JOB_RETENTION_DAYS`. Retention for reports, assessments and artifacts
+    waits on the professor's retention policy, and inventing a schedule for deleting research
+    records would be the wrong kind of initiative — the deletion is irreversible and the decision is
+    theirs (requirements §14, implementation_status §5).
     """
+    from app import observability
     from app.assistant import cache
     from app.identity import service as identity_service
 
@@ -84,6 +86,11 @@ async def retention_sweep(timestamp: int = 0) -> None:
         for workspace_id in await identity_service.workspace_ids(session):
             epoch = await identity_service.access_epoch(session, workspace_id)
             removed += await cache.purge_stale(session, workspace_id, epoch)
+        jobs = await observability.purge_finished_jobs(
+            session, older_than_days=observability.FINISHED_JOB_RETENTION_DAYS
+        )
         await session.commit()
     if removed:
         log.info("expired %s cached answer(s)", removed)
+    if jobs:
+        log.info("deleted %s finished job(s)", jobs)

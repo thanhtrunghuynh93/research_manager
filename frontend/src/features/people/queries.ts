@@ -8,9 +8,7 @@ export const peopleKey = ["people"] as const;
 /**
  * AUTH-01: the directory, a page at a time.
  *
- * The roll spans every workspace the professor belongs to, with no flag to ask for it: reads follow
- * membership (ADR 0016), so one predicate answers it. Each row carries its own `workspace_id`,
- * which is what the screen groups by.
+ * The roll of the workspace being worked in (ADR 0020).
  *
  * The cursor is followed rather than ignored. A roll longer than one page is ordinary — the API
  * caps a page at 200 — and a directory that silently stops at the first page is one where a

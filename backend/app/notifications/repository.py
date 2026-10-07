@@ -8,12 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
-from app.notifications.models import (
-    DeliveryState,
-    EmailDelivery,
-    Notification,
-    ReminderRule,
-)
+from app.notifications.models import DeliveryState, EmailDelivery, Notification
 
 
 async def list_notifications(
@@ -32,43 +27,6 @@ async def list_notifications(
 async def notification_row(session: AsyncSession, notification_id: UUID) -> Notification | None:
     """Job-level read: the sender acts for the system and has no Scope."""
     return await session.get(Notification, notification_id)
-
-
-async def reminder_rules(session: AsyncSession, workspace_id: UUID) -> list[ReminderRule]:
-    """This workspace's rules, longest offset first."""
-    return list(
-        (
-            await session.execute(
-                select(ReminderRule)
-                .where(ReminderRule.workspace_id == workspace_id)
-                .order_by(ReminderRule.offset_minutes.desc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-
-async def clear_reminder_rules(session: AsyncSession, workspace_id: UUID) -> None:
-    for rule in (
-        (
-            await session.execute(
-                select(ReminderRule).where(ReminderRule.workspace_id == workspace_id)
-            )
-        )
-        .scalars()
-        .all()
-    ):
-        await session.delete(rule)
-    await session.flush()
-
-
-async def all_reminder_rules(session: AsyncSession) -> list[ReminderRule]:
-    return list(
-        (await session.execute(select(ReminderRule).order_by(ReminderRule.offset_minutes.desc())))
-        .scalars()
-        .all()
-    )
 
 
 async def queued_deliveries(session: AsyncSession, *, limit: int) -> list[EmailDelivery]:

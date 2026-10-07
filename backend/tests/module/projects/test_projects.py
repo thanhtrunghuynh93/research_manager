@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
@@ -13,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import AuditEvent
 from app.core.authz import Scope
 from app.core.clock import local_date, now
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.core.types import Role
 from app.identity import models as identity_models
 from app.identity import service as identity_service
@@ -117,7 +116,10 @@ async def test_ending_a_membership_removes_access_and_advances_the_epoch(
 
 
 async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
 ) -> None:
     """AUTH-03 revokes the ongoing work; it does not unname the project.
 
@@ -127,9 +129,7 @@ async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
     """
     project = await make_project(db, prof_scope, **AS_CREATED)
     membership = await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
-    await service.record_decision(
-        db, prof_scope, project.id, decision="Freeze the split", rationale="Comparability"
-    )
+    await service.add_member(db, prof_scope, project.id, student_id=student_b.id)
 
     await service.end_membership(db, prof_scope, membership.id)
     scope = await identity_service.scope_for(db, student_a)
@@ -139,11 +139,11 @@ async def test_a_student_who_has_left_still_reads_the_record_but_not_the_work(
     assert record.title == "Baseline evaluation"
     assert record.viewer_left_on == _workspace_today()
 
-    # But nothing of what the project is currently doing: `_in_scope` is untouched, so the
-    # decisions and tasks a membership grants stay behind with the membership (§8.4).
+    # But nothing of what the project is currently doing: who else is on it stays behind with the
+    # membership (§8.4). Their own row is theirs to read; a co-member's is not.
     assert scope.project_ids == frozenset(), "the work is still revoked"
-    assert await service.list_decisions(db, scope, project.id) == []
-    assert await service.list_tasks(db, scope, project.id) == []
+    members = await service.list_members(db, scope, project.id, include_past=True)
+    assert [m.student_id for m in members] == [student_a.id]
 
 
 async def test_a_project_never_worked_on_stays_invisible(
@@ -386,7 +386,11 @@ async def test_a_project_in_another_workspace_cannot_be_joined(
 
 
 async def test_joining_grants_the_projects_shared_records(
-    db: AsyncSession, prof_scope: Scope, student_b: identity_models.User, student_b_scope: Scope
+    db: AsyncSession,
+    prof_scope: Scope,
+    student_a: identity_models.User,
+    student_b: identity_models.User,
+    student_b_scope: Scope,
 ) -> None:
     """AUTH-02: a membership grants the project's own records — and it is a real grant, not a row.
 
@@ -394,16 +398,13 @@ async def test_joining_grants_the_projects_shared_records(
     fixtures for it live (`test_plan_baselines.py`, `tests/authz/`).
     """
     project = await _open_project(db, prof_scope)
-    await service.record_decision(
-        db, prof_scope, project.id, decision="Freeze the split", rationale="Comparability"
-    )
+    await service.add_member(db, prof_scope, project.id, student_id=student_a.id)
 
     await service.join_project(db, student_b_scope, project.id)
 
     scope = await identity_service.scope_for(db, student_b)
-    assert [d.decision for d in await service.list_decisions(db, scope, project.id)] == [
-        "Freeze the split"
-    ]
+    members = await service.list_members(db, scope, project.id)
+    assert {m.student_id for m in members} == {student_a.id, student_b.id}
 
 
 async def test_a_student_may_not_end_their_own_membership(
@@ -625,113 +626,6 @@ async def test_an_ending_is_dated_by_the_workspaces_today(
     ended = await service.end_membership(db, prof_scope, membership.id, left_on=date(2026, 9, 20))
 
     assert ended.left_on == date(2026, 9, 20)
-
-
-# ------------------------------------------------------------------ tasks (PROJ-03)
-
-
-async def _assigned_task(
-    db: AsyncSession, prof_scope: Scope, student: identity_models.User
-) -> tuple[object, object]:
-    """A project the student is on, and a task on it assigned to them."""
-    project = await make_project(db, prof_scope, title="Tasked", **AS_CREATED)
-    await service.add_member(db, prof_scope, project.id, student_id=student.id)
-    task = await service.create_task(
-        db,
-        prof_scope,
-        project.id,
-        title="Run the ablation",
-        assignee_id=student.id,
-    )
-    return project, task
-
-
-async def test_the_professor_edits_a_task(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    """PROJ-03. A regression: `update_task` called a repository function that had been deleted
-    with milestones, so every PATCH of a task raised AttributeError before reaching the rules
-    below. Nothing exercised the path, so the 500 shipped."""
-    _, task = await _assigned_task(db, prof_scope, student_a)
-
-    updated = await service.update_task(db, prof_scope, task.id, title="Run the ablation twice")
-
-    assert updated.title == "Run the ablation twice"
-
-
-async def test_a_student_reports_progress_on_their_own_task(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    _, task = await _assigned_task(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
-
-    updated = await service.update_task(
-        db, scope, task.id, status="blocked", blocker="The cluster queue is full"
-    )
-
-    assert updated.status is models.TaskStatus.BLOCKED
-    assert updated.blocker == "The cluster queue is full"
-
-
-async def test_a_student_may_not_edit_the_plan_of_their_own_task(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    """The plan is the professor's; progress on it is the student's."""
-    _, task = await _assigned_task(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
-
-    with pytest.raises(ValidationError):
-        await service.update_task(db, scope, task.id, title="Something easier")
-
-
-async def test_a_student_cannot_touch_a_task_assigned_to_someone_else(
-    db: AsyncSession,
-    prof_scope: Scope,
-    student_a: identity_models.User,
-    student_b: identity_models.User,
-) -> None:
-    """Not found rather than forbidden: a refusal that names the task confirms it exists."""
-    project, task = await _assigned_task(db, prof_scope, student_a)
-    await service.add_member(db, prof_scope, project.id, student_id=student_b.id)
-    scope = await identity_service.scope_for(db, student_b)
-
-    with pytest.raises(NotFoundError):
-        await service.update_task(db, scope, task.id, status="done")
-
-
-async def test_a_partial_completion_must_carry_a_reason(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    """PROJ-03: a fraction without a reason is a number nobody can act on."""
-    _, task = await _assigned_task(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
-
-    with pytest.raises(ValidationError):
-        await service.update_task(db, scope, task.id, completion_fraction=Decimal("0.5"))
-
-    updated = await service.update_task(
-        db,
-        scope,
-        task.id,
-        completion_fraction=Decimal("0.5"),
-        completion_reason="The second seed is still running",
-    )
-    assert updated.completion_fraction == Decimal("0.5")
-
-
-async def test_a_student_may_not_unassign_themselves_from_their_task(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    """An explicit null is an edit: clearing the assignee is the professor's plan, not progress."""
-    _, task = await _assigned_task(db, prof_scope, student_a)
-    scope = await identity_service.scope_for(db, student_a)
-
-    with pytest.raises(ValidationError):
-        await service.update_task(db, scope, task.id, assignee_id=None)
-
-    row = await db.get(models.Task, task.id)
-    assert row is not None
-    assert row.assignee_id == student_a.id
 
 
 async def test_a_membership_is_ended_only_under_its_own_project(

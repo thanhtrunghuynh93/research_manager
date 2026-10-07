@@ -10,7 +10,6 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 # Re-exported for the API layer, which must not import ORM modules directly.
-from app.assessment.models import FeedbackKind as FeedbackKind
 from app.assessment.models import ReviewState as ReviewState
 from app.assessment.models import RunState as RunState
 from app.core.types import Visibility
@@ -106,14 +105,8 @@ def _require_non_blank(value: str) -> str:
 
 
 # A body that is only whitespace is an empty body. `min_length=1` counted the spaces, so three of
-# them were accepted and filed against an assessment — a correction request the professor received
-# and could read nothing in, and which the student cannot withdraw.
+# them were accepted as a note nobody could read anything in.
 NonBlank = Annotated[str, AfterValidator(_require_non_blank)]
-
-
-class CorrectionIn(BaseModel):
-    body: NonBlank
-    evidence: list[Any] = Field(default_factory=list)
 
 
 class SupervisionNoteIn(BaseModel):
@@ -121,20 +114,6 @@ class SupervisionNoteIn(BaseModel):
     student_id: UUID | None = None
     project_id: UUID | None = None
     period_id: UUID | None = None
-
-
-class FeedbackOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    subject_table: str
-    subject_id: UUID
-    author_id: UUID
-    kind: FeedbackKind
-    visibility: Visibility
-    body: str
-    evidence_refs: list[Any]
-    created_at: datetime
 
 
 class TrendPoint(BaseModel):

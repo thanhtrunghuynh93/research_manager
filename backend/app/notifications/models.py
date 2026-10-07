@@ -1,6 +1,6 @@
-"""Notification tables: notification records, email delivery state, reminder rules.
+"""Notification tables: notification records and email delivery state.
 
-Requirements REP-07, REP-08, UI-07. The unique indexes are what make a retried job harmless: a
+Requirements REP-08, UI-07. The unique indexes are what make a retried job harmless: a
 second attempt inserts nothing and therefore sends nothing (AC-19).
 
 Preferences are gone: use cases v0.4 withdrew muting with the screen that offered it, and migration
@@ -47,9 +47,7 @@ DELIVERY_STATE_ENUM = Enum(
 class Notification(UUIDPrimaryKeyMixin, Base):
     """One message for one recipient.
 
-    `kind` is free text from the vocabulary in notifications.service, because the pre-deadline
-    reminders carry their offset in the kind (`reminder:48h`) and the offsets are configurable
-    (architecture §7.3).
+    `kind` is free text from the vocabulary in notifications.service (architecture §7.3).
     """
 
     __tablename__ = "notifications"
@@ -121,15 +119,4 @@ class EmailDelivery(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class ReminderRule(UUIDPrimaryKeyMixin, Base):
-    """REP-07: how long before the deadline an in-app reminder is raised."""
-
-    __tablename__ = "reminder_rules"
-    __table_args__ = (UniqueConstraint("workspace_id", "offset_minutes"),)
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    offset_minutes: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

@@ -20,7 +20,7 @@ import {
   ProgressIndex,
 } from "@/components/evidence/Badges";
 import { useUser } from "@/features/people/queries";
-import { useAllPeriods, useProjects } from "@/features/report/queries";
+import { usePeriods, useProjects } from "@/features/report/queries";
 import { useApprove, useAssessment, useAssessmentEvidence } from "@/features/review/queries";
 import { DIMENSIONS, ratingOf } from "@/features/review/types";
 import { useTimezone } from "@/features/calendar/queries";
@@ -43,7 +43,7 @@ export function ReviewPage() {
   const timezone = useTimezone();
   const student = useUser(assessment.data?.student_id);
   const projects = useProjects();
-  const periods = useAllPeriods();
+  const periods = usePeriods();
 
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [rationale, setRationale] = useState("");

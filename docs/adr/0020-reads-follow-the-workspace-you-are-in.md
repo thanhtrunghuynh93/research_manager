@@ -1,6 +1,6 @@
 # ADR 0020 — Reads follow the workspace you are working in
 
-Status: accepted — 2026-09-24
+Status: accepted — 2026-09-24; amended by [ADR 0021](0021-the-read-set-is-one-workspace.md) (the seam is removed)
 Supersedes: [ADR 0016](0016-reads-span-membership.md)
 
 ## Context

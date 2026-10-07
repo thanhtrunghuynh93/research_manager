@@ -1228,24 +1228,6 @@
         "title": "ConversationOut",
         "type": "object"
       },
-      "CorrectionIn": {
-        "properties": {
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "evidence": {
-            "items": {},
-            "title": "Evidence",
-            "type": "array"
-          }
-        },
-        "required": [
-          "body"
-        ],
-        "title": "CorrectionIn",
-        "type": "object"
-      },
       "CurrentPeriod": {
         "properties": {
           "deadline_utc": {
@@ -1726,71 +1708,6 @@
           "as_of"
         ],
         "title": "FactOut",
-        "type": "object"
-      },
-      "FeedbackKind": {
-        "enum": [
-          "professor_comment",
-          "student_response",
-          "correction_request"
-        ],
-        "title": "FeedbackKind",
-        "type": "string"
-      },
-      "FeedbackOut": {
-        "properties": {
-          "author_id": {
-            "format": "uuid",
-            "title": "Author Id",
-            "type": "string"
-          },
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "evidence_refs": {
-            "items": {},
-            "title": "Evidence Refs",
-            "type": "array"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/FeedbackKind"
-          },
-          "subject_id": {
-            "format": "uuid",
-            "title": "Subject Id",
-            "type": "string"
-          },
-          "subject_table": {
-            "title": "Subject Table",
-            "type": "string"
-          },
-          "visibility": {
-            "$ref": "#/components/schemas/Visibility"
-          }
-        },
-        "required": [
-          "id",
-          "subject_table",
-          "subject_id",
-          "author_id",
-          "kind",
-          "visibility",
-          "body",
-          "evidence_refs",
-          "created_at"
-        ],
-        "title": "FeedbackOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3170,19 +3087,6 @@
         "title": "Readiness",
         "type": "object"
       },
-      "ReminderOffsetsIn": {
-        "properties": {
-          "offsets_hours": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Offsets Hours",
-            "type": "array"
-          }
-        },
-        "title": "ReminderOffsetsIn",
-        "type": "object"
-      },
       "ReportOut": {
         "properties": {
           "current_version_id": {
@@ -3350,107 +3254,6 @@
           "created_at"
         ],
         "title": "RepositoryOut",
-        "type": "object"
-      },
-      "ResearchDecisionIn": {
-        "properties": {
-          "decided_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decided On"
-          },
-          "decision": {
-            "minLength": 1,
-            "title": "Decision",
-            "type": "string"
-          },
-          "participant_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Participant Ids",
-            "type": "array"
-          },
-          "rationale": {
-            "default": "",
-            "title": "Rationale",
-            "type": "string"
-          },
-          "related_evidence": {
-            "additionalProperties": true,
-            "title": "Related Evidence",
-            "type": "object"
-          }
-        },
-        "required": [
-          "decision"
-        ],
-        "title": "ResearchDecisionIn",
-        "type": "object"
-      },
-      "ResearchDecisionOut": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "decided_on": {
-            "format": "date",
-            "title": "Decided On",
-            "type": "string"
-          },
-          "decision": {
-            "title": "Decision",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "participant_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Participant Ids",
-            "type": "array"
-          },
-          "project_id": {
-            "format": "uuid",
-            "title": "Project Id",
-            "type": "string"
-          },
-          "rationale": {
-            "title": "Rationale",
-            "type": "string"
-          },
-          "related_evidence": {
-            "additionalProperties": true,
-            "title": "Related Evidence",
-            "type": "object"
-          }
-        },
-        "required": [
-          "id",
-          "project_id",
-          "decided_on",
-          "decision",
-          "rationale",
-          "participant_ids",
-          "related_evidence",
-          "created_at"
-        ],
-        "title": "ResearchDecisionOut",
         "type": "object"
       },
       "ResearchStage": {
@@ -3904,283 +3707,6 @@
         "title": "SyncStatusOut",
         "type": "object"
       },
-      "TaskIn": {
-        "properties": {
-          "acceptance_criteria": {
-            "default": "",
-            "title": "Acceptance Criteria",
-            "type": "string"
-          },
-          "assignee_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee Id"
-          },
-          "effort_weight": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "default": "1",
-            "title": "Effort Weight"
-          },
-          "planned_outcome": {
-            "default": "",
-            "title": "Planned Outcome",
-            "type": "string"
-          },
-          "title": {
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "title": "TaskIn",
-        "type": "object"
-      },
-      "TaskOut": {
-        "properties": {
-          "acceptance_criteria": {
-            "title": "Acceptance Criteria",
-            "type": "string"
-          },
-          "assignee_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee Id"
-          },
-          "blocker": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Blocker"
-          },
-          "completion_fraction": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completion Fraction"
-          },
-          "completion_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completion Reason"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "effort_weight": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Effort Weight",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "planned_outcome": {
-            "title": "Planned Outcome",
-            "type": "string"
-          },
-          "project_id": {
-            "format": "uuid",
-            "title": "Project Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/TaskStatus"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "project_id",
-          "title",
-          "planned_outcome",
-          "acceptance_criteria",
-          "effort_weight",
-          "status",
-          "created_at"
-        ],
-        "title": "TaskOut",
-        "type": "object"
-      },
-      "TaskPatch": {
-        "properties": {
-          "acceptance_criteria": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Acceptance Criteria"
-          },
-          "assignee_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee Id"
-          },
-          "blocker": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Blocker"
-          },
-          "completion_fraction": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completion Fraction"
-          },
-          "completion_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completion Reason"
-          },
-          "effort_weight": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effort Weight"
-          },
-          "planned_outcome": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Planned Outcome"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TaskStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": {
-            "anyOf": [
-              {
-                "maxLength": 300,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          }
-        },
-        "title": "TaskPatch",
-        "type": "object"
-      },
-      "TaskStatus": {
-        "enum": [
-          "planned",
-          "in_progress",
-          "blocked",
-          "done",
-          "dropped"
-        ],
-        "title": "TaskStatus",
-        "type": "string"
-      },
       "TimingStatus": {
         "description": "REP-05: timing is recorded separately from the workflow state.",
         "enum": [
@@ -4628,7 +4154,7 @@
         "type": "object"
       },
       "WeekWorkspace": {
-        "description": "This week in one workspace: its period, and every report owed in it.\n\nGrouped per workspace because a professor's reads span all of them (ADR 0016) and each keeps\nits own calendar \u2014 so \"this week\" is one period per workspace rather than one period.",
+        "description": "This week in one workspace: its period, and every report owed in it.\n\nA list of one since reads stopped spanning workspaces (ADR 0020, ADR 0021); the grouping is\nkept so the screen's shape did not change.",
         "properties": {
           "excused": {
             "title": "Excused",
@@ -5563,59 +5089,6 @@
         ]
       }
     },
-    "/api/v1/assessments/{assessment_id}/corrections": {
-      "post": {
-        "operationId": "request_correction_api_v1_assessments__assessment_id__corrections_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "assessment_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Assessment Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CorrectionIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FeedbackOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Request a correction, with evidence",
-        "tags": [
-          "assessments"
-        ]
-      }
-    },
     "/api/v1/assessments/{assessment_id}/evidence": {
       "get": {
         "description": "UI-05: the claims, the evidence, and the draft are read side by side.",
@@ -5659,53 +5132,6 @@
           }
         },
         "summary": "The evidence snapshot this assessment was made from",
-        "tags": [
-          "assessments"
-        ]
-      }
-    },
-    "/api/v1/assessments/{assessment_id}/feedback": {
-      "get": {
-        "operationId": "list_feedback_api_v1_assessments__assessment_id__feedback_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "assessment_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Assessment Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/FeedbackOut"
-                  },
-                  "title": "Response List Feedback Api V1 Assessments  Assessment Id  Feedback Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Feedback on an assessment",
         "tags": [
           "assessments"
         ]
@@ -6500,54 +5926,6 @@
         ]
       }
     },
-    "/api/v1/notifications/reminder-offsets": {
-      "put": {
-        "operationId": "set_reminder_offsets_api_v1_notifications_reminder_offsets_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReminderOffsetsIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "items": {
-                      "type": "integer"
-                    },
-                    "type": "array"
-                  },
-                  "title": "Response Set Reminder Offsets Api V1 Notifications Reminder Offsets Put",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "How long before the deadline to remind",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
     "/api/v1/obligations/{obligation_id}/excuse": {
       "post": {
         "operationId": "excuse_obligation_api_v1_obligations__obligation_id__excuse_post",
@@ -6677,7 +6055,7 @@
     },
     "/api/v1/periods": {
       "get": {
-        "description": "The weeks of the workspace being worked in.\n\n`across_workspaces` asks for everything `visible_to` allows rather than pinning to the\nworkspace worked in. Since ADR 0020 a read covers only that workspace, so the answers agree;\nscreens that label records \u2014 a review, a student's history \u2014 still ask for the wide list by\nname so they stay correct if reads span again. Each period carries its `workspace_id`.",
+        "description": "The weeks of the workspace being worked in.",
         "operationId": "list_periods_api_v1_periods_get",
         "parameters": [
           {
@@ -6695,16 +6073,6 @@
                 }
               ],
               "title": "Through"
-            }
-          },
-          {
-            "in": "query",
-            "name": "across_workspaces",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Across Workspaces",
-              "type": "boolean"
             }
           }
         ],
@@ -7330,104 +6698,6 @@
         ]
       }
     },
-    "/api/v1/projects/{project_id}/decisions": {
-      "get": {
-        "operationId": "list_decisions_api_v1_projects__project_id__decisions_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ResearchDecisionOut"
-                  },
-                  "title": "Response List Decisions Api V1 Projects  Project Id  Decisions Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Dated research decisions",
-        "tags": [
-          "projects"
-        ]
-      },
-      "post": {
-        "operationId": "record_decision_api_v1_projects__project_id__decisions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResearchDecisionIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchDecisionOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Record a research decision and its rationale",
-        "tags": [
-          "projects"
-        ]
-      }
-    },
     "/api/v1/projects/{project_id}/join": {
       "post": {
         "operationId": "join_project_api_v1_projects__project_id__join_post",
@@ -7649,104 +6919,6 @@
         "summary": "End a membership, keeping its history",
         "tags": [
           "projects"
-        ]
-      }
-    },
-    "/api/v1/projects/{project_id}/tasks": {
-      "get": {
-        "operationId": "list_tasks_api_v1_projects__project_id__tasks_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/TaskOut"
-                  },
-                  "title": "Response List Tasks Api V1 Projects  Project Id  Tasks Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List tasks",
-        "tags": [
-          "tasks"
-        ]
-      },
-      "post": {
-        "operationId": "create_task_api_v1_projects__project_id__tasks_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TaskIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create a task",
-        "tags": [
-          "tasks"
         ]
       }
     },
@@ -8317,59 +7489,6 @@
         ]
       }
     },
-    "/api/v1/tasks/{task_id}": {
-      "patch": {
-        "operationId": "update_task_api_v1_tasks__task_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TaskPatch"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update a task or report progress on it",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
     "/api/v1/trends": {
       "get": {
         "description": "Each point carries the rubric that produced it, so a change reads as a break (AC-10).",
@@ -8430,7 +7549,7 @@
     },
     "/api/v1/users": {
       "get": {
-        "description": "Every account in every workspace the caller belongs to; each row carries its own\n`workspace_id` (ADR 0016). For a student, who belongs to one, that is themselves.",
+        "description": "Every account in the workspace the caller is in (ADR 0020). For a student, themselves.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {

@@ -15,7 +15,6 @@ from app.assessment.models import (
     AssessmentReview,
     AssessmentVersion,
     EvidenceSnapshotItem,
-    Feedback,
     ReviewState,
     RubricVersion,
     RunState,
@@ -318,24 +317,6 @@ async def latest_run(
             .limit(1)
         )
     ).scalar_one_or_none()
-
-
-async def list_feedback(session: AsyncSession, scope: Scope, assessment_id: UUID) -> list[Feedback]:
-    return list(
-        (
-            await session.execute(
-                select(Feedback)
-                .where(
-                    Feedback.subject_table == "assessment_versions",
-                    Feedback.subject_id == assessment_id,
-                    visible_to(scope, Feedback),
-                )
-                .order_by(Feedback.created_at)
-            )
-        )
-        .scalars()
-        .all()
-    )
 
 
 async def review_queue(

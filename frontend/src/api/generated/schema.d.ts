@@ -296,23 +296,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/assessments/{assessment_id}/corrections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Request a correction, with evidence */
-        post: operations["request_correction_api_v1_assessments__assessment_id__corrections_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/assessments/{assessment_id}/evidence": {
         parameters: {
             query?: never;
@@ -325,23 +308,6 @@ export interface paths {
          * @description UI-05: the claims, the evidence, and the draft are read side by side.
          */
         get: operations["assessment_evidence_api_v1_assessments__assessment_id__evidence_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/assessments/{assessment_id}/feedback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Feedback on an assessment */
-        get: operations["list_feedback_api_v1_assessments__assessment_id__feedback_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -668,23 +634,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/notifications/reminder-offsets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** How long before the deadline to remind */
-        put: operations["set_reminder_offsets_api_v1_notifications_reminder_offsets_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/obligations/{obligation_id}/excuse": {
         parameters: {
             query?: never;
@@ -746,11 +695,6 @@ export interface paths {
         /**
          * List reporting periods
          * @description The weeks of the workspace being worked in.
-         *
-         *     `across_workspaces` asks for everything `visible_to` allows rather than pinning to the
-         *     workspace worked in. Since ADR 0020 a read covers only that workspace, so the answers agree;
-         *     screens that label records — a review, a student's history — still ask for the wide list by
-         *     name so they stay correct if reads span again. Each period carries its `workspace_id`.
          */
         get: operations["list_periods_api_v1_periods_get"];
         put?: never;
@@ -919,24 +863,6 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/decisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Dated research decisions */
-        get: operations["list_decisions_api_v1_projects__project_id__decisions_get"];
-        put?: never;
-        /** Record a research decision and its rationale */
-        post: operations["record_decision_api_v1_projects__project_id__decisions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/projects/{project_id}/join": {
         parameters: {
             query?: never;
@@ -983,24 +909,6 @@ export interface paths {
         put?: never;
         /** End a membership, keeping its history */
         post: operations["end_membership_api_v1_projects__project_id__members__membership_id__end_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{project_id}/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List tasks */
-        get: operations["list_tasks_api_v1_projects__project_id__tasks_get"];
-        put?: never;
-        /** Create a task */
-        post: operations["create_task_api_v1_projects__project_id__tasks_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1171,23 +1079,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tasks/{task_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update a task or report progress on it */
-        patch: operations["update_task_api_v1_tasks__task_id__patch"];
-        trace?: never;
-    };
     "/api/v1/trends": {
         parameters: {
             query?: never;
@@ -1217,8 +1108,7 @@ export interface paths {
         };
         /**
          * List the users the caller may see
-         * @description Every account in every workspace the caller belongs to; each row carries its own
-         *     `workspace_id` (ADR 0016). For a student, who belongs to one, that is themselves.
+         * @description Every account in the workspace the caller is in (ADR 0020). For a student, themselves.
          */
         get: operations["list_users_api_v1_users_get"];
         put?: never;
@@ -1974,13 +1864,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /** CorrectionIn */
-        CorrectionIn: {
-            /** Body */
-            body: string;
-            /** Evidence */
-            evidence?: unknown[];
-        };
         /** CurrentPeriod */
         CurrentPeriod: {
             /** Deadline Utc */
@@ -2221,42 +2104,6 @@ export interface components {
             }[];
             /** Value */
             value: unknown;
-        };
-        /**
-         * FeedbackKind
-         * @enum {string}
-         */
-        FeedbackKind: "professor_comment" | "student_response" | "correction_request";
-        /** FeedbackOut */
-        FeedbackOut: {
-            /**
-             * Author Id
-             * Format: uuid
-             */
-            author_id: string;
-            /** Body */
-            body: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Evidence Refs */
-            evidence_refs: unknown[];
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            kind: components["schemas"]["FeedbackKind"];
-            /**
-             * Subject Id
-             * Format: uuid
-             */
-            subject_id: string;
-            /** Subject Table */
-            subject_table: string;
-            visibility: components["schemas"]["Visibility"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2856,11 +2703,6 @@ export interface components {
              */
             status: "ready" | "degraded";
         };
-        /** ReminderOffsetsIn */
-        ReminderOffsetsIn: {
-            /** Offsets Hours */
-            offsets_hours?: number[];
-        };
         /** ReportOut */
         ReportOut: {
             /** Current Version Id */
@@ -2933,57 +2775,6 @@ export interface components {
             provider: string;
             /** Visibility */
             visibility: string;
-        };
-        /** ResearchDecisionIn */
-        ResearchDecisionIn: {
-            /** Decided On */
-            decided_on?: string | null;
-            /** Decision */
-            decision: string;
-            /** Participant Ids */
-            participant_ids?: string[];
-            /**
-             * Rationale
-             * @default
-             */
-            rationale: string;
-            /** Related Evidence */
-            related_evidence?: {
-                [key: string]: unknown;
-            };
-        };
-        /** ResearchDecisionOut */
-        ResearchDecisionOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Decided On
-             * Format: date
-             */
-            decided_on: string;
-            /** Decision */
-            decision: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Participant Ids */
-            participant_ids: string[];
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            /** Rationale */
-            rationale: string;
-            /** Related Evidence */
-            related_evidence: {
-                [key: string]: unknown;
-            };
         };
         /**
          * ResearchStage
@@ -3165,88 +2956,6 @@ export interface components {
              */
             repository_id: string;
         };
-        /** TaskIn */
-        TaskIn: {
-            /**
-             * Acceptance Criteria
-             * @default
-             */
-            acceptance_criteria: string;
-            /** Assignee Id */
-            assignee_id?: string | null;
-            /**
-             * Effort Weight
-             * @default 1
-             */
-            effort_weight: number | string;
-            /**
-             * Planned Outcome
-             * @default
-             */
-            planned_outcome: string;
-            /** Title */
-            title: string;
-        };
-        /** TaskOut */
-        TaskOut: {
-            /** Acceptance Criteria */
-            acceptance_criteria: string;
-            /** Assignee Id */
-            assignee_id?: string | null;
-            /** Blocker */
-            blocker?: string | null;
-            /** Completion Fraction */
-            completion_fraction?: string | null;
-            /** Completion Reason */
-            completion_reason?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Effort Weight */
-            effort_weight: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Planned Outcome */
-            planned_outcome: string;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            status: components["schemas"]["TaskStatus"];
-            /** Title */
-            title: string;
-        };
-        /** TaskPatch */
-        TaskPatch: {
-            /** Acceptance Criteria */
-            acceptance_criteria?: string | null;
-            /** Assignee Id */
-            assignee_id?: string | null;
-            /** Blocker */
-            blocker?: string | null;
-            /** Completion Fraction */
-            completion_fraction?: number | string | null;
-            /** Completion Reason */
-            completion_reason?: string | null;
-            /** Effort Weight */
-            effort_weight?: number | string | null;
-            /** Planned Outcome */
-            planned_outcome?: string | null;
-            status?: components["schemas"]["TaskStatus"] | null;
-            /** Title */
-            title?: string | null;
-        };
-        /**
-         * TaskStatus
-         * @enum {string}
-         */
-        TaskStatus: "planned" | "in_progress" | "blocked" | "done" | "dropped";
         /**
          * TimingStatus
          * @description REP-05: timing is recorded separately from the workflow state.
@@ -3465,8 +3174,8 @@ export interface components {
          * WeekWorkspace
          * @description This week in one workspace: its period, and every report owed in it.
          *
-         *     Grouped per workspace because a professor's reads span all of them (ADR 0016) and each keeps
-         *     its own calendar — so "this week" is one period per workspace rather than one period.
+         *     A list of one since reads stopped spanning workspaces (ADR 0020, ADR 0021); the grouping is
+         *     kept so the screen's shape did not change.
          */
         WeekWorkspace: {
             /** Excused */
@@ -4008,41 +3717,6 @@ export interface operations {
             };
         };
     };
-    request_correction_api_v1_assessments__assessment_id__corrections_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assessment_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CorrectionIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FeedbackOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     assessment_evidence_api_v1_assessments__assessment_id__evidence_get: {
         parameters: {
             query?: never;
@@ -4061,37 +3735,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnapshotItemOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_feedback_api_v1_assessments__assessment_id__feedback_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assessment_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FeedbackOut"][];
                 };
             };
             /** @description Validation Error */
@@ -4667,41 +4310,6 @@ export interface operations {
             };
         };
     };
-    set_reminder_offsets_api_v1_notifications_reminder_offsets_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReminderOffsetsIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: number[];
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     excuse_obligation_api_v1_obligations__obligation_id__excuse_post: {
         parameters: {
             query?: never;
@@ -4796,7 +4404,6 @@ export interface operations {
         parameters: {
             query?: {
                 through?: string | null;
-                across_workspaces?: boolean;
             };
             header?: never;
             path?: never;
@@ -5176,72 +4783,6 @@ export interface operations {
             };
         };
     };
-    list_decisions_api_v1_projects__project_id__decisions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResearchDecisionOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    record_decision_api_v1_projects__project_id__decisions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResearchDecisionIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResearchDecisionOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     join_project_api_v1_projects__project_id__join_post: {
         parameters: {
             query?: never;
@@ -5368,72 +4909,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MembershipOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_tasks_api_v1_projects__project_id__tasks_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_task_api_v1_projects__project_id__tasks_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TaskIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskOut"];
                 };
             };
             /** @description Validation Error */
@@ -5822,41 +5297,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_task_api_v1_tasks__task_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TaskPatch"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskOut"];
                 };
             };
             /** @description Validation Error */

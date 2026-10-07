@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.9 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.17
+Version 0.10 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.10, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md), and [use_cases.md](use_cases.md) v0.18
 
 This document records what has been built, what remains, and the decisions taken while building
 that are not obvious from the code. It follows the bootstrap order in section 9 of the repository
@@ -23,20 +23,22 @@ layout. Update it in the pull request that changes what it describes.
 | 11 | Deployment preparation: readiness checks, production config refusal, auth rate limits, mail warnings | Done |
 | 12 | `workspaces/`: ownership, joining and leaving, plural membership, reads that span it | Done |
 
-Counted from the tree rather than remembered, and checked by `scripts/check_docs.py`:
-
-| Counted | Value |
-| --- | --- |
-| Alembic migrations | 26 |
-| `/api/v1` endpoints | 91 (89 in the schema, 2 `include_in_schema=False`) |
-| ADRs | 20 |
-| Acceptance scenarios with a test | 19 of 19 |
-| Import-linter contracts holding | 5 of 5 |
-
-Test counts and coverage are deliberately not recorded here. A number in prose goes stale the week
-after it is written — the previous version of this section claimed 794 backend tests and 91.3 %
-coverage, and both had drifted by the time anyone read them. Section 6 says how to obtain the
+Counts — tests, coverage, migrations, endpoints, ADRs — are deliberately not recorded here. A number
+in prose goes stale the week after it is written — an earlier version of this section claimed 794
+backend tests and 91.3 % coverage, and both had drifted by the time anyone read them; the counts
+table that replaced it was checked by `scripts/check_docs.py` and cost an edit on every change, so
+0.10 dropped it. Section 6 says how to obtain the
 current figures, and CI enforces the 85 % gate rather than a sentence.
+
+**7 October 2026 — what had no screen and no reader is removed.** Tasks, dated research decisions,
+pre-deadline reminder offsets and student correction requests went with their endpoints, and
+migration 0027 dropped `tasks`, `research_decisions`, `reminder_rules` and `feedback` — every one of
+them empty on the running deployment (requirements 0.10). So did the baseline proposal flow
+(`propose_baseline`, `accept_baseline`, `supersede_baseline`), which had no route at all, the
+revision-request notification record nothing read, and the spanning-read seam ADR 0020 had kept
+(`Scope.workspace_ids`, `Scope.access_epochs`, `across_workspaces` — [ADR 0021](adr/0021-the-read-set-is-one-workspace.md)).
+`retention_sweep` now also deletes queue jobs that finished more than seven days ago. The missed-
+deadline email path is unchanged.
 
 **21 September 2026 — the project screen, and three rules that had drifted from their documents.**
 Four changes went out together, and the shape worth recording is that two of them were the
@@ -152,8 +154,9 @@ to get a first account, and the deploy runbook now names it.
 ### Step 3 — `projects/` and `reporting/` (PROJ-01..05, PROJ-07, REP-01..06)
 
 Projects with research questions, stages and statuses; membership history that is never deleted;
-tasks whose partial completion must carry a reason; dated research decisions. Milestones were here
-too, and are not: nothing ever created one, so migration 0026 removed them (requirements 0.8).
+frozen weekly plans. Milestones were here too, and are not: nothing ever created one, so migration
+0026 removed them (requirements 0.8). Tasks and dated research decisions followed in 0.10
+(migration 0027) for the same reason.
 
 The reporting calendar generates periods, derives obligations from membership dates and project
 status, and records exemptions and extensions. Drafts autosave. Submission writes an immutable
@@ -275,9 +278,8 @@ a manual retry are the same job. An enqueue that fails is logged and swallowed: 
 version is the thing that cannot be lost, and a missing draft is recoverable from the retry
 endpoint (requirements §10, AC-13).
 
-Eight periodic tasks now run: `ensure_periods` and `freeze_baselines` daily, `scan_due_reminders`
-and `send_queued_emails` on their short cycles, `dispatch_due_reminders` every fifteen minutes,
-`incremental_sync` every thirty, `queue_health` every five, and `retention_sweep` nightly. The two
+Seven periodic tasks now run: `ensure_periods` and `freeze_baselines` daily, `scan_due_reminders`
+and `send_queued_emails` on their short cycles, `incremental_sync` every thirty, `queue_health` every five, and `retention_sweep` nightly. The two
 calendar tasks are idempotent by construction, so a worker that was down for a day catches up
 rather than skipping a week.
 
@@ -305,6 +307,7 @@ a professor may administer, and then — once there were several — which they 
   comparison moved into `Scope.within(column)` so that all thirty-three predicates widened in one
   diff rather than thirty-three. The `across_workspaces` flag that a narrower design needed went
   with it — a second, wider variant of a narrow predicate is the shape a permission bug grows in.
+  ADR 0020 then narrowed reads back to the workspace being worked in, and ADR 0021 removed the set.
 - **The session was the wrong place for it.** ADR 0013 put the active workspace on the session and
   migration 0019 added the column; ADR 0014 superseded it two migrations later and 0020 dropped it.
   Paying the schema cost instead — `ON UPDATE CASCADE` on the four identity foreign keys — removed
@@ -365,10 +368,9 @@ was a place where two parts of the product answered the same question on differe
 | Row-Level Security | §11 | ADR 0004: application-level authorization first, RLS as defence in depth after the MVP |
 | Student-side assistant | §2, §12 | Next release; the retrieval path and the predicate are already shared, so it is a surface rather than a rebuild |
 | Rubric calibration | ASSESS-03, §13 | Needs the professor's own ratings on real weeks. The harness and the protocol are ready for them |
-| Retention and authorized deletion | §11 "Data control" | `retention_sweep` expires the answer cache, which has a defined lifetime. Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
+| Retention and authorized deletion | §11 "Data control" | `retention_sweep` expires the answer cache and finished queue jobs, which have a defined lifetime. Retention for reports, assessments and artifacts waits on the professor's policy: the deletion is irreversible and the schedule is theirs to set, not mine to invent |
 | Moving a student who has written history | AUTH-06 | Four composite foreign keys refuse it, by design rather than by omission. The two ways out — cascade the history into the new workspace, or make the move a new account — both change what "the workspace a record was written in" means, and neither is worth doing before someone needs it (use_cases.md §2.1) |
-| Pre-deadline reminders reaching anyone | REP-07 | The rows are written every fifteen minutes and nothing reads them: use cases v0.4 withdrew the in-app surface and only `missed_deadline` is emailed. The offsets endpoint has no screen either. Kept rather than deleted because the unique key is what makes a retried dispatch a no-op |
-| Professor-authored feedback | REP-07 | `FeedbackKind.PROFESSOR_COMMENT` exists in the enum and no code path writes one. What a student can read today is the approved assessment, their own correction thread, and — since v0.13 — the reason attached to a revision request, which is the one thing a professor can now write that reaches them |
+| Professor-authored feedback | REP-07 | No code path writes one; the `feedback` table that would have held it was dropped in migration 0027. What a student can read today is the approved assessment and — since v0.13 — the reason attached to a revision request, which is the one thing a professor can now write that reaches them |
 | Performance benchmarks | §11, §15 | Nothing measures them. The p95 targets — 2 s interactive, 10 s first token, 10 min assessment — have never been measured, and no seed builds the 100k-chunk corpus they assume |
 
 ### Acceptance scenarios

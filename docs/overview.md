@@ -240,9 +240,8 @@ capture research progress across stages — is a question the pilot opens rather
 
 This document deliberately carries no account of how much is built. That belongs in
 [implementation_status.md](implementation_status.md) — §1 for the state, §3 for the gaps and their
-reasons, §5 for the decisions still owed by the professor — where the counts are derived from the
-tree and checked by `scripts/check_docs.py` on every CI run. A second copy here would be a number
-nothing checks, and the first version of this document had one that was wrong within the week.
+reasons, §5 for the decisions still owed by the professor. A count here would be a number nothing
+checks, and the first version of this document had one that was wrong within the week.
 What remains before a pilot is calibration and operation rather than construction.
 
 Three lessons from building it are recorded there and are worth repeating here, because they

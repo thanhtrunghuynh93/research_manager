@@ -209,8 +209,8 @@ async def test_ac_11_an_epoch_bump_in_a_workspace_not_read_keeps_the_answer(
     """ADR 0020: a professor in two workspaces reads only the one they are in, so an answer rests
     on that workspace's records alone and access changing elsewhere does not touch it.
 
-    The digest over `access_epochs` that ADR 0016 needed is still in place; this pins that it now
-    covers exactly the anchor, rather than quietly invalidating on every workspace belonged to."""
+    This pins that the cache digest covers exactly the anchor, rather than quietly invalidating on
+    every workspace belonged to."""
     home = prof_scope.workspace_id
     await _project_with_a_report(db, prof_scope, student_a)
     owned = await repository.get_workspace(db, home)
@@ -225,7 +225,6 @@ async def test_ac_11_an_epoch_bump_in_a_workspace_not_read_keeps_the_answer(
 
     working = await identity_service.scope_for(db, prof)
     assert working.workspace_id == home
-    assert working.workspace_ids == frozenset({home})
 
     await assistant_service.ask(db, working, question=QUESTION, as_of=AS_OF, gateway=_gateway())
     again = await assistant_service.ask(

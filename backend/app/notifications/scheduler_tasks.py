@@ -78,14 +78,5 @@ async def send_queued_emails(timestamp: int = 0) -> None:
         log.info("sent %s email(s)", sent)
 
 
-@procrastinate_app.periodic(cron="*/15 * * * *")
-@procrastinate_app.task(name="notifications.dispatch_due_reminders", queueing_lock="pre_reminders")
-async def dispatch_due_reminders(timestamp: int = 0) -> None:
-    """REP-07: the configurable in-app reminders before the deadline."""
-    async with session_factory()() as session:
-        await service.dispatch_due_reminders(session)
-        await session.commit()
-
-
 def missed_deadline_key(period_id: object) -> str:
     return key("missed", period_id)

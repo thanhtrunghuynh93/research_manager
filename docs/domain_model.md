@@ -1,6 +1,6 @@
 # How professor, student, workspace, project and reports are organized
 
-Version 0.3 — 21 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md) v0.5, [use_cases.md](use_cases.md) v0.17, and the [ADRs](adr/)
+Version 0.4 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.10, [architecture.md](architecture.md) v0.6, [use_cases.md](use_cases.md) v0.18, and the [ADRs](adr/)
 
 This document is an orientation to the central relations: what belongs to what, which of those
 relations are plural, and where each one is enforced. It is derived from the documents above and
@@ -16,14 +16,14 @@ belongs to the workspace it was created in and never moves. A **project membersh
 to a project in that student's own workspace, and is the sole input to a weekly **reporting
 obligation**. A **report** is one per student per week, holding one entry per obligated project,
 versioned immutably; assessment is per student × project × week. None of this is a rule a caller
-applies: the same-workspace invariant is a set of composite foreign keys, and the asymmetry between
-what a read may see and where a write lands is one function, `Scope.within`.
+applies: the same-workspace invariant is a set of composite foreign keys, and what a read may see is
+one function, `Scope.within`.
 
 ```
 Workspace ──owner_id──────────────► User (prof)        administration: create, rename, archive
     ▲
-    ├──workspace_members───────────► User (prof 1..n, student exactly 1)   belonging: what a read sees
-    ├──users.workspace_id──────────► User (exactly one)                    anchor: where a write lands
+    ├──workspace_members───────────► User (prof 1..n, student exactly 1)   belonging: what may be entered
+    ├──users.workspace_id──────────► User (exactly one)                    anchor: what is read and written
     │
     ├── Project (pinned at creation)
     │      └── ProjectMembership ──► User (student)     composite FK onto BOTH ends
@@ -77,10 +77,10 @@ Four rules follow from the boundary rather than from taste:
 
 - **Belonging is plural, working in one is singular.** A professor may switch into any workspace
   they belong to, and both reads and writes follow the one they are working in
-  ([ADR 0020](adr/0020-reads-follow-the-workspace-you-are-in.md)): `Scope.workspace_ids` is
-  `{Scope.workspace_id}`. The comparison lives in `Scope.within`
-  ([`backend/app/core/authz.py`](../backend/app/core/authz.py)), which all thirty-three visibility
-  predicates call, so widening what a read may see is one diff.
+  ([ADR 0020](adr/0020-reads-follow-the-workspace-you-are-in.md),
+  [ADR 0021](adr/0021-the-read-set-is-one-workspace.md)): a `Scope` names one workspace. The
+  comparison lives in `Scope.within` ([`backend/app/core/authz.py`](../backend/app/core/authz.py)),
+  which every visibility predicate calls, so changing what a read may see is one diff.
 - **Co-equal inside a workspace** ([ADR 0011](adr/0011-co-equal-professors.md)): every professor
   there sees every student, report, assessment and supervision note, and any professor may invite a
   student, invite a colleague as a professor, and remove a student.
@@ -111,9 +111,8 @@ Four rules follow from the boundary rather than from taste:
   week and ending one removes an obligation, and only the second is a supervision decision.
 - **Reads:** their own reports and drafts; their own assessments, and only once a review has
   approved them; the projects they are a member of; the contributions and identity mappings
-  attributed to them, which is the precondition for contesting misattribution (REPO-04).
-- **Never reads:** another student's report or assessment, supervision notes, professor-only
-  feedback, or the assistant, which is professor-facing by decision rather than by omission.
+  attributed to them, which is the precondition for raising misattribution (REPO-04).
+- **Never reads:** another student's report or assessment, supervision notes, or the assistant, which is professor-facing by decision rather than by omission.
 - **Removal** ends every open project membership and deactivates the account in one transaction,
   which is what stops obligations deriving. Deactivation alone is suspension and leaves memberships
   open.
@@ -145,8 +144,7 @@ is attributed from it (PROJ-01).
   ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)).
 - **A membership is the entire grant of access to a project.** The predicate is same workspace and
   `project_id IN scope.project_ids`, with no second gate, so joining hands over the project record,
-  its tasks — including the free-text blockers and completion reasons another
-  student wrote — its research decisions, its repositories, its shared evidence, and the member
+  its documents, its repositories, its shared evidence, and the member
   list, which is otherwise the only route by which one student learns another's name. That is why
   `open_to_join` defaults false and discovery is a separate, narrower read returning title, stage,
   status and a member count only ([ADR 0017](adr/0017-students-own-their-projects.md)).
@@ -160,7 +158,7 @@ is attributed from it (PROJ-01).
   following week, so joining on a Saturday is not a report due that Sunday for a week spent off the
   project (PROJ-02).
 - **What a membership does not reach:** reports, versions, attachments, obligations, assessments,
-  reviews, feedback, corrections, supervision notes, evidence snapshots and plan baselines are keyed
+  reviews, supervision notes, evidence snapshots and plan baselines are keyed
   to a `student_id`, never to a `project_id`. Joining a project tells you about the work and nothing
   about how anyone on it is doing.
 
@@ -205,9 +203,10 @@ The chain is `CalendarConfig` → `ReportingPeriod` → `ReportingObligation` �
   time, late, missing, excused — tracked separately. A missing report is a condition recorded on the
   obligation, never an invented assessment or an automatic zero (REP-06).
 - **Plan baselines are the frozen half of the week** (PROJ-04). Last week's next-week plan freezes at
-  period start as `frozen`, or as `empty` when there is none, which the student fills as `proposed`
-  and the professor `accept`s. Commitment completion is computed only against `frozen` or `accepted`
-  rows and is otherwise reported unavailable, and at most one is in effect per membership and period.
+  period start as `frozen`, or as `empty` when there is none. Commitment completion is computed only
+  against a frozen plan and is otherwise reported unavailable, and at most one is in effect per
+  membership and period. The plan is the student's own next-week plan, not a list of tasks; tasks and
+  the proposal flow were withdrawn in requirements 0.10.
 - **The missed-deadline email** reads obligation state at send time, so a submission at 23:59 gets
   none, and the unique key on recipient, period and kind makes a retried dispatch a no-op (REP-08,
   AC-19).
@@ -232,15 +231,14 @@ the product does, so those are no longer divergences at all.
 
 - Moving a student who has written anything is refused, by the constraint set rather than by a check
   (§2).
-- Dated decisions are stored and shown on no screen, because `POST /{id}/decisions` has no caller
-  (UI-03, amended). Milestones had the same problem and were withdrawn outright instead
-  (requirements 0.8, migration 0026).
+- Milestones (requirements 0.8, migration 0026) and tasks, dated decisions, pre-deadline reminders
+  and correction requests (requirements 0.10, migration 0027) were withdrawn rather than left built
+  and unreachable.
 - A finished project leaves a student's week silently: the obligation is filtered rather than
   excused, so nothing on `/me` names the project that stopped owing
   ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)).
-- Pre-deadline reminder rows are written and nothing reads them: the in-app surface was withdrawn
-  and only the missed-deadline message is emailed, so no student is reminded before a deadline
-  today (REP-07).
+- No student is reminded before a deadline: the missed-deadline email is the only reminder (REP-07,
+  REP-08).
 - No code path authors professor feedback beyond the released assessment.
 - Exports were withdrawn (UI-06), so a student cannot keep a copy of their own released records.
 - The student has no assistant, which is recorded as next-release work rather than a gap in the
@@ -248,8 +246,8 @@ the product does, so those are no longer divergences at all.
 
 ## 9 Keeping this document true
 
-Nothing here is checked by `scripts/check_docs.py` beyond its links and its version
-cross-references, because everything it says is a relation rather than a count. The load-bearing
+Nothing here is checked by `scripts/check_docs.py`, because everything it says is a relation
+rather than a count. The load-bearing
 claims are pinned elsewhere: the foreign-key split by `backend/tests/module/identity/test_workspaces.py`,
 the visibility rules by the `authz`-marked tests, and the weekly chain by the acceptance scenarios.
 When one of those tests changes, this document is the second place to look.

@@ -237,3 +237,65 @@ async def test_the_access_denial_counter_moves_when_a_request_is_refused(
 
     assert 'rm_access_denials_total{status="403"}' in generate_latest().decode()
     assert before != generate_latest().decode()
+
+
+async def _job(db: AsyncSession, status: str, *, finished_days_ago: int) -> int:
+    """A queue row whose last event is `finished_days_ago` old."""
+    from sqlalchemy import text
+
+    job_id = (
+        await db.execute(
+            text(
+                "INSERT INTO procrastinate_jobs (queue_name, task_name, status) "
+                "VALUES ('default', 'test.retention', CAST(:status AS procrastinate_job_status)) "
+                "RETURNING id"
+            ),
+            {"status": status},
+        )
+    ).scalar_one()
+    await db.execute(text("DELETE FROM procrastinate_events WHERE job_id = :id"), {"id": job_id})
+    await db.execute(
+        text(
+            "INSERT INTO procrastinate_events (job_id, type, at) "
+            "VALUES (:id, 'succeeded', now() - make_interval(days => :days))"
+        ),
+        {"id": job_id, "days": finished_days_ago},
+    )
+    return int(job_id)
+
+
+async def test_the_retention_sweep_deletes_finished_jobs_and_their_events(
+    db: AsyncSession,
+) -> None:
+    """A week of finished jobs is kept; older ones go, with their events. Unfinished ones stay."""
+    from sqlalchemy import text
+
+    old = [
+        await _job(db, status, finished_days_ago=8)
+        for status in ("succeeded", "failed", "cancelled", "aborted")
+    ]
+    recent = await _job(db, "succeeded", finished_days_ago=2)
+    waiting = await _job(db, "todo", finished_days_ago=30)
+
+    deleted = await observability.purge_finished_jobs(
+        db, older_than_days=observability.FINISHED_JOB_RETENTION_DAYS
+    )
+
+    assert deleted == len(old)
+    kept = set(
+        (
+            await db.execute(
+                text("SELECT id FROM procrastinate_jobs WHERE task_name = 'test.retention'")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert kept == {recent, waiting}
+    orphaned = (
+        await db.execute(
+            text("SELECT count(*) FROM procrastinate_events WHERE job_id = ANY(:ids)"),
+            {"ids": old},
+        )
+    ).scalar_one()
+    assert orphaned == 0

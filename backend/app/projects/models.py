@@ -1,4 +1,4 @@
-"""Project tables: projects, memberships, tasks, research decisions.
+"""Project tables: projects, memberships, plan baselines.
 
 Requirements PROJ-01..06. Only this module imports these classes; other modules read them through
 projects.service (docs/repo_layout.md §3.2).
@@ -24,7 +24,6 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UUIDPrimaryKeyMixin
@@ -72,9 +71,11 @@ class BaselineState(StrEnum):
     """PROJ-04, architecture §5.5.
 
     `frozen` is the plan carried over from the previous report; `empty` records that there was
-    nothing to freeze; `proposed` is a plan the student entered afterwards; `accepted` is one the
-    professor has taken on as the commitment; `superseded` is a version a later one replaced.
-    Only `frozen` and `accepted` count as commitments (ASSESS-05).
+    nothing to freeze. Only `frozen` and `accepted` count as commitments (ASSESS-05).
+
+    `proposed`, `accepted` and `superseded` belonged to a proposal flow that had no route and no
+    screen and was removed in 0.10; nothing writes them now. They stay because this is a Postgres
+    enum and `uq_baseline_in_effect` names `accepted`.
     """
 
     FROZEN = "frozen"
@@ -84,14 +85,6 @@ class BaselineState(StrEnum):
     SUPERSEDED = "superseded"
 
 
-class TaskStatus(StrEnum):
-    PLANNED = "planned"
-    IN_PROGRESS = "in_progress"
-    BLOCKED = "blocked"
-    DONE = "done"
-    DROPPED = "dropped"
-
-
 def _enum(enum_type: type[StrEnum], name: str) -> Enum:
     return Enum(enum_type, name=name, values_callable=lambda e: [m.value for m in e])
 
@@ -99,7 +92,6 @@ def _enum(enum_type: type[StrEnum], name: str) -> Enum:
 STAGE_ENUM = _enum(ResearchStage, "research_stage")
 PROJECT_STATUS_ENUM = _enum(ProjectStatus, "project_status")
 MEMBERSHIP_ORIGIN_ENUM = _enum(MembershipOrigin, "membership_origin")
-TASK_STATUS_ENUM = _enum(TaskStatus, "task_status")
 BASELINE_STATE_ENUM = _enum(BaselineState, "baseline_state")
 
 
@@ -217,64 +209,12 @@ class ProjectMembership(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class Task(UUIDPrimaryKeyMixin, Base):
-    """PROJ-03: weekly work with an effort weight and completion criteria."""
-
-    __tablename__ = "tasks"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "id"),
-        _workspace_scoped_project_fk(),
-        Index("ix_tasks_project_id_status", "project_id", "status"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    project_id: Mapped[UUID]
-    assignee_id: Mapped[UUID | None]
-    title: Mapped[str] = mapped_column(Text)
-    planned_outcome: Mapped[str] = mapped_column(Text, default="")
-    acceptance_criteria: Mapped[str] = mapped_column(Text, default="")
-    effort_weight: Mapped[float] = mapped_column(Numeric(6, 2), default=1)
-    status: Mapped[TaskStatus] = mapped_column(TASK_STATUS_ENUM, default=TaskStatus.PLANNED)
-    # PROJ-03: completion may be partial and must carry a reason; the fraction only becomes
-    # accepted when the professor approves the assessment (ASSESS-05).
-    completion_fraction: Mapped[float | None] = mapped_column(Numeric(3, 2))
-    completion_reason: Mapped[str | None] = mapped_column(Text)
-    blocker: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
-
-
-class ResearchDecision(UUIDPrimaryKeyMixin, Base):
-    """A dated decision and its rationale.
-
-    This is what answers "why did the project change direction?" with sources (QA-01).
-    """
-
-    __tablename__ = "research_decisions"
-    __table_args__ = (
-        _workspace_scoped_project_fk(),
-        Index("ix_research_decisions_project_id_decided_on", "project_id", "decided_on"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    project_id: Mapped[UUID]
-    decided_on: Mapped[date]
-    decision: Mapped[str] = mapped_column(Text)
-    rationale: Mapped[str] = mapped_column(Text, default="")
-    participant_ids: Mapped[list[UUID]] = mapped_column(
-        ARRAY(PG_UUID(as_uuid=True)), default=list, server_default="{}"
-    )
-    related_evidence: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    created_by: Mapped[UUID | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
 class PlanBaseline(UUIDPrimaryKeyMixin, Base):
     """PROJ-04: the plan one membership is assessed against for one reporting period.
 
-    Content is immutable; a change inserts a new version and marks the previous one superseded, so
-    the commitments originally missed cannot be edited away. `period_id` is a reporting period,
-    which the reporting module owns and supplies — the foreign key is added by its migration.
+    Content is immutable, so the commitments originally missed cannot be edited away. `period_id`
+    is a reporting period, which the reporting module owns and supplies — the foreign key is added
+    by its migration.
     """
 
     __tablename__ = "plan_baselines"
@@ -319,7 +259,11 @@ class PlanBaseline(UUIDPrimaryKeyMixin, Base):
 
 
 class PlanBaselineItem(UUIDPrimaryKeyMixin, Base):
-    """One committed outcome and its frozen weight (ASSESS-05). Immutable."""
+    """One committed outcome and its frozen weight (ASSESS-05). Immutable.
+
+    The outcome is a line of the student's free-text next-week plan. `task_id` is a leftover of
+    the tasks table removed in 0.10; it has no foreign key and nothing writes it.
+    """
 
     __tablename__ = "plan_baseline_items"
     __table_args__ = (

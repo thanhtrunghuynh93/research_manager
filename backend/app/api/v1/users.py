@@ -35,8 +35,7 @@ async def list_users(
     limit: int | None = Query(default=None, ge=1, le=200),
     cursor: str | None = None,
 ) -> Page[UserOut]:
-    """Every account in every workspace the caller belongs to; each row carries its own
-    `workspace_id` (ADR 0016). For a student, who belongs to one, that is themselves."""
+    """Every account in the workspace the caller is in (ADR 0020). For a student, themselves."""
     return await service.list_users(session, scope, limit=limit, cursor=cursor)
 
 

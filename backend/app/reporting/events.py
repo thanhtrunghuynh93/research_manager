@@ -64,23 +64,6 @@ class ArtifactRemoved:
     version_ids: tuple[UUID, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class RevisionRequested:
-    """REP-05: one request, about one project entry. A week can hold several.
-
-    `request_id` identifies this request rather than the report, so a second request in the same
-    week is a second thing to tell the student about and a redelivered job is still one.
-    """
-
-    workspace_id: UUID
-    report_id: UUID
-    request_id: UUID
-    period_id: UUID
-    student_id: UUID
-    project_id: UUID | None
-    reason: str
-
-
 def subscribe(event_type: type[Any], handler: Handler) -> Handler:
     """Idempotent: registering the same handler twice still delivers the event once."""
     handlers = _subscribers.setdefault(event_type, [])

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.fake import FakeGateway
 from app.assessment import models, service
 from app.core.authz import Scope
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, ForbiddenError, ValidationError
 from app.identity import models as identity_models
 from app.identity import service as identity_service
 from app.reporting import service as reporting_service
@@ -251,40 +251,6 @@ async def test_an_unchanged_entry_produces_no_new_assessment(
         db, prof_scope, student_id=student_a.id, project_id=project.id, period_id=period.id
     )
     assert len(versions) == 1
-
-
-async def test_a_student_can_request_a_correction_with_evidence(
-    db: AsyncSession, prof_scope: Scope, student_a: identity_models.User
-) -> None:
-    # ASSESS-08: students can request corrections and add evidence.
-    _, _, assessment = await _assessed(db, prof_scope, student_a)
-    await service.approve(db, prof_scope, assessment.id)
-    scope = await identity_service.scope_for(db, student_a)
-
-    request = await service.request_correction(
-        db,
-        scope,
-        assessment.id,
-        body="The ablation log shows the second result; it was attached to the entry.",
-    )
-
-    assert request.kind is models.FeedbackKind.CORRECTION_REQUEST
-    visible = await service.list_feedback(db, prof_scope, assessment.id)
-    assert [item.id for item in visible] == [request.id]
-
-
-async def test_a_student_cannot_request_a_correction_on_someone_elses_assessment(
-    db: AsyncSession,
-    prof_scope: Scope,
-    student_a: identity_models.User,
-    student_b: identity_models.User,
-) -> None:
-    _, _, assessment = await _assessed(db, prof_scope, student_a)
-    await service.approve(db, prof_scope, assessment.id)
-    scope = await identity_service.scope_for(db, student_b)
-
-    with pytest.raises(NotFoundError):
-        await service.request_correction(db, scope, assessment.id, body="not mine")
 
 
 async def test_a_trend_labels_a_rubric_change_rather_than_comparing_across_it(

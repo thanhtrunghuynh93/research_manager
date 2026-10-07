@@ -241,16 +241,9 @@ async def list_periods(
     scope: Scope,
     *,
     through: date | None = None,
-    across_workspaces: bool = False,
 ) -> list[PeriodOut]:
-    """The reporting weeks of the workspace being worked in (REP-01).
-
-    `across_workspaces` widens it to whatever `visible_to` allows, which since ADR 0020 is the
-    same workspace; only a caller that groups its results by workspace has any business asking.
-    """
-    rows = await repository.list_periods(
-        session, scope, through=through, across_workspaces=across_workspaces
-    )
+    """The reporting weeks of the workspace being worked in (REP-01)."""
+    rows = await repository.list_periods(session, scope, through=through)
     return [PeriodOut.model_validate(row) for row in rows]
 
 
@@ -377,7 +370,7 @@ async def freeze_baselines(
 
     The plan comes from the next-week plan in the previous period's report entry. When there is
     none — a new member, a missing or late report, a paused project — the baseline is recorded as
-    empty and the student enters a first plan in the current report (AC-18).
+    empty and commitment completion is unavailable for the week (AC-18).
     """
     scope.require_prof()
     period = await _require_period(session, scope, period_id)
@@ -659,18 +652,6 @@ async def request_revision(
         after={"project_id": str(project_id) if project_id else None, "reason": reason},
     )
     await session.flush()
-    await events.emit(
-        events.RevisionRequested(
-            workspace_id=scope.workspace_id,
-            report_id=report.id,
-            request_id=request.id,
-            period_id=report.period_id,
-            student_id=report.student_id,
-            project_id=project_id,
-            reason=reason,
-        ),
-        session,
-    )
     return RevisionRequestOut.model_validate(request)
 
 
@@ -772,19 +753,6 @@ async def periods_awaiting_reminder(
     session: AsyncSession, *, at: datetime | None = None
 ) -> list[PeriodOut]:
     rows = await repository.periods_awaiting_reminder(session, instant=at or now())
-    return [PeriodOut.model_validate(row) for row in rows]
-
-
-async def periods_with_deadline_between(
-    session: AsyncSession,
-    *,
-    start: datetime,
-    end: datetime,
-    workspace_id: UUID | None = None,
-) -> list[PeriodOut]:
-    rows = await repository.periods_with_deadline_between(
-        session, start=start, end=end, workspace_id=workspace_id
-    )
     return [PeriodOut.model_validate(row) for row in rows]
 
 

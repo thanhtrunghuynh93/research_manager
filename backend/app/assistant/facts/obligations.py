@@ -90,15 +90,12 @@ async def week_reports(session: AsyncSession, query: FactQuery) -> Fact | None:
     absences says nothing about the week as a whole, and a student who has reported is invisible in
     it. This is the same obligations table read for its three states rather than one.
 
-    One period **per workspace**, because a professor's reads span every workspace they belong to
-    (ADR 0016) and each keeps its own calendar, so there is no single "this week" for them.
+    Grouped by workspace, which since ADR 0021 is always the one being worked in.
 
     A student reaching this sees only their own rows, as every other read of an obligation does:
     `list_obligations` compiles the same predicate (AUTH-02).
     """
-    # Widened on purpose: this fact reports one week per workspace and labels each row with the
-    # workspace it belongs to, which is the only shape in which a cross-workspace list is honest.
-    periods = await reporting_service.list_periods(session, query.scope, across_workspaces=True)
+    periods = await reporting_service.list_periods(session, query.scope)
     current: dict[UUID, PeriodOut] = {}
     for period in periods:
         if period.start_utc > query.as_of:
@@ -211,9 +208,7 @@ def _obligation_state(obligation: ObligationOut) -> str:
 @fact("next_deadline")
 async def next_deadline(session: AsyncSession, query: FactQuery) -> Fact | None:
     """REP-01: 23:59 local on the day before the meeting. The timezone is part of the answer."""
-    # Every workspace's, because the next deadline a professor faces may not be in the workspace
-    # they happen to be working in. The answer names the week it found.
-    periods = await reporting_service.list_periods(session, query.scope, across_workspaces=True)
+    periods = await reporting_service.list_periods(session, query.scope)
     upcoming = [period for period in periods if period.deadline_utc >= query.as_of]
     if not upcoming:
         return None
@@ -286,7 +281,7 @@ async def timing_counts(session: AsyncSession, query: FactQuery) -> Fact:
 async def _period(session: AsyncSession, query: FactQuery) -> PeriodOut | None:
     if query.period_id is not None:
         return await reporting_service.period_for_job(session, query.period_id)
-    periods = await reporting_service.list_periods(session, query.scope, across_workspaces=True)
+    periods = await reporting_service.list_periods(session, query.scope)
     current = [period for period in periods if period.start_utc <= query.as_of]
     if not current:
         return periods[0] if periods else None

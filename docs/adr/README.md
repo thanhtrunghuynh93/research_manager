@@ -1,6 +1,6 @@
 # Architecture decision records
 
-One file per decision, numbered, never edited after acceptance except to mark it superseded.
+One file per decision, numbered, never edited after acceptance except to mark it superseded or amended.
 Format: Context, Decision, Consequences. Keep each under a page.
 
 Every file in this directory appears below; `scripts/check_docs.py` asserts it, because an index
@@ -27,4 +27,5 @@ that silently stops is worse than no index — a reader takes the last row for t
 | [0017](0017-students-own-their-projects.md) | A student starts and joins their own projects; the professor keeps the gate |
 | [0018](0018-project-documents-are-shared-with-the-project.md) | A project's documents belong to the project, not to whoever uploaded them |
 | [0019](0019-ending-a-membership-is-the-professors.md) | Ending a membership is the professor's, and a finished project owes no week (amends 0017) |
-| [0020](0020-reads-follow-the-workspace-you-are-in.md) | Reads follow the workspace you are working in (supersedes 0016) |
+| [0020](0020-reads-follow-the-workspace-you-are-in.md) | Reads follow the workspace you are working in (supersedes 0016; amended by 0021) |
+| [0021](0021-the-read-set-is-one-workspace.md) | The read-set is one workspace; the spanning seam is removed (amends 0020) |

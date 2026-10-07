@@ -16,10 +16,6 @@ import type {
 import { todayLocal } from "@/lib/dates";
 
 export const periodsKey = ["periods"] as const;
-// A separate cache entry, because it is a different list: the professor's screens that label a
-// record from any workspace they belong to ask for all of them (ADR 0016), and the screens that
-// describe one workspace must not be served that answer.
-export const allPeriodsKey = ["periods", "across-workspaces"] as const;
 // Keyed by student as well as period: a professor reads someone else's week through the same
 // hooks, and without the student in the key their report would be served from the cache entry
 // belonging to whoever was looked at first. "me" is the student reading their own.
@@ -37,18 +33,6 @@ export const artifactsKey = (scope: Record<string, string | undefined>) =>
 /** The reporting weeks of the workspace being worked in. */
 export function usePeriods() {
   return useQuery({ queryKey: periodsKey, queryFn: () => api.get<Period[]>("/api/v1/periods") });
-}
-
-/**
- * Every workspace's weeks, for a screen that names a week belonging to a record rather than to
- * the workspace the professor happens to be in — a review, or a student's history. Reading the
- * narrow list there left the week unlabelled for anything outside the current workspace.
- */
-export function useAllPeriods() {
-  return useQuery({
-    queryKey: allPeriodsKey,
-    queryFn: () => api.get<Period[]>("/api/v1/periods?across_workspaces=true"),
-  });
 }
 
 export function useObligations(periodId: string | undefined, studentId?: string) {

@@ -195,22 +195,6 @@ async def test_a_membership_cannot_be_ended_under_another_projects_url(
     assert [m["left_on"] for m in listed.json()] == [None]
 
 
-async def test_the_project_workspace_lists_decisions(
-    client: AsyncClient, db: AsyncSession, prof: identity_models.User, prof_scope: Scope
-) -> None:
-    project = await service.create_project(db, prof_scope, title="Baseline", stage="analysis")
-    await login(client, prof)
-
-    created = await client.post(
-        f"/api/v1/projects/{project.id}/decisions",
-        json={"decision": "Drop the transformer baseline", "rationale": "Three weeks, no gain."},
-    )
-    assert created.status_code == 201
-
-    listed = await client.get(f"/api/v1/projects/{project.id}/decisions")
-    assert [d["decision"] for d in listed.json()] == ["Drop the transformer baseline"]
-
-
 async def test_the_project_endpoints_require_a_session(client: AsyncClient) -> None:
     assert (await client.get("/api/v1/projects")).status_code == 401
 
@@ -287,26 +271,3 @@ async def test_a_repository_link_longer_than_the_column_is_refused(
 
     assert response.status_code == 422
     assert response.json()["detail"].startswith("repo_url:")
-
-
-async def test_tasks_are_reachable_over_http(
-    client: AsyncClient, prof: identity_models.User
-) -> None:
-    """Tasks outlived the milestones they used to hang from (migration 0026).
-
-    They are what a plan baseline freezes (PROJ-04), so the routes moved to a router of their own
-    rather than going with `milestones.py`.
-    """
-    await login(client, prof)
-    project = await client.post(
-        "/api/v1/projects", json={"title": "Retrieval baselines", "stage": "implementation"}
-    )
-    project_id = project.json()["id"]
-
-    created = await client.post(
-        f"/api/v1/projects/{project_id}/tasks", json={"title": "Run the sweep"}
-    )
-    assert created.status_code == 201, created.text
-
-    listed = await client.get(f"/api/v1/projects/{project_id}/tasks")
-    assert [task["title"] for task in listed.json()] == ["Run the sweep"]

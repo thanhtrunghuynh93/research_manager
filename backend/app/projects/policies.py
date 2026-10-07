@@ -14,47 +14,28 @@ from sqlalchemy.sql import ColumnElement
 
 from app.core.authz import Scope, register_policy, register_project_ids_loader
 from app.identity import service as identity_service
-from app.projects.models import (
-    PlanBaseline,
-    Project,
-    ProjectMembership,
-    ResearchDecision,
-    Task,
-)
+from app.projects.models import PlanBaseline, Project, ProjectMembership
 from app.projects.repository import in_effect_on
-
-
-def _in_scope(
-    model: type[Project] | type[Task] | type[ResearchDecision], scope: Scope
-) -> ColumnElement[bool]:
-    """The project a row belongs to must be one the caller may see."""
-    project_column = Project.id if model is Project else model.project_id  # type: ignore[union-attr]
-    same_workspace: ColumnElement[bool] = scope.within(model.workspace_id)
-    if scope.is_prof:
-        return same_workspace
-    return and_(same_workspace, project_column.in_(scope.project_ids))
 
 
 @register_policy(Project)
 def project_visible_to(scope: Scope) -> ColumnElement[bool]:
     """Who may read a project *record*: a member, its creator (AUTH-07), and anyone who was on it.
 
-    The extra terms are on `Project` alone and not in `_in_scope`, which `Task` and
-    `ResearchDecision` share: widening it there would hand a non-member every task and every
-    decision in the workspace in the same edit. Here each grants exactly the row a person is
-    entitled to — the creator's, because they may change fields they must be able to read; and a
-    past member's, because their own history refers to it.
+    Each extra term grants exactly the row a person is entitled to — the creator's, because they
+    may change fields they must be able to read; and a past member's, because their own history
+    refers to it.
 
     That last term is the one to read against AUTH-03, which says ending a membership "must
     invalidate subsequent access" and, in the same breath, "preserve historical records for
     authorized supervision". The access AUTH-03 is protecting is the project's *ongoing work* —
-    its tasks including another student's blockers, its decisions, its evidence and
-    the identity of everyone on it — and `scope.project_ids` still gates every one of those, which
-    is what §8.4 means by a membership being the entire grant. What it does not need to protect is
-    the title of a project a student spent a term on: without it their own retained records — a
-    submitted report, an approved assessment, this week's obligation, all keyed to `student_id` and
-    all still theirs to read — render as a bare uuid, and the project page they arrive at from one
-    is a refusal. Leaving a project should end the work, not unname it.
+    its documents, its evidence and the identity of everyone on it — and `scope.project_ids` still
+    gates every one of those, which is what §8.4 means by a membership being the entire grant.
+    What it does not need to protect is the title of a project a student spent a term on: without
+    it their own retained records — a submitted report, an approved assessment, this week's
+    obligation, all keyed to `student_id` and all still theirs to read — render as a bare uuid,
+    and the project page they arrive at from one is a refusal. Leaving a project should end the
+    work, not unname it.
     """
     if scope.is_prof:
         return scope.within(Project.workspace_id)
@@ -70,16 +51,6 @@ def project_visible_to(scope: Scope) -> ColumnElement[bool]:
             Project.id.in_(was_ever_on),
         ),
     )
-
-
-@register_policy(Task)
-def task_visible_to(scope: Scope) -> ColumnElement[bool]:
-    return _in_scope(Task, scope)
-
-
-@register_policy(ResearchDecision)
-def research_decision_visible_to(scope: Scope) -> ColumnElement[bool]:
-    return _in_scope(ResearchDecision, scope)
 
 
 @register_policy(ProjectMembership)

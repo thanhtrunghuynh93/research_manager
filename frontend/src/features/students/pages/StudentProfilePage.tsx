@@ -20,7 +20,7 @@ import {
 import { Trajectory } from "@/features/assessments/components/Trajectory";
 import { useUser } from "@/features/people/queries";
 import type { Assessment } from "@/features/review/types";
-import { openArtifact, useArtifacts, useAllPeriods, useProjects } from "@/features/report/queries";
+import { openArtifact, useArtifacts, usePeriods, useProjects } from "@/features/report/queries";
 import { useTimezone } from "@/features/calendar/queries";
 import { formatLocalDate, todayLocal } from "@/lib/dates";
 
@@ -39,7 +39,7 @@ export function StudentProfilePage() {
   // the record a professor cannot read and the project list that paged past the end.
   const student = useUser(id);
   const projects = useProjects();
-  const periods = useAllPeriods();
+  const periods = usePeriods();
   // The workspace's date, not the browser's: `local_start` is a workspace-local calendar date,
   // and comparing it against UTC would show next week as begun for the first hours of every day
   // in a UTC+7 workspace.
@@ -81,20 +81,10 @@ export function StudentProfilePage() {
           of time — eight weeks out by default, and the nightly job keeps them there — so the
           newest eight periods were the eight that had not happened yet. The list read as a
           column of empty weeks stretching into November, each offering to open a report that
-          could not exist, while every week the student had actually reported sat below the cut.
-
-          And only this student's workspace. `useAllPeriods` asks for every workspace the
-          professor belongs to (ADR 0016), which is right for naming the week a record belongs
-          to and wrong for a list of weeks to open: a professor in two workspaces got both
-          calendars interleaved, so half the eight rows named a period the student has no report
-          under — each opening on "nothing was started" over a week they had filed — and their
-          own older weeks were pushed past the cut by the other workspace's. The periods carry
-          `workspace_id` and `UserOut` carries the student's, so the list is narrowed to the
-          weeks that are theirs to have reported. */}
+          could not exist, while every week the student had actually reported sat below the cut. */}
       <h2 className="section-title mt-8">{t("report.reader.weekly")}</h2>
       <ul className="panel mt-2.5" data-testid="weekly-reports">
         {(periods.data ?? [])
-          .filter((period) => period.workspace_id === student.data?.workspace_id)
           .filter((period) => period.local_start <= today)
           .slice()
           .reverse()

@@ -4,8 +4,7 @@
  *
  * Reads follow the workspace named in the header (ADR 0020), so switching workspace switches the
  * roll. It is keyed by membership, so a colleague who belongs here but is working elsewhere is on
- * it; `Roll` still handles a section for a workspace the caller is not in, which a wider read would
- * bring back.
+ * it.
  *
  * The page is shaped by ADR 0011. Professors are equal over students and have no authority over
  * each other, so a colleague's row carries no buttons at all and says why rather than offering
@@ -72,14 +71,7 @@ export function PeoplePage() {
 
       {groups.map(({ workspace, people: members }) => (
         <section key={workspace.id} className="mt-8" data-testid={`workspace-${workspace.id}`}>
-          <Roll
-            members={members}
-            workspace={workspace}
-            isCurrent={workspace.id === current?.id}
-            meId={session.data?.id}
-            workspaces={all}
-            headings
-          />
+          <Roll members={members} workspace={workspace} meId={session.data?.id} workspaces={all} />
         </section>
       ))}
 
@@ -102,27 +94,20 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * One workspace's professors and students.
- *
- * `headings` is on only when there is a single workspace: with several, the workspace name is the
- * heading and repeating "Professors"/"Students" above every pair of short lists is noise. The two
- * groups stay visually apart either way, because ADR 0011 gives a professor no controls over a
- * colleague and mixing them would make that absence look arbitrary.
+ * One workspace's professors and students. The two groups stay visually apart because ADR 0011
+ * gives a professor no controls over a colleague and mixing them would make that absence look
+ * arbitrary.
  */
 function Roll({
   members,
   workspace,
-  isCurrent,
   meId,
   workspaces,
-  headings,
 }: {
   members: User[];
   workspace: Workspace;
-  isCurrent: boolean;
   meId?: string;
   workspaces: Workspace[];
-  headings: boolean;
 }) {
   const { t } = useTranslation();
   const professors = members.filter((user) => user.role === "prof");
@@ -130,27 +115,25 @@ function Roll({
 
   return (
     <>
-      {headings && <h2 className="section-title">{t("people.professors")}</h2>}
+      <h2 className="section-title">{t("people.professors")}</h2>
       <ul className="panel mt-2.5" data-testid={`professors-${workspace.id}`}>
         {professors.map((user) => (
           <li key={user.id} className="row">
             <Person user={user} isYou={user.id === meId} />
-            {isCurrent && (
-              <span className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
-                <ResendInvitation user={user} />
-              </span>
-            )}
+            <span className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
+              <ResendInvitation user={user} />
+            </span>
           </li>
         ))}
         {professors.length === 0 && <Empty>{t("people.noProfessors")}</Empty>}
       </ul>
 
-      {headings && <h2 className="section-title mt-8">{t("people.students")}</h2>}
+      <h2 className="section-title mt-8">{t("people.students")}</h2>
       <ul className="panel mt-2.5" data-testid={`students-${workspace.id}`}>
         {students.map((user) => (
           <li key={user.id} className="row items-start">
             <Person user={user} linkTo={`/students/${user.id}`} />
-            <StudentActions user={user} inCurrent={isCurrent} workspaces={workspaces} />
+            <StudentActions user={user} workspaces={workspaces} />
           </li>
         ))}
         {students.length === 0 && <Empty>{t("people.noStudents")}</Empty>}
@@ -204,10 +187,6 @@ function Person({ user, isYou, linkTo }: { user: User; isYou?: boolean; linkTo?:
  * The consequence is said rather than implied: the earlier link stops working the moment this
  * issues a new one, which matters to the person who is about to be told "your link expired" by
  * someone reading an older email.
- *
- * Offered only in the workspace the professor is working in. Reissuing into another one is allowed
- * by the API for a workspace they *own*, and the roll spans every workspace they *belong to* —
- * two different sets, so a button here would sometimes be a 403 with no way to tell in advance.
  */
 function ResendInvitation({ user }: { user: User }) {
   const { t } = useTranslation();
@@ -235,21 +214,8 @@ function ResendInvitation({ user }: { user: User }) {
 /**
  * A student's row. Removal asks twice: the first click only arms the confirmation, which states
  * the consequence in a sentence rather than trusting the verb on a button to carry it.
- *
- * `inCurrent` is what stops this offering a control that cannot work. The roll spans workspaces,
- * but suspend, restore and remove all act through `/users/{id}/…`, which is scoped to the
- * workspace the caller is in — on a student from another one the API answers 404. Join that
- * workspace to act on its people.
  */
-function StudentActions({
-  user,
-  inCurrent,
-  workspaces,
-}: {
-  user: User;
-  inCurrent: boolean;
-  workspaces: Workspace[];
-}) {
+function StudentActions({ user, workspaces }: { user: User; workspaces: Workspace[] }) {
   const { t } = useTranslation();
   const [confirming, setConfirming] = useState(false);
   const remove = useRemoveStudent();
@@ -262,15 +228,6 @@ function StudentActions({
   const move = (
     <MoveStudent user={user} workspaces={workspaces.filter((w) => w.archived_at == null)} />
   );
-
-  if (!inCurrent) {
-    return (
-      <span className="flex shrink-0 flex-col items-end gap-1.5">
-        {move}
-        <span className="stamp">{t("people.elsewhere")}</span>
-      </span>
-    );
-  }
 
   const pending = remove.isPending || suspend.isPending || restore.isPending;
   const failure = remove.error ?? suspend.error ?? restore.error;
@@ -312,7 +269,7 @@ function StudentActions({
         </span>
       ) : (
         <span className="flex flex-wrap items-center justify-end gap-2.5">
-          {inCurrent && <ResendInvitation user={user} />}
+          <ResendInvitation user={user} />
           {move}
           <button
             type="button"

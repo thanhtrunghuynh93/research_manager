@@ -7,7 +7,6 @@ caller rather than serve one, and every one of them is reached only through iden
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -147,17 +146,6 @@ async def access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
     return epoch if epoch is not None else 0
 
 
-async def access_epochs(session: AsyncSession, workspace_ids: Iterable[UUID]) -> dict[UUID, int]:
-    """Every epoch a read may span, in one round trip rather than one query per workspace."""
-    ids = list(workspace_ids)
-    if not ids:
-        return {}
-    rows = await session.execute(
-        select(Workspace.id, Workspace.access_epoch).where(Workspace.id.in_(ids))
-    )
-    return {workspace_id: epoch for workspace_id, epoch in rows.all()}
-
-
 async def bump_access_epoch(session: AsyncSession, workspace_id: UUID) -> int:
     """AUTH-03: invalidate caches and snapshots built under the previous epoch."""
     return (
@@ -203,9 +191,8 @@ async def list_visible_users(
 ) -> tuple[list[User], str | None]:
     """Keyset pagination on the primary key, which is UUIDv7 and therefore in creation order.
 
-    One predicate, whatever it spans. `visible_to` compiles the User policy, which is keyed by
-    membership and by `Scope.workspace_ids` — so a professor in several workspaces gets one row per
-    person rather than one per membership, and a student gets themselves.
+    `visible_to` compiles the User policy, keyed by membership in `Scope.workspace_id`, so a
+    professor gets one row per member and a student gets themselves.
     """
     statement = select(User).where(visible_to(scope, User)).order_by(User.id).limit(limit + 1)
     after = cursor_after(cursor)

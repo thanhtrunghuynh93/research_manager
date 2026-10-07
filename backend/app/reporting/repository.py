@@ -103,29 +103,16 @@ async def list_periods(
     scope: Scope,
     *,
     through: date | None = None,
-    across_workspaces: bool = False,
 ) -> list[ReportingPeriod]:
-    """The weeks the caller may see, in the workspace they are working in.
+    """The weeks of the workspace the caller is working in, oldest first.
 
-    `across_workspaces` drops the pin to `scope.workspace_id` and leaves `visible_to` as the only
-    bound. Since ADR 0020 that bound is the same one workspace, so the two reads agree; the flag is
-    kept because it names the callers that would want a wider read if `Scope.within` ever spans
-    again (ADR 0016 did, and the calendar screen then reported another workspace's open weeks under
-    one whose own calendar it had just said was not configured).
-
-    Ordered by workspace as well as by week, because `local_start` alone does not order this list:
-    two workspaces keeping the same calendar have a period each for the same Monday, and which of
-    the two came back first was whatever postgres chose. A caller taking the newest eight got a
-    different eight between loads. `local_start` is unique per workspace, so the pair is a total
-    order and the answer is the same every time it is asked.
+    `local_start` is unique per workspace, so with one workspace it is a total order.
     """
     statement = (
         select(ReportingPeriod)
         .where(visible_to(scope, ReportingPeriod))
-        .order_by(ReportingPeriod.local_start, ReportingPeriod.workspace_id)
+        .order_by(ReportingPeriod.local_start)
     )
-    if not across_workspaces:
-        statement = statement.where(ReportingPeriod.workspace_id == scope.workspace_id)
     if through is not None:
         statement = statement.where(ReportingPeriod.local_start <= through)
     return list((await session.execute(statement)).scalars().all())
@@ -216,18 +203,6 @@ async def periods_awaiting_reminder(
         .scalars()
         .all()
     )
-
-
-async def periods_with_deadline_between(
-    session: AsyncSession, *, start: datetime, end: datetime, workspace_id: UUID | None = None
-) -> list[ReportingPeriod]:
-    """Job-level read across workspaces; `workspace_id` narrows it to one."""
-    query = select(ReportingPeriod).where(
-        ReportingPeriod.deadline_utc > start, ReportingPeriod.deadline_utc <= end
-    )
-    if workspace_id is not None:
-        query = query.where(ReportingPeriod.workspace_id == workspace_id)
-    return list((await session.execute(query)).scalars().all())
 
 
 async def required_obligations_at(

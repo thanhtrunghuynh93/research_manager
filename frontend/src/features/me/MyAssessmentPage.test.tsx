@@ -4,7 +4,6 @@
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -35,14 +34,13 @@ const ASSESSMENT = {
   effective_ratings: {},
 };
 
-function renderPage(assessment: object | null = ASSESSMENT, feedback: object[] = []) {
+function renderPage(assessment: object | null = ASSESSMENT) {
   server.use(
     http.get("/api/v1/assessments/a1", () =>
       assessment
         ? HttpResponse.json(assessment)
         : HttpResponse.json({ title: "Not found" }, { status: 404 }),
     ),
-    http.get("/api/v1/assessments/a1/feedback", () => HttpResponse.json(feedback)),
     http.get("/api/v1/projects", () =>
       HttpResponse.json({ items: [{ id: "p1", title: "Retrieval baselines" }] }),
     ),
@@ -130,24 +128,6 @@ test("no review state is shown, so nothing implies a draft exists", async () => 
   expect(screen.queryByText(/approved/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/draft/i)).not.toBeInTheDocument();
   expect(screen.getByTestId("released-at")).toBeInTheDocument();
-});
-
-test("a correction request posts the student's account of it", async () => {
-  const posted: Record<string, unknown>[] = [];
-  renderPage();
-  server.use(
-    http.post("/api/v1/assessments/a1/corrections", async ({ request }) => {
-      posted.push((await request.json()) as Record<string, unknown>);
-      return HttpResponse.json({ id: "f1" }, { status: 201 });
-    }),
-  );
-  await screen.findByTestId("my-ratings");
-
-  await userEvent.type(screen.getByLabelText(/ask for a correction/i), "The notebook was merged.");
-  await userEvent.click(screen.getByRole("button", { name: /send correction request/i }));
-
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(posted[0]).toEqual({ body: "The notebook was merged." });
 });
 
 test("an assessment the student may not read says only that, never why", async () => {

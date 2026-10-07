@@ -54,14 +54,9 @@ def key_for(scope: Scope, question: str, scope_key: str) -> CacheKey:
 def read_set_digest(scope: Scope) -> str:
     """What the answer was allowed to see, and how current that was, in one value.
 
-    Since ADR 0016 an answer can rest on records from any workspace the asker belongs to, so the
-    anchor's epoch alone is not enough to say whether it is still valid: ending a membership in the
-    *other* workspace advances that workspace's counter and leaves the anchor's untouched. Hashing
-    every (workspace, epoch) pair the read spanned makes any of them moving a miss (AUTH-03).
+    A read covers one workspace (ADR 0021), so this is that workspace and its epoch (AUTH-03).
     """
-    return _digest(
-        "|".join(f"{workspace_id}:{epoch}" for workspace_id, epoch in sorted(scope.access_epochs))
-    )
+    return _digest(f"{scope.workspace_id}:{scope.access_epoch}")
 
 
 async def get(
@@ -78,7 +73,7 @@ async def get(
                 # The anchor is part of the entitlement and is not in the key: the same professor
                 # asking the same question is answered from different records depending on which
                 # workspace they are working in, so a row written under one must not be served
-                # under another (ADR 0016).
+                # under another (ADR 0020).
                 AnswerCache.workspace_id == scope.workspace_id,
                 AnswerCache.user_id == key.user_id,
                 AnswerCache.question_hash == key.question_hash,

@@ -1,4 +1,4 @@
-"""Project records, membership, and dated decisions (PROJ-01, PROJ-02, PROJ-06, UI-03)."""
+"""Project records and membership (PROJ-01, PROJ-02, PROJ-07, UI-03)."""
 
 from __future__ import annotations
 
@@ -20,8 +20,6 @@ from app.projects.schemas import (
     ProjectOut,
     ProjectPatch,
     ProjectStatus,
-    ResearchDecisionIn,
-    ResearchDecisionOut,
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -135,31 +133,4 @@ async def end_membership(
 ) -> MembershipOut:
     return await service.end_membership(
         session, scope, membership_id, left_on=payload.left_on, project_id=project_id
-    )
-
-
-@router.get("/{project_id}/decisions", summary="Dated research decisions")
-async def list_decisions(
-    project_id: UUID, scope: ScopeDep, session: SessionDep
-) -> list[ResearchDecisionOut]:
-    return await service.list_decisions(session, scope, project_id)
-
-
-@router.post(
-    "/{project_id}/decisions",
-    status_code=status.HTTP_201_CREATED,
-    summary="Record a research decision and its rationale",
-)
-async def record_decision(
-    project_id: UUID, payload: ResearchDecisionIn, scope: ProfScopeDep, session: SessionDep
-) -> ResearchDecisionOut:
-    return await service.record_decision(
-        session,
-        scope,
-        project_id,
-        decision=payload.decision,
-        rationale=payload.rationale,
-        decided_on=payload.decided_on,
-        participant_ids=payload.participant_ids,
-        related_evidence=payload.related_evidence,
     )

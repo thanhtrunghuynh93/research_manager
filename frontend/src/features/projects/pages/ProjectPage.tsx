@@ -4,11 +4,8 @@
  * Membership history is shown rather than hidden: a project's record includes who worked on it
  * and when, and deleting that would make the supervision history unreadable (PROJ-02).
  *
- * **Research decisions** are recorded and not shown, because only `POST /{id}/decisions` writes
- * one and no screen calls it; the panel said "No decisions recorded" about projects whose
- * decisions had never had anywhere to go. Milestones went further and are gone from the product
- * altogether (migration 0026): nothing wrote them either, and a completion figure computed from
- * an unwritable column read 0% for every project as though that were a finding.
+ * Milestones (migration 0026) and research decisions (migration 0027) are gone from the product:
+ * nothing wrote them, and a panel about either described an empty table.
  */
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";

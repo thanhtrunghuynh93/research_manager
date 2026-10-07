@@ -46,6 +46,32 @@ async def refresh(session: AsyncSession) -> dict[str, Any]:
     return summary
 
 
+# How long a finished job stays in the queue's tables. Seven days because that is also how long an
+# invitation link lives (`identity.security.INVITATION_TTL`): a failed invitation email older than
+# that carried a link that has expired anyway, so dropping it from the mail warning loses nothing.
+FINISHED_JOB_RETENTION_DAYS = 7
+
+
+async def purge_finished_jobs(session: AsyncSession, *, older_than_days: int) -> int:
+    """Delete jobs that finished more than `older_than_days` ago; return how many.
+
+    Without this `procrastinate_jobs` and `procrastinate_events` grow by a few hundred rows a day
+    forever — every five-minute heartbeat is a job. "Finished" is the job's last event, the same
+    test procrastinate's own `delete_old_jobs` uses. The events go with the job (`ON DELETE
+    CASCADE`), and procrastinate's own trigger unlinks any periodic-defer row pointing at it.
+    """
+    deleted = await session.execute(
+        text(
+            "DELETE FROM procrastinate_jobs j "
+            "WHERE j.status IN ('succeeded', 'failed', 'cancelled', 'aborted') "
+            "AND (SELECT max(e.at) FROM procrastinate_events e WHERE e.job_id = j.id) "
+            "< now() - make_interval(days => :days)"
+        ),
+        {"days": older_than_days},
+    )
+    return int(deleted.rowcount or 0)  # type: ignore[attr-defined]
+
+
 async def oldest_queued_seconds(session: AsyncSession) -> float:
     """How long the oldest `todo` job has been waiting, in seconds; 0 when nothing waits."""
     # `scheduled_at` is NULL for every job deferred without a delay, which is nearly all of them,

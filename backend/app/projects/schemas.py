@@ -14,7 +14,6 @@ from app.projects.models import BaselineState as BaselineState
 from app.projects.models import MembershipOrigin as MembershipOrigin
 from app.projects.models import ProjectStatus as ProjectStatus
 from app.projects.models import ResearchStage as ResearchStage
-from app.projects.models import TaskStatus as TaskStatus
 
 _REPO_SCHEMES = ("https://", "http://", "ssh://", "git://", "git@")
 
@@ -154,69 +153,10 @@ class MembershipEndIn(BaseModel):
     left_on: date | None = None
 
 
-class TaskOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    project_id: UUID
-    assignee_id: UUID | None = None
-    title: str
-    planned_outcome: str
-    acceptance_criteria: str
-    effort_weight: Decimal
-    status: TaskStatus
-    completion_fraction: Decimal | None = None
-    completion_reason: str | None = None
-    blocker: str | None = None
-    created_at: datetime
-
-
-class TaskIn(BaseModel):
-    title: str = Field(min_length=1, max_length=300)
-    assignee_id: UUID | None = None
-    planned_outcome: str = ""
-    acceptance_criteria: str = ""
-    effort_weight: Decimal = Field(default=Decimal(1), ge=0)
-
-
-class TaskPatch(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=300)
-    assignee_id: UUID | None = None
-    planned_outcome: str | None = None
-    acceptance_criteria: str | None = None
-    effort_weight: Decimal | None = Field(default=None, ge=0)
-    status: TaskStatus | None = None
-    completion_fraction: Decimal | None = Field(default=None, ge=0, le=1)
-    completion_reason: str | None = None
-    blocker: str | None = None
-
-
-class ResearchDecisionOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    project_id: UUID
-    decided_on: date
-    decision: str
-    rationale: str
-    participant_ids: list[UUID]
-    related_evidence: dict[str, Any]
-    created_at: datetime
-
-
-class ResearchDecisionIn(BaseModel):
-    decision: str = Field(min_length=1)
-    rationale: str = ""
-    decided_on: date | None = None
-    participant_ids: list[UUID] = Field(default_factory=list)
-    related_evidence: dict[str, Any] = Field(default_factory=dict)
-
-
 class PlanBaselineItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    task_id: UUID | None = None
     planned_outcome: str
     weight: Decimal
     acceptance_criteria: str
@@ -240,15 +180,3 @@ class PlanBaselineOut(BaseModel):
     approved_at: datetime | None = None
     created_at: datetime
     items: list[PlanBaselineItemOut] = Field(default_factory=list)
-
-
-class PlanItemIn(BaseModel):
-    planned_outcome: str = Field(min_length=1)
-    weight: Decimal = Field(default=Decimal(1), ge=0)
-    acceptance_criteria: str = ""
-    task_id: UUID | None = None
-
-
-class BaselineChangeIn(BaseModel):
-    items: list[PlanItemIn]
-    reason: str = Field(min_length=1)

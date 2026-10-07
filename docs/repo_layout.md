@@ -1,6 +1,6 @@
 # Research Management System — Repository Layout
 
-Version 0.4 — 21 September 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.9, and [use_cases.md](use_cases.md) v0.17
+Version 0.5 — 7 October 2026 — companion to [architecture.md](architecture.md), [research_management_requirements.md](research_management_requirements.md) v0.10, and [use_cases.md](use_cases.md) v0.18
 
 This document fixes where code lives, how modules are shaped, and which conventions every contributor follows. It began as a specification for a repository that did not exist; the tree below now describes one that does, and [implementation_status.md](implementation_status.md) §4 records where the two diverged and why. Section 4 of the architecture defines the module boundaries; this document places them on disk and adds tooling, tests, infrastructure, and workflow.
 
@@ -64,7 +64,8 @@ backend/
 │   ├── cli.py                 typer root command; subcommands registered by modules
 │   ├── seed.py                demo dataset and the AC-19 missed-deadline drill
 │   ├── tasks.py               periodic jobs that span modules: ensure_periods (15 0), freeze_baselines
-│   │                          (30 0), queue_health (*/5), retention_sweep (45 1)
+│   │                          (30 0), queue_health (*/5), retention_sweep (45 1; also deletes
+│   │                          jobs finished over seven days ago)
 │   ├── observability.py       reads the current state into the metric gauges
 │   ├── core/
 │   │   ├── config.py          Settings (pydantic-settings), one class, env-var names in section 3.6
@@ -102,7 +103,7 @@ backend/
 │   │   ├── metrics.py         progress_index, plan_completion, coverage_pct, confidence — pure functions
 │   │   ├── pipeline/          a placeholder package: the four steps — extract claims, match them,
 │   │   │                      rate the rubric, draft — run inside service.py::run_pipeline
-│   │   ├── service.py         the pipeline, and approve / withdraw / request_correction. There is
+│   │   ├── service.py         the pipeline, and approve / withdraw. There is
 │   │   │                      no review.py, and override is a branch of approve rather than its
 │   │   │                      own service
 │   │   ├── events.py          subscribes to ReportSubmitted; enqueues one job per changed entry
@@ -114,8 +115,7 @@ backend/
 │   │   ├── retrieval.py       scope-filtered semantic retrieval
 │   │   ├── answer.py          generation, citation validation, answer contract
 │   │   ├── stream.py          SSE event writer
-│   │   └── cache.py           answer_cache, keyed to the workspace and to the digest of every
-│   │                          (workspace, epoch) pair the read spanned (ADR 0016)
+│   │   └── cache.py           answer_cache, keyed to the workspace and the digest of its epoch
 │   ├── notifications/
 │   │   ├── email/
 │   │   │   ├── base.py        EmailSender protocol
@@ -124,7 +124,7 @@ backend/
 │   │   ├── templates/         Jinja2 triples — .txt, .html, .subject.txt — for invitation,
 │   │   │                      missed_deadline and password_reset. No locale subfolders:
 │   │   │                      migration 0016 dropped the column
-│   │   ├── scheduler_tasks.py scan_due_reminders, dispatch_due_reminders, send_queued_emails,
+│   │   ├── scheduler_tasks.py scan_due_reminders, send_queued_emails, send_token_email,
 │   │   │                      dispatch_missed_deadline — ensure_periods and freeze_baselines
 │   │   │                      live in app/tasks.py
 │   │   └── cli.py             dispatch-missed-deadline, send-queued-emails
@@ -156,18 +156,15 @@ backend/
 │           ├── workspaces.py  list, create, read, rename, join, leave, archive
 │           │                  (ADR 0012/14/15/16). Renaming and archiving are owner-only;
 │           │                  entering and reading follow membership as well
-│           ├── projects.py    projects, members, decisions, progress — membership has no
-│           │                  router of its own
-│           ├── tasks.py       weekly tasks (milestones withdrawn, migration 0026)
+│           ├── projects.py    projects and members — membership has no router of its own
 │           ├── reports.py     calendar, periods, obligations, excuse/extend, draft, submit,
 │           │                  versions, revisions — there is no periods.py
 │           ├── artifacts.py   presigned upload, confirm, links, versions, download (REP-04)
 │           ├── repositories.py  repositories, sync, developer identities, contributions,
 │           │                  evidence search and references, and the signed GitHub webhook
 │           │                  (no session auth; signature only). No webhooks.py or evidence.py
-│           ├── assessments.py  drafts, approve, withdraw, corrections, feedback, trends
+│           ├── assessments.py  drafts, approve, withdraw, evidence, supervision notes, trends
 │           ├── assistant.py   ask, ask/stream (SSE), conversations
-│           ├── notifications.py  reminder offsets only; the in-app surface was retired (UI-07)
 │           ├── overview.py    the professor's current week (UI-01)
 │           ├── admin.py       assessment retry, sync status, AI usage and budgets — prof only
 │           └── health.py      /api/healthz, /api/readyz, /api/metrics
@@ -371,8 +368,8 @@ scripts/
 ├── gen_api_client.sh          exports openapi.json from the app and runs openapi-typescript
 ├── check_docs.py             asserts this file against the tree: every path named here exists and
 │                          every high-churn path is named, every /api/... route cited in any
-│                          document is one the application serves, the counts in
-│                          implementation_status.md match, and version cross-references agree
+│                          document or called by a screen is one the application serves, and
+│                          every ADR is in the index. Prose counts and versions are not checked
 ├── check_traceability.py      asserts every requirement ID in docs/research_management_requirements.md
 │                              appears in docs/architecture.md section 16 and in at least one test docstring
 └── restore_drill.sh           spins a scratch stack, restores latest backup, runs smoke checks

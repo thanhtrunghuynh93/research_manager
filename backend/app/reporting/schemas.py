@@ -41,9 +41,7 @@ class PeriodOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    # A professor's reads span every workspace they belong to (ADR 0016), and each workspace keeps
-    # its own calendar — so "this week" is one period per workspace, not one period. Without this
-    # the weeks came back in a single list with nothing to group them by.
+    # Always the workspace being worked in (ADR 0021); screens use it to label the week.
     workspace_id: UUID
     local_start: date
     local_end: date

@@ -18,11 +18,7 @@ import { Link } from "react-router-dom";
 import { Failure } from "@/components/Failure";
 import { useSession } from "@/features/auth/queries";
 import { usePeople } from "@/features/people/queries";
-import {
-  useAddMember,
-  useLeaveProject,
-  useUpdateProject,
-} from "@/features/projects/queries";
+import { useAddMember, useLeaveProject, useUpdateProject } from "@/features/projects/queries";
 import {
   STAGES,
   STATUSES,
@@ -185,9 +181,8 @@ export function ProjectFieldsForm({
 /**
  * The picker is limited to students of the workspace this professor is *working in*.
  *
- * Not cosmetic. Since ADR 0016 the roll spans every workspace they belong to, but a membership row
- * is written with the anchor's workspace id against a composite foreign key — so assigning someone
- * from another workspace would fail in the database rather than be refused in words.
+ * Not cosmetic: a membership row is written with that workspace's id against a composite foreign
+ * key, so assigning someone from another workspace would fail in the database.
  */
 /**
  * Ending one student's part in a project (ADR 0019).

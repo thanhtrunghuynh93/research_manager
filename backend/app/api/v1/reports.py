@@ -58,18 +58,9 @@ async def list_periods(
     scope: ScopeDep,
     session: SessionDep,
     through: date | None = None,
-    across_workspaces: bool = False,
 ) -> list[PeriodOut]:
-    """The weeks of the workspace being worked in.
-
-    `across_workspaces` asks for everything `visible_to` allows rather than pinning to the
-    workspace worked in. Since ADR 0020 a read covers only that workspace, so the answers agree;
-    screens that label records — a review, a student's history — still ask for the wide list by
-    name so they stay correct if reads span again. Each period carries its `workspace_id`.
-    """
-    return await service.list_periods(
-        session, scope, through=through, across_workspaces=across_workspaces
-    )
+    """The weeks of the workspace being worked in."""
+    return await service.list_periods(session, scope, through=through)
 
 
 @router.post("/periods/ensure", summary="Materialise periods up to a date")

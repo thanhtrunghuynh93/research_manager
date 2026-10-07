@@ -38,8 +38,6 @@ from app.assessment.models import (
     AssessmentVersion,
     EvidenceSnapshot,
     EvidenceSnapshotItem,
-    Feedback,
-    FeedbackKind,
     ReviewState,
     RubricVersion,
     RunState,
@@ -47,7 +45,6 @@ from app.assessment.models import (
 )
 from app.assessment.schemas import (
     AssessmentOut,
-    FeedbackOut,
     ReviewOut,
     SnapshotItemOut,
     SnapshotOut,
@@ -57,8 +54,7 @@ from app.core import metrics as core_metrics
 from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
-from app.core.types import Visibility
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
@@ -798,37 +794,6 @@ async def withdraw(session: AsyncSession, scope: Scope, assessment_id: UUID) -> 
     return ReviewOut.model_validate(review)
 
 
-async def request_correction(
-    session: AsyncSession,
-    scope: Scope,
-    assessment_id: UUID,
-    *,
-    body: str,
-    evidence: list[Any] | None = None,
-) -> FeedbackOut:
-    """ASSESS-08: a student may contest an assessment and add evidence for their case."""
-    assessment = await repo.get_assessment(session, scope, assessment_id)
-    if assessment is None:
-        raise NotFoundError("assessment not found")
-    if not scope.is_prof and assessment.student_id != scope.user_id:
-        raise ForbiddenError("only the student assessed may request a correction")
-
-    feedback = Feedback(
-        workspace_id=scope.workspace_id,
-        subject_table="assessment_versions",
-        subject_id=assessment_id,
-        author_id=scope.user_id,
-        recipient_id=None,
-        kind=FeedbackKind.CORRECTION_REQUEST,
-        visibility=Visibility.STUDENT_PRIVATE,
-        body=body,
-        evidence_refs=evidence or [],
-    )
-    session.add(feedback)
-    await session.flush()
-    return FeedbackOut.model_validate(feedback)
-
-
 async def add_supervision_note(
     session: AsyncSession,
     scope: Scope,
@@ -920,13 +885,6 @@ async def list_supervision_notes(
         since=since,
         until=until,
     )
-
-
-async def list_feedback(
-    session: AsyncSession, scope: Scope, assessment_id: UUID
-) -> list[FeedbackOut]:
-    rows = await repo.list_feedback(session, scope, assessment_id)
-    return [FeedbackOut.model_validate(row) for row in rows]
 
 
 async def latest_run(

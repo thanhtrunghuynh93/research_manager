@@ -33,9 +33,7 @@ from app.projects.models import (
     Project,
     ProjectMembership,
     ProjectStatus,
-    ResearchDecision,
     ResearchStage,
-    Task,
 )
 from app.projects.schemas import (
     JoinableProjectOut,
@@ -43,15 +41,12 @@ from app.projects.schemas import (
     PlanBaselineItemOut,
     PlanBaselineOut,
     ProjectOut,
-    ResearchDecisionOut,
-    TaskOut,
     normalize_repo_url,
 )
 
 # The columns a PATCH may set back to null. Everything else refuses one rather than handing a
 # NOT NULL violation to the database.
 PROJECT_CLEARABLE = frozenset({"target_on", "venue_target", "repo_url"})
-TASK_CLEARABLE = frozenset({"blocker", "assignee_id", "completion_reason"})
 
 # AUTH-07: what the person who started a project may change about it. Everything omitted here —
 # `status`, `ai_restricted`, `open_to_join`, `shared_resources` — is a decision about the project's
@@ -493,118 +488,6 @@ async def list_members(
     ]
 
 
-# ------------------------------------------------------------------ tasks (PROJ-03)
-
-
-async def create_task(
-    session: AsyncSession, scope: Scope, project_id: UUID, **fields: object
-) -> TaskOut:
-    scope.require_prof()
-    project = await _require_project(session, scope, project_id)
-
-    task = Task(workspace_id=scope.workspace_id, project_id=project.id, **fields)
-    session.add(task)
-    await session.flush()
-    _audit(session, scope, "task.created", "tasks", task.id, after={"title": task.title})
-    return TaskOut.model_validate(task)
-
-
-async def update_task(
-    session: AsyncSession, scope: Scope, task_id: UUID, **changes: object
-) -> TaskOut:
-    """The professor edits the plan; a student may report progress on their own task."""
-    task = await repository.get_task(session, scope, task_id)
-    if task is None:
-        raise NotFoundError("task not found")
-    if not scope.is_prof:
-        _require_student_may_update(scope, task, changes)
-
-    fraction = changes.get("completion_fraction")
-    if fraction is not None and not changes.get("completion_reason") and not task.completion_reason:
-        # PROJ-03: partial completion must carry a reason.
-        raise ValidationError("a completion fraction requires a reason")
-
-    applied = _apply(task, changes, clearable=TASK_CLEARABLE)
-    if applied:
-        _audit(
-            session,
-            scope,
-            "task.updated",
-            "tasks",
-            task.id,
-            before=applied.before,
-            after=applied.after,
-        )
-        await session.flush()
-    return TaskOut.model_validate(task)
-
-
-def _require_student_may_update(scope: Scope, task: Task, changes: dict[str, object]) -> None:
-    student_fields = {"status", "completion_fraction", "completion_reason", "blocker"}
-    if task.assignee_id != scope.user_id:
-        raise NotFoundError("task not found")
-    # The keys, not the values, as in `_require_may_update_project`: an explicit null is a real
-    # edit, and `assignee_id` is clearable, so testing `is not None` let a student unassign
-    # themselves.
-    if not set(changes) <= student_fields:
-        raise ValidationError("a student may only report progress on their own task")
-
-
-async def list_tasks(session: AsyncSession, scope: Scope, project_id: UUID) -> list[TaskOut]:
-    await _require_project(session, scope, project_id)
-    rows = await repository.list_tasks(session, scope, project_id)
-    return [TaskOut.model_validate(row) for row in rows]
-
-
-# ------------------------------------------------------------------ research decisions
-
-
-async def record_decision(
-    session: AsyncSession,
-    scope: Scope,
-    project_id: UUID,
-    *,
-    decision: str,
-    rationale: str = "",
-    decided_on: date | None = None,
-    participant_ids: list[UUID] | None = None,
-    related_evidence: dict[str, object] | None = None,
-) -> ResearchDecisionOut:
-    scope.require_prof()
-    project = await _require_project(session, scope, project_id)
-    if decided_on is None:
-        decided_on = await identity_service.workspace_today(session, scope.workspace_id)
-    row = ResearchDecision(
-        workspace_id=scope.workspace_id,
-        project_id=project.id,
-        decided_on=decided_on,
-        decision=decision,
-        rationale=rationale,
-        participant_ids=participant_ids or [],
-        related_evidence=related_evidence or {},
-        created_by=scope.user_id,
-    )
-    session.add(row)
-    await session.flush()
-    _audit(
-        session,
-        scope,
-        "decision.recorded",
-        "research_decisions",
-        row.id,
-        after={"decision": decision},
-    )
-    return ResearchDecisionOut.model_validate(row)
-
-
-async def list_decisions(
-    session: AsyncSession, scope: Scope, project_id: UUID
-) -> list[ResearchDecisionOut]:
-    await _require_project(session, scope, project_id)
-    rows = await repository.list_decisions(session, scope, project_id)
-    return [ResearchDecisionOut.model_validate(row) for row in rows]
-
-
 # ------------------------------------------------------------------ plan baselines (PROJ-04)
 
 
@@ -641,131 +524,6 @@ async def freeze_baseline(
         source_entry_id=source_entry_id,
         frozen_at=now(),
         approved_by=scope.user_id if items else None,
-    )
-
-
-async def propose_baseline(
-    session: AsyncSession,
-    scope: Scope,
-    *,
-    membership_id: UUID,
-    period_id: UUID,
-    items: list[dict[str, Any]],
-    source_entry_id: UUID | None = None,
-) -> PlanBaselineOut:
-    """AC-18: the student enters a first plan when the freeze point found nothing to freeze."""
-    membership = await _require_membership(session, scope, membership_id)
-    if not scope.is_prof and membership.student_id != scope.user_id:
-        raise ForbiddenError("only the student on this membership may propose their plan")
-    if not items:
-        raise ValidationError("a proposed plan needs at least one outcome")
-
-    latest = await repository.latest_baseline(
-        session, scope, membership_id=membership_id, period_id=period_id
-    )
-    if latest is not None and latest.state in (BaselineState.FROZEN, BaselineState.ACCEPTED):
-        raise ConflictError("a baseline is already in effect for this period")
-    if latest is not None and latest.state is BaselineState.PROPOSED:
-        return await supersede_baseline(
-            session, scope, latest.id, items=items, reason="Replaced by a newer proposal"
-        )
-
-    await _supersede(session, latest)
-    return await _insert_baseline(
-        session,
-        scope,
-        membership_id=membership_id,
-        period_id=period_id,
-        version_no=1 if latest is None else latest.version_no + 1,
-        state=BaselineState.PROPOSED,
-        items=items,
-        source_entry_id=source_entry_id,
-        supersedes_id=None if latest is None else latest.id,
-        proposed_by=scope.user_id,
-    )
-
-
-async def accept_baseline(
-    session: AsyncSession, scope: Scope, baseline_id: UUID
-) -> PlanBaselineOut:
-    """ASSESS-05: a proposed plan becomes a commitment only when the professor accepts it."""
-    scope.require_prof()
-    baseline = await repository.get_baseline(session, scope, baseline_id)
-    if baseline is None:
-        raise NotFoundError("plan baseline not found")
-    if baseline.state is not BaselineState.PROPOSED:
-        raise ValidationError("only a proposed plan can be accepted")
-
-    # Retired first, then accepted: `uq_baseline_in_effect` allows exactly one in-effect row per
-    # membership and period, and acceptance is the moment the commitment changes hands. Until now
-    # the superseded plan was the one in effect, which is what keeps a student from retiring the
-    # plan they have not done and leaving the week measuring nothing (PROJ-04, ASSESS-05).
-    if baseline.supersedes_id is not None:
-        await _supersede(
-            session, await repository.get_baseline(session, scope, baseline.supersedes_id)
-        )
-
-    baseline.state = BaselineState.ACCEPTED
-    baseline.approved_by = scope.user_id
-    baseline.approved_at = now()
-    _audit(
-        session,
-        scope,
-        "plan_baseline.accepted",
-        "plan_baselines",
-        baseline.id,
-        after={"state": baseline.state.value},
-    )
-    await session.flush()
-    return await _baseline_out(session, baseline)
-
-
-async def supersede_baseline(
-    session: AsyncSession,
-    scope: Scope,
-    baseline_id: UUID,
-    *,
-    items: list[dict[str, Any]],
-    reason: str,
-) -> PlanBaselineOut:
-    """PROJ-04: a change is a new version with a reason; it never rewrites what was committed."""
-    if not reason:
-        raise ValidationError("changing an agreed plan requires a reason")
-    previous = await repository.get_baseline(session, scope, baseline_id)
-    if previous is None:
-        raise NotFoundError("plan baseline not found")
-    membership = await _require_membership(session, scope, previous.membership_id)
-    if not scope.is_prof and membership.student_id != scope.user_id:
-        raise ForbiddenError("only the student on this membership may propose a change")
-
-    latest = await repository.latest_baseline(
-        session, scope, membership_id=previous.membership_id, period_id=previous.period_id
-    )
-    if latest is not None and latest.state is BaselineState.PROPOSED:
-        raise ConflictError("a proposed change to this plan is already waiting to be accepted")
-
-    if scope.is_prof:
-        # The replacement is frozen, so it takes effect the moment it exists.
-        await _supersede(session, previous)
-    # Otherwise the old plan stays in effect until the professor accepts the new one. Retiring it
-    # first left *no* baseline in effect, so the assessment reported commitment completion as
-    # unavailable rather than missed — a student could retire the plan they had not done on
-    # Sunday night and the week would measure nothing (PROJ-04, ASSESS-05).
-
-    # A professor-approved change is a commitment; a student's is a proposal until accepted.
-    return await _insert_baseline(
-        session,
-        scope,
-        membership_id=previous.membership_id,
-        period_id=previous.period_id,
-        version_no=previous.version_no + 1,
-        state=BaselineState.FROZEN if scope.is_prof else BaselineState.PROPOSED,
-        items=items,
-        supersedes_id=previous.id,
-        change_reason=reason,
-        frozen_at=now() if scope.is_prof else None,
-        approved_by=scope.user_id if scope.is_prof else None,
-        proposed_by=None if scope.is_prof else scope.user_id,
     )
 
 
@@ -808,10 +566,7 @@ async def _insert_baseline(
     state: BaselineState,
     items: list[dict[str, Any]],
     source_entry_id: UUID | None = None,
-    supersedes_id: UUID | None = None,
-    change_reason: str | None = None,
     frozen_at: datetime | None = None,
-    proposed_by: UUID | None = None,
     approved_by: UUID | None = None,
 ) -> PlanBaselineOut:
     baseline = PlanBaseline(
@@ -822,9 +577,6 @@ async def _insert_baseline(
         state=state,
         frozen_at=frozen_at,
         source_entry_id=source_entry_id,
-        supersedes_id=supersedes_id,
-        change_reason=change_reason,
-        proposed_by=proposed_by,
         approved_by=approved_by,
         approved_at=now() if approved_by else None,
     )
@@ -836,7 +588,6 @@ async def _insert_baseline(
             PlanBaselineItem(
                 workspace_id=scope.workspace_id,
                 baseline_id=baseline.id,
-                task_id=item.get("task_id"),
                 planned_outcome=str(item["planned_outcome"]),
                 weight=item.get("weight", 1),
                 acceptance_criteria=str(item.get("acceptance_criteria", "")),
@@ -853,14 +604,6 @@ async def _insert_baseline(
     )
     await session.flush()
     return await _baseline_out(session, baseline)
-
-
-async def _supersede(session: AsyncSession, baseline: PlanBaseline | None) -> None:
-    """The only edit a baseline row allows: retiring it in favour of a later version."""
-    if baseline is None or baseline.state is BaselineState.SUPERSEDED:
-        return
-    baseline.state = BaselineState.SUPERSEDED
-    await session.flush()
 
 
 async def _baseline_out(session: AsyncSession, baseline: PlanBaseline) -> PlanBaselineOut:

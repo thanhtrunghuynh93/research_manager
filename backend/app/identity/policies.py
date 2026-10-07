@@ -14,7 +14,7 @@ from app.identity.models import User, WorkspaceMember
 
 @register_policy(User)
 def user_visible_to(scope: Scope) -> ColumnElement[bool]:
-    """Professor: every account belonging to a workspace they belong to. Student: their own only.
+    """Professor: every account belonging to the workspace they are in. Student: their own only.
 
     Membership rather than `users.workspace_id`, because those differ: the column says which
     workspace an account is *working in* and the membership says which it belongs to (ADR 0015). A

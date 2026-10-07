@@ -53,19 +53,12 @@ class RunState(StrEnum):
     RESTRICTED = "restricted"
 
 
-class FeedbackKind(StrEnum):
-    PROFESSOR_COMMENT = "professor_comment"
-    STUDENT_RESPONSE = "student_response"
-    CORRECTION_REQUEST = "correction_request"
-
-
 def _enum(enum_type: type[StrEnum], name: str) -> Enum:
     return Enum(enum_type, name=name, values_callable=lambda e: [m.value for m in e])
 
 
 REVIEW_STATE_ENUM = _enum(ReviewState, "review_state")
 RUN_STATE_ENUM = _enum(RunState, "analysis_run_state")
-FEEDBACK_KIND_ENUM = _enum(FeedbackKind, "feedback_kind")
 VISIBILITY_ENUM = Enum(
     Visibility, name="visibility", values_callable=lambda e: [m.value for m in e]
 )
@@ -242,28 +235,6 @@ class AssessmentReview(UUIDPrimaryKeyMixin, Base):
     override: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     rationale: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class Feedback(UUIDPrimaryKeyMixin, Base):
-    """Comments on an assessment or a report, including a student's correction request."""
-
-    __tablename__ = "feedback"
-    __table_args__ = (
-        Index("ix_feedback_subject", "subject_table", "subject_id"),
-        Index("ix_feedback_recipient", "recipient_id"),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    subject_table: Mapped[str] = mapped_column(Text)
-    subject_id: Mapped[UUID]
-    recipient_id: Mapped[UUID | None]
-    author_id: Mapped[UUID]
-    kind: Mapped[FeedbackKind] = mapped_column(FEEDBACK_KIND_ENUM)
-    visibility: Mapped[Visibility] = mapped_column(VISIBILITY_ENUM)
-    body: Mapped[str] = mapped_column(Text)
-    evidence_refs: Mapped[list[Any]] = mapped_column(JSONB, default=list)
-    responds_to_id: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

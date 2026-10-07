@@ -16,17 +16,15 @@
  * - **No approve or override control.** Those are the professor's decision, and this page renders
  *   its ratings through a read-only component rather than a disabled version of theirs.
  *
- * What is present is the reply: ASSESS-08 lets the assessed student contest an assessment and put
- * their evidence on the record, and that is what makes this a loop rather than an announcement.
+ * Correction requests were withdrawn in requirements 0.10 (ASSESS-08): the form posted to a table
+ * nothing read, so a student's account of a rating went nowhere a professor would see it.
  */
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 
 import { ConfidenceBadge, ConfidenceReasons, ProgressIndex } from "@/components/evidence/Badges";
-import { Failure } from "@/components/Failure";
 import { RatingList } from "@/features/assessments/components/RatingList";
-import { useAssessment, useFeedback, useRequestCorrection } from "@/features/assessments/queries";
+import { useAssessment } from "@/features/assessments/queries";
 import { useTimezone } from "@/features/calendar/queries";
 import { usePeriods, useProjects } from "@/features/report/queries";
 import { formatInstant, formatLocalDate } from "@/lib/dates";
@@ -50,8 +48,7 @@ export function MyAssessmentPage() {
     projects.data?.items.find((one) => one.id === String(data.project_id))?.title ??
     String(data.project_id);
   // An assessment is weekly (AC-01: one per project per period), and the week was the one thing
-  // the heading never said — so a fortnight of assessments on one project read identically, and a
-  // student contesting a rating had nothing on screen naming what they were contesting.
+  // the heading never said — so a fortnight of assessments on one project read identically.
   const period = periods.data?.find((one) => one.id === String(data.period_id));
 
   return (
@@ -100,77 +97,6 @@ export function MyAssessmentPage() {
 
       <h2 className="section-title mt-8 mb-2.5">{t("myAssessment.ratings")}</h2>
       <RatingList assessment={data} />
-
-      <FeedbackThread assessmentId={assessmentId!} />
     </section>
-  );
-}
-
-function FeedbackThread({ assessmentId }: { assessmentId: string }) {
-  const { t } = useTranslation();
-  const feedback = useFeedback(assessmentId);
-  const correction = useRequestCorrection(assessmentId);
-  const timezone = useTimezone();
-  const [body, setBody] = useState("");
-
-  return (
-    <>
-      <h2 className="section-title mt-8 mb-2.5">{t("myAssessment.feedback")}</h2>
-      <ul className="panel" data-testid="feedback">
-        {feedback.data?.map((item) => (
-          <li key={item.id} className="row">
-            <span className="text-ui leading-relaxed">{item.body}</span>
-            <span className="text-right font-mono text-meta text-muted-foreground">
-              {t(`assessment.feedbackKind.${item.kind}`, { defaultValue: item.kind })} ·{" "}
-              {formatInstant(item.created_at, timezone)}
-            </span>
-          </li>
-        ))}
-        {feedback.data?.length === 0 && (
-          <li className="px-4 py-2.5 text-sm text-muted-foreground">
-            {t("myAssessment.noFeedback")}
-          </li>
-        )}
-      </ul>
-
-      <form
-        className="panel mt-4 p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          correction.mutate(body, { onSuccess: () => setBody("") });
-        }}
-      >
-        <label className="block">
-          <span className="field-label">{t("myAssessment.correction")}</span>
-          <textarea
-            rows={3}
-            required
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            placeholder={t("myAssessment.correctionPlaceholder")}
-            className="input"
-          />
-        </label>
-        <div className="mt-3 flex items-center gap-4">
-          {/* Enabled with an empty box, the button did nothing at all — `required` blocked the
-              submit and nothing said so, which is a dead control. Three spaces got past
-              `required` instead and were filed as a correction request nobody could read. */}
-          <button
-            type="submit"
-            disabled={correction.isPending || body.trim() === ""}
-            className="btn-ghost"
-          >
-            {t("myAssessment.correctionSend")}
-          </button>
-          {correction.isSuccess ? (
-            <span className="stamp" role="status">
-              {t("myAssessment.correctionSent")}
-            </span>
-          ) : null}
-          <Failure error={correction.error} />
-        </div>
-        <p className="stamp mt-3">{t("myAssessment.correctionNote")}</p>
-      </form>
-    </>
   );
 }

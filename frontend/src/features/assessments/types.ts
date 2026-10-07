@@ -8,7 +8,6 @@
 import type { components } from "@/api/generated/schema";
 
 export type Assessment = components["schemas"]["AssessmentOut"];
-export type Feedback = components["schemas"]["FeedbackOut"];
 export type TrendPoint = components["schemas"]["TrendPoint"];
 
 export const DIMENSIONS = ["progress", "learning", "rigor", "artifacts"] as const;

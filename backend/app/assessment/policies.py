@@ -10,7 +10,6 @@ from app.assessment.models import (
     AssessmentReview,
     AssessmentVersion,
     EvidenceSnapshot,
-    Feedback,
     ReviewState,
     RubricVersion,
     SupervisionNote,
@@ -68,18 +67,6 @@ def run_visible_to(scope: Scope) -> ColumnElement[bool]:
 def rubric_visible_to(scope: Scope) -> ColumnElement[bool]:
     """The rubric is workspace-wide: a student is entitled to know what they are assessed on."""
     return scope.within(RubricVersion.workspace_id)
-
-
-@register_policy(Feedback)
-def feedback_visible_to(scope: Scope) -> ColumnElement[bool]:
-    same_workspace = scope.within(Feedback.workspace_id)
-    if scope.is_prof:
-        return same_workspace
-    return and_(
-        same_workspace,
-        Feedback.visibility != "professor_only",
-        (Feedback.author_id == scope.user_id) | (Feedback.recipient_id == scope.user_id),
-    )
 
 
 @register_policy(SupervisionNote)

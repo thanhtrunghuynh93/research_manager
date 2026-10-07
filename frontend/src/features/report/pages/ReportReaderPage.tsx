@@ -33,7 +33,7 @@ import { RevisionRequestForm } from "@/features/report/components/RevisionReques
 import {
   useMarkReviewed,
   useObligations,
-  useAllPeriods,
+  usePeriods,
   useProjects,
   useReport,
   useReportVersions,
@@ -54,9 +54,7 @@ export function ReportReaderPage() {
   const canReview = session.data?.role === "prof";
   const timezone = useTimezone();
 
-  // The widened list: this route is also the professor's reader, and the week it names belongs
-  // to the report rather than to whichever workspace the professor is working in.
-  const periods = useAllPeriods();
+  const periods = usePeriods();
   const projects = useProjects();
   const student = useUser(canReview ? studentId : undefined);
   const report = useReport(periodId, fromRoute);

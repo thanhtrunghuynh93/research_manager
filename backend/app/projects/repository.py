@@ -21,8 +21,6 @@ from app.projects.models import (
     Project,
     ProjectMembership,
     ProjectStatus,
-    ResearchDecision,
-    Task,
 )
 
 
@@ -82,10 +80,8 @@ def _joinable(scope: Scope) -> ColumnElement[bool]:
     member yet, so the ordinary policy would return nothing. This predicate is the one gate for
     both what a non-member may see and what they may join, so the two cannot drift apart.
 
-    Pinned to `scope.workspace_id` rather than `Scope.within`: the membership this read exists to
-    enable is written against a composite foreign key on the anchor workspace, so a project from
-    anywhere else would fail in the database rather than be refused in words (ADR 0016). A student
-    belongs to exactly one workspace anyway; naming the anchor says which one and why.
+    Pinned to `scope.workspace_id`: the membership this read exists to enable is written against a
+    composite foreign key on that workspace.
     """
     return and_(
         Project.workspace_id == scope.workspace_id,
@@ -298,51 +294,6 @@ async def memberships_active_in_range(
     )
 
 
-async def get_task(session: AsyncSession, scope: Scope, task_id: UUID) -> Task | None:
-    return (
-        await session.execute(select(Task).where(Task.id == task_id, visible_to(scope, Task)))
-    ).scalar_one_or_none()
-
-
-async def list_tasks(session: AsyncSession, scope: Scope, project_id: UUID) -> list[Task]:
-    statement = (
-        select(Task).where(Task.project_id == project_id, visible_to(scope, Task)).order_by(Task.id)
-    )
-    return list((await session.execute(statement)).scalars().all())
-
-
-async def list_decisions(
-    session: AsyncSession, scope: Scope, project_id: UUID
-) -> list[ResearchDecision]:
-    return list(
-        (
-            await session.execute(
-                select(ResearchDecision)
-                .where(
-                    ResearchDecision.project_id == project_id,
-                    visible_to(scope, ResearchDecision),
-                )
-                .order_by(ResearchDecision.decided_on.desc(), ResearchDecision.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-
-async def count_open_blockers(session: AsyncSession, scope: Scope, project_id: UUID) -> int:
-    return (
-        await session.execute(
-            select(func.count(Task.id)).where(
-                Task.project_id == project_id,
-                visible_to(scope, Task),
-                or_(Task.status == "blocked", Task.blocker.is_not(None)),
-                Task.status.not_in(("done", "dropped")),
-            )
-        )
-    ).scalar_one()
-
-
 IN_EFFECT = (BaselineState.FROZEN, BaselineState.ACCEPTED)
 
 
@@ -375,18 +326,6 @@ async def latest_baseline(
             )
             .order_by(PlanBaseline.version_no.desc())
             .limit(1)
-        )
-    ).scalar_one_or_none()
-
-
-async def get_baseline(
-    session: AsyncSession, scope: Scope, baseline_id: UUID
-) -> PlanBaseline | None:
-    return (
-        await session.execute(
-            select(PlanBaseline).where(
-                PlanBaseline.id == baseline_id, visible_to(scope, PlanBaseline)
-            )
         )
     ).scalar_one_or_none()
 

@@ -1,6 +1,6 @@
-"""Notification use cases: message records, reminders, and the missed-deadline email.
+"""Notification use cases: message records and the missed-deadline email.
 
-Requirements REP-07, REP-08, UI-07. Everything here is idempotent on a unique key, because the
+Requirements REP-08, UI-07. Everything here is idempotent on a unique key, because the
 worker may run any of it twice: a retried job must send nothing more (AC-19).
 
 This module reads obligations and periods through reporting.service and users through
@@ -11,40 +11,32 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now, to_utc
 from app.core.config import get_settings
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import NotFoundError
 from app.core.ids import uuid7
 from app.core.jobs import defer_after_commit
 from app.identity import security
 from app.identity import service as identity_service
 from app.notifications import policies, repository  # noqa: F401  (policies register on import)
 from app.notifications.email.base import EmailSender
-from app.notifications.models import (
-    DeliveryState,
-    EmailDelivery,
-    Notification,
-    ReminderRule,
-)
+from app.notifications.models import DeliveryState, EmailDelivery, Notification
 from app.notifications.schemas import NotificationOut
 from app.reporting import service as reporting_service
 
 log = logging.getLogger(__name__)
 
-# The kind vocabulary (UI-07). Pre-deadline reminders add `reminder:{n}h` at runtime.
+# The kind vocabulary (UI-07).
 REPORT_SUBMITTED = "report_submitted"
 REPORT_RESUBMITTED = "report_resubmitted"
-REVISION_REQUESTED = "revision_requested"
-DEADLINE_APPROACHING = "deadline_approaching"
 MISSED_DEADLINE = "missed_deadline"
 UNFULFILLED_OBLIGATIONS = "unfulfilled_obligations"
 ASSESSMENT_RELEASED = "assessment_released"
@@ -101,94 +93,6 @@ async def notify(
         return None  # the same message already exists; a retry adds nothing
     await session.flush()
     return NotificationOut.model_validate(created)
-
-
-# ------------------------------------------------------------------ reminders (REP-07)
-
-
-async def set_reminder_offsets(
-    session: AsyncSession, scope: Scope, *, offsets_hours: list[int]
-) -> list[int]:
-    """How long before the deadline an in-app reminder is raised, in whole hours.
-
-    Workspace-wide and last-writer-wins: with co-equal professors (ADR 0011) one overwrites the
-    other's schedule, so the change is audited with what it replaced. Two people need to be able
-    to answer "who changed this"; they do not need a lock.
-    """
-    scope.require_prof()
-    if any(hours <= 0 for hours in offsets_hours):
-        raise ValidationError("a reminder offset must be a positive number of hours")
-
-    before = sorted(
-        (
-            rule.offset_minutes // 60
-            for rule in await repository.reminder_rules(session, scope.workspace_id)
-        ),
-        reverse=True,
-    )
-    await repository.clear_reminder_rules(session, scope.workspace_id)
-    wanted = sorted(set(offsets_hours), reverse=True)
-    for hours in wanted:
-        session.add(ReminderRule(workspace_id=scope.workspace_id, offset_minutes=hours * 60))
-    write_audit(
-        session,
-        scope=scope,
-        action="workspace.reminder_offsets_set",
-        target_table="reminder_rules",
-        target_id=scope.workspace_id,
-        before={"offsets_hours": before},
-        after={"offsets_hours": wanted},
-    )
-    await session.flush()
-    return wanted
-
-
-async def dispatch_due_reminders(
-    session: AsyncSession, *, at: datetime | None = None
-) -> list[NotificationOut]:
-    """REP-07: raise in-app reminders for obligations still unfulfilled inside an offset window.
-
-    The window opens at `deadline - offset` and closes at the deadline; the unique index keeps one
-    reminder per recipient, period, and offset however often the scan runs.
-
-    Each rule applies to its own workspace only. Both reads here are job-level and unscoped, so
-    matching them by time alone let one professor's offsets reach another professor's students —
-    including a workspace that had deliberately configured none (REP-07).
-    """
-    instant = at or now()
-    raised: list[NotificationOut] = []
-
-    for rule in await repository.all_reminder_rules(session):
-        offset = timedelta(minutes=rule.offset_minutes)
-        periods = await reporting_service.periods_with_deadline_between(
-            session, start=instant, end=instant + offset, workspace_id=rule.workspace_id
-        )
-        for period in periods:
-            kind = reminder_kind(rule.offset_minutes)
-            for student_id, missing in _group_by_student(
-                await reporting_service.unfulfilled_entries(session, period.id, at=instant)
-            ).items():
-                created = await notify(
-                    session,
-                    workspace_id=rule.workspace_id,
-                    recipient_id=student_id,
-                    kind=kind,
-                    subject_table="reporting_periods",
-                    subject_id=period.id,
-                    period_id=period.id,
-                    payload={
-                        "deadline_utc": period.deadline_utc.isoformat(),
-                        "missing_projects": missing,
-                    },
-                )
-                if created is not None:
-                    raised.append(created)
-    return raised
-
-
-def reminder_kind(offset_minutes: int) -> str:
-    hours, minutes = divmod(offset_minutes, 60)
-    return f"reminder:{hours}h" if minutes == 0 else f"reminder:{offset_minutes}m"
 
 
 # ------------------------------------------------------------------ missed deadline (REP-08)
@@ -446,7 +350,6 @@ def register_subscriptions() -> None:
     from app.reporting import events as reporting_events
 
     reporting_events.subscribe(reporting_events.ReportSubmitted, _on_report_submitted)
-    reporting_events.subscribe(reporting_events.RevisionRequested, _on_revision_requested)
     identity_events.subscribe(identity_events.InvitationCreated, _on_invitation_created)
     identity_events.subscribe(identity_events.PasswordResetRequested, _on_password_reset_requested)
 
@@ -520,29 +423,6 @@ async def _on_password_reset_requested(event: Any, session: AsyncSession) -> Non
         token=event.token,
         expires_at=event.expires_at,
         path="/reset-password",
-    )
-
-
-async def _on_revision_requested(event: Any, session: AsyncSession) -> None:
-    """REP-07/UI-07: the student is told which entry to revise, and cannot mute it.
-
-    The subject is the request, not the report. Under `(recipient, period, kind)` alone the second
-    revision request of a week — a different project, or a second round on the same one — collided
-    with the first and was silently dropped, for the one kind a student is not allowed to mute.
-    """
-    await notify(
-        session,
-        workspace_id=event.workspace_id,
-        recipient_id=event.student_id,
-        kind=REVISION_REQUESTED,
-        subject_table="revision_requests",
-        subject_id=event.request_id,
-        period_id=event.period_id,
-        payload={
-            "report_id": str(event.report_id),
-            "project_id": str(event.project_id) if event.project_id else None,
-            "reason": event.reason,
-        },
     )
 
 

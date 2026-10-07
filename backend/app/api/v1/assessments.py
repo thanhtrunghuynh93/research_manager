@@ -11,8 +11,6 @@ from app.assessment import service
 from app.assessment.schemas import (
     ApproveIn,
     AssessmentOut,
-    CorrectionIn,
-    FeedbackOut,
     ReviewOut,
     SnapshotItemOut,
     SupervisionNoteIn,
@@ -70,26 +68,6 @@ async def approve(
 @router.post("/assessments/{assessment_id}/withdraw", summary="Withdraw an assessment")
 async def withdraw(assessment_id: UUID, scope: ProfScopeDep, session: SessionDep) -> ReviewOut:
     return await service.withdraw(session, scope, assessment_id)
-
-
-@router.post(
-    "/assessments/{assessment_id}/corrections",
-    status_code=status.HTTP_201_CREATED,
-    summary="Request a correction, with evidence",
-)
-async def request_correction(
-    assessment_id: UUID, payload: CorrectionIn, scope: ScopeDep, session: SessionDep
-) -> FeedbackOut:
-    return await service.request_correction(
-        session, scope, assessment_id, body=payload.body, evidence=payload.evidence
-    )
-
-
-@router.get("/assessments/{assessment_id}/feedback", summary="Feedback on an assessment")
-async def list_feedback(
-    assessment_id: UUID, scope: ScopeDep, session: SessionDep
-) -> list[FeedbackOut]:
-    return await service.list_feedback(session, scope, assessment_id)
 
 
 @router.get("/trends", summary="A student's trajectory on one project")

@@ -106,9 +106,8 @@ test("an active project offers no activate button", async () => {
 });
 
 test("the student picker offers only students of the workspace being worked in", async () => {
-  // Reads span every workspace the professor belongs to (ADR 0016), but a membership row is
-  // written against the anchor's composite foreign key — so a student from elsewhere would fail
-  // in the database rather than be refused in words.
+  // A membership row is written against the workspace's composite foreign key, so a student from
+  // elsewhere would fail in the database rather than be refused in words.
   renderPage();
 
   const picker = await screen.findByLabelText(/student/i);
@@ -313,44 +312,6 @@ test("the project's related documents are on the page, and a departed member get
   expect(await screen.findByText("protocol.md")).toBeInTheDocument();
   // A member may add one.
   expect(screen.getByLabelText(/attach a document/i)).toBeInTheDocument();
-});
-
-test("research decisions are not on the page, and milestones no longer exist", async () => {
-  // Both were removed because nothing in the product writes what they showed: `accepted_completion`
-  // has no screen that sets it, so completion read 0% as though it were a finding, and decisions
-  // are professor-only to record with no screen to record them. The endpoints still answer.
-  const asked: string[] = [];
-  server.use(
-    http.get("/api/v1/projects/p1/progress", ({ request }) => {
-      asked.push(new URL(request.url).pathname);
-      return HttpResponse.json({
-        weighted_completion: "0.5000",
-        completed_milestones: 1,
-        milestone_count: 2,
-        overdue_milestones: 0,
-      });
-    }),
-    http.get("/api/v1/projects/p1/decisions", ({ request }) => {
-      asked.push(new URL(request.url).pathname);
-      return HttpResponse.json([
-        {
-          id: "d1",
-          decision: "Dropped the BM25 baseline",
-          rationale: "Superseded",
-          decided_on: "2026-09-01",
-        },
-      ]);
-    }),
-  );
-  renderPage(PROF, { ...PROJECT, status: "active" });
-
-  await screen.findByRole("heading", { name: /Retrieval baselines/ });
-  expect(screen.queryByTestId("project-progress")).not.toBeInTheDocument();
-  expect(screen.queryByTestId("decisions")).not.toBeInTheDocument();
-  expect(screen.queryByText(/Dropped the BM25 baseline/)).not.toBeInTheDocument();
-  // Not fetched either: a panel that is gone should not still cost two requests a view.
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  expect(asked).toEqual([]);
 });
 
 test("a project the student has left is not asked for what it will not show", async () => {

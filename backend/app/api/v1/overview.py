@@ -65,8 +65,8 @@ class WeekProject(BaseModel):
 class WeekWorkspace(BaseModel):
     """This week in one workspace: its period, and every report owed in it.
 
-    Grouped per workspace because a professor's reads span all of them (ADR 0016) and each keeps
-    its own calendar — so "this week" is one period per workspace rather than one period.
+    A list of one since reads stopped spanning workspaces (ADR 0020, ADR 0021); the grouping is
+    kept so the screen's shape did not change.
     """
 
     workspace_id: str

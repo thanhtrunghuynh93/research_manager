@@ -1,4 +1,4 @@
-"""Request and response models for the notifications API."""
+"""Response models for notification records."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class NotificationOut(BaseModel):
@@ -22,7 +22,3 @@ class NotificationOut(BaseModel):
     payload: dict[str, Any]
     read_at: datetime | None = None
     created_at: datetime
-
-
-class ReminderOffsetsIn(BaseModel):
-    offsets_hours: list[int] = Field(default_factory=lambda: [48, 6])

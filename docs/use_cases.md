@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.17 — 24 September 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.9, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
+Version 0.18 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.10, [architecture.md](architecture.md), and [implementation_status.md](implementation_status.md)
 
 What each role can actually do with the system as built, by role.
 
@@ -31,6 +31,12 @@ worked and was already tested. What both needed was a caller.
 makes this week's reports due, so the "open weeks" step is gone (§2.4); the screen leads with the
 workspace being worked in, its name and its schedule; and model spend has no screen, though its
 endpoints and the gateway's ceiling are unchanged (§2.9).
+
+**v0.18 takes away what no screen used.** Tasks, dated research decisions, pre-deadline reminder
+offsets and student correction requests are removed with their endpoints and tables (requirements
+0.10, migration 0027): each was built, had no screen that wrote it or none that read it, and held no
+rows. So is the baseline proposal flow, which had no route at all. The rows below that named them
+are gone (§2.3, §2.4, §2.6, §3).
 
 ## How to read the tables
 
@@ -64,20 +70,11 @@ v0.3 marked ten endpoints ✂️ and v0.4 removed all ten; v0.3 marked six use c
 finished the last of them. Both marks did what they were for: they held a decision in view for
 exactly as long as it was ahead of the code, and stopped being needed the moment it was not.
 
-**As of this version: 89 endpoints, 55 of them called by a screen, and nothing left marked ◻️.**
-Both numbers are path-and-method pairs over `/api/v1`, counted by the script in §9 — v0.12 gave
-"98 endpoints, 50 of them called by a screen", which counted routes one way and callers another
-and so compared two different things. The units agree now; the pair is not comparable to v0.12's.
-v0.4 removed ten — seven notification routes and three export routes, with `PUT
-/notifications/reminder-offsets` surviving because it configures email delivery (§7) — and v0.5 to
-v0.9 added eight for workspaces and one for moving a student, every one of them behind a screen.
-v0.12 added two, `GET /projects/joinable` and `POST /projects/{id}/join`, and opened three more
-to students: creating a project, patching one they created, and ending their own membership
-(PROJ-07, AUTH-07). Two versions on, that cuts both ways. `GET /projects/{id}/decisions` lost its panel and stayed,
-which is the number doing its job — a read nothing calls is what it is there to show. The five
-milestone and progress endpoints went the other way and were removed outright with the feature
-(requirements 0.8, migration 0026), which is what the mark is *for*: a capability nothing calls is
-either given a screen or given up.
+v0.4 removed ten endpoints — seven notification routes and three export routes — and v0.5 to v0.9
+added nine for workspaces and moving a student, every one of them behind a screen. The milestone
+and progress endpoints went with the feature in requirements 0.8 (migration 0026), and tasks,
+decisions, reminder offsets and correction requests in 0.10 (migration 0027): a capability nothing
+calls is either given a screen or given up, which is what ⚙️ is *for*.
 
 The second number is not the whole answer even so, because reachability is per role:
 `GET /periods/{id}/report` is 🖥️ for the student who writes the report and 🚧 for the professor who
@@ -97,7 +94,7 @@ dead end rather than about security.
 | `/status` | public | typed | Readiness of database, object store, worker, mail relay |
 | `/me` | student | nav, and the student's home | The deadline set as a figure, the report's state, obligations per project, earlier weeks, and the way through to the released record |
 | `/me/profile` | student | a link on `/me` — it is not on the navigation bar, and `/me` no longer lists assessments itself | Trajectory per project, every released assessment |
-| `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: ratings, rationales, feedback, and a correction request |
+| `/me/assessments/:id` | student | a row on `/me` or `/me/profile` | One released assessment: its week, ratings and rationales |
 | `/report/:periodId` | student | the button on `/me` | A tab per required project, autosaving; attachments, which are files (REP-04); submit |
 | `/overview` | professor | nav, and the professor's home | Budget and mail warnings, this week's reports by workspace, project and student, outstanding reports, review queue, sync issues, stalled analyses |
 | `/people` | professor | nav | Everyone in the workspace they are working in (ADR 0020); invite, move, suspend / restore / remove |
@@ -184,10 +181,9 @@ to one; it is **archived, never deleted**, because every foreign key into a work
 a delete would take the history with it; and archiving **refuses while any account is still
 active**, so the flag never has to be enforced further down.
 
-**Reads and writes both follow the workspace you are working in** (ADR 0020, superseding ADR 0016's
-spanning read). `Scope` carries both: `workspace_ids` is what a read may see, `workspace_id` is
-where a write lands, and today they are the same one workspace. The comparison lives in
-`Scope.within`, one function that all thirty-three visibility predicates call — widening what a
+**Reads and writes both follow the workspace you are working in** (ADR 0020, ADR 0021).
+`Scope.workspace_id` is where a write lands and the only workspace a read sees. The comparison lives
+in `Scope.within`, one function that all thirty-three visibility predicates call — widening what a
 read may see is the most consequential change anyone can make here, and it should be visible in one
 diff rather than spread across seven `policies.py` files.
 
@@ -300,17 +296,13 @@ else is either.
 | Use case | Endpoint | |
 | --- | --- | --- |
 | Read a project and its members | `GET /projects`, `/projects/{id}`, `/{id}/members` | 🖥️ |
-| Read a project's dated decisions and its weighted progress | `GET /projects/{id}/decisions`, `/{id}/progress` | ⚙️ — both panels were removed from the screen; see below |
 | **Create a project** | `POST /projects` | 🖥️ both roles |
 | **Update a project** — title, research questions, stage, status | `PATCH /projects/{id}` | 🖥️ — a professor sets any field; the creator sets the record but not its standing |
 | **Assign a student to a project** | `POST /projects/{id}/members` | 🖥️ |
 | End a membership, keeping its history | `POST /projects/{id}/members/{membership_id}/end` | 🖥️ professor only, on the member row ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)) |
 | **List the projects open to joining** | `GET /projects/joinable` | 🖥️ student |
 | **Join a project that is open** | `POST /projects/{id}/join` | 🖥️ student |
-| Record a dated research decision and its rationale | `POST /projects/{id}/decisions` | ⚙️ |
-| Create a task | `POST /projects/{id}/tasks` | ⚙️ |
 | **Attach a document to a project, read the project's documents, remove one you attached** | `POST /artifacts/uploads`, `GET /artifacts?project_id=`, `DELETE /artifacts/{id}` | 🖥️ both roles — on the project page, and on the create form |
-| Read tasks | `GET /projects/{id}/tasks` | ⚙️ |
 
 **A student no longer leaves a project, and a finished project owes no week**
 ([ADR 0019](adr/0019-ending-a-membership-is-the-professors.md)). The "Done this project" button is
@@ -337,15 +329,12 @@ once the project exists, since there is nothing to attach them to before that. T
 extracted and not indexed: a project document cannot be cited by an assessment or the assistant,
 which is a separate decision about what the model may read.
 
-**Milestones are gone from the product, and research decisions are recorded but not shown.** Both
-started the same way, and it is the thing this inventory exists to catch: nothing wrote what either
-of them showed. Milestone completion was weights against `accepted_completion`, a column only an
-endpoint no screen called ever set, so every project read 0% — a figure that is always zero is
-worse than no figure, because it looks like a finding. That one went the whole way: requirements
-0.8 withdraws PROJ-06 and amends PROJ-03, and migration 0026 drops the tables. Decisions stopped at
-the screen: `POST /{id}/decisions` still has no caller, so the panel reported "No decisions
-recorded" about projects whose decisions had never had anywhere to go, and the read is marked ⚙️
-above until something writes them.
+**Milestones, decisions and tasks are gone from the product.** All three started the same way, and
+it is the thing this inventory exists to catch: nothing wrote what they showed. Milestone
+completion was weights against a column only an uncalled endpoint set, so every project read 0%;
+requirements 0.8 withdrew it and migration 0026 dropped the tables. Decisions had a panel that said
+"No decisions recorded" because `POST /{id}/decisions` had no caller, and tasks had no screen at all;
+requirements 0.10 withdrew both and migration 0027 dropped the tables.
 
 The reads moved from 🚧 to 🖥️ without changing: `/projects` is a list screen, and a route nothing
 linked to is a route nobody could open. Project titles on `/me` link to it too, so the student who
@@ -361,17 +350,15 @@ Since PROJ-07 the first half of that chain is no longer only the professor's. A 
 project and is on it at once, and the project is `active` rather than `proposed` — there is no
 second party whose assent activation would record, and a proposed project would owe nothing. A
 student may also join a project the professor has marked open to joining, which is a flag that
-defaults closed: membership is the whole grant of access to a project's plan, tasks,
-decisions and member list, so opening one is a disclosure decision rather than a convenience
+defaults closed: membership is the whole grant of access to a project's record, documents
+and member list, so opening one is a disclosure decision rather than a convenience
 ([ADR 0017](adr/0017-students-own-their-projects.md)).
 
 Joining part-way through a week owes from the *next* week, which is the one place the two ways of
 acquiring a membership behave differently: a professor assigning someone on a Saturday means that
 Saturday's week is owed, and a student joining then does not.
 
-What is left ⚙️ is deliberate for now: decisions and a professor ending someone else's
-membership are the rest of the workbench rather than the chain that makes a report due, and tasks
-(PROJ-03) are a feature rather than a seam.
+Nothing in this section is left ⚙️.
 
 ### 2.4 The reporting calendar (REP-01, REP-06)
 
@@ -385,7 +372,6 @@ membership are the rest of the workbench rather than the chain that makes a repo
 | Derive obligations for a period | `POST /periods/{id}/obligations/ensure` | 🖥️ |
 | Excuse one student's obligation | `POST /obligations/{id}/excuse` | ⚙️ |
 | Extend one student's deadline | `POST /obligations/{id}/extend` | ⚙️ |
-| Set how long before a deadline to remind | `PUT /notifications/reminder-offsets` | ⚙️ |
 
 The calendar panel lives on `/workspaces` rather than on a route of its own: it is a workspace
 setting whose timezone default is the workspace's, and one more screen for one more form is how a
@@ -417,8 +403,8 @@ board carries all three states — submitted, owed, excused — one row per obli
 workspace and then by project, with names rather than the first eight characters of a uuid.
 
 It is grouped by workspace because a professor's reads were built to span every workspace they
-belong to (ADR 0016) and each keeps its own reporting calendar; since ADR 0020 a read covers the
-one being worked in, so the board shows a single group. There is therefore no single "this week" for
+belong to (ADR 0016) and each keeps its own reporting calendar; since ADR 0020 and ADR 0021 a read
+covers only the one being worked in, so the board shows a single group. There is therefore no single "this week" for
 them: `GET /overview` still carries one `current_period` for the header, and the board computes one
 period per workspace. `PeriodOut` gained `workspace_id` for exactly this — without it the periods
 came back in one list with nothing to group them by.
@@ -469,7 +455,6 @@ surveillance.
 | Approve and publish an assessment | `POST /assessments/{id}/approve` | 🖥️ |
 | See a student's trajectory on one project | `GET /trends` | 🖥️ |
 | Withdraw a published assessment | `POST /assessments/{id}/withdraw` | ⚙️ |
-| Read feedback on an assessment | `GET /assessments/{id}/feedback` | ⚙️ |
 | Record a private supervision note | `POST /supervision-notes` | ⚙️ |
 | Re-run one assessment pipeline | `POST /admin/assessments/retry` | 🖥️ |
 
@@ -554,11 +539,8 @@ reported **$0 spent** in exactly the case where nothing was capping the bill.
 | **See which projects are open to joining, and join one** | `GET /projects/joinable`, `POST /projects/{id}/join` | 🖥️ |
 | Read every week they have been in, not only the current one | `GET /periods` | 🖥️ |
 | **Read an approved assessment** | `GET /assessments`, `/assessments/{id}` | 🖥️ |
-| **Read the feedback on it** | `GET /assessments/{id}/feedback` | 🖥️ |
 | **See their own trajectory per project** | `GET /trends` | 🖥️ |
-| **Request a correction to an assessment, with evidence** | `POST /assessments/{id}/corrections` | 🖥️ |
 | Read an assessment's evidence snapshot | `GET /assessments/{id}/evidence` | ⚙️ |
-| Report progress on a task | `PATCH /tasks/{id}` | ⚙️ |
 | Claim a provider account as their own | `POST /developer-identities` | ⚙️ |
 | See contributions attributed to them | `GET /contributions` | ⚙️ |
 | Search the evidence they can see | `GET /evidence/search` | ⚙️ |
@@ -622,8 +604,8 @@ table lost, and it was lost entirely rather than reduced.
 
 This table had seven rows in v0.3 and has three now. The five that went were the whole in-app
 surface of UI-07 — reading notifications, marking them read, and muting categories — and only
-that. The notification *records* are still written, the missed-deadline email still goes out under
-REP-08, and `PUT /notifications/reminder-offsets` (§2.4) still configures when. What left is the
+that. The notification *records* are still written and the missed-deadline email still goes out
+under REP-08; the reminder offsets that once configured pre-deadline records went in v0.18. What left is the
 reading: a notification now exists in the database and reaches its recipient by email or not at
 all.
 
@@ -682,19 +664,17 @@ No human initiates these. They run in the worker and are why the product advance
 | --- | --- | --- |
 | `ensure_periods` | daily | Materialises the next weeks for every workspace with a calendar |
 | `freeze_baselines` | daily | Fixes each membership's plan once its period opens |
-| `scan_due_reminders` | short | Finds obligations approaching their deadline |
-| `dispatch_due_reminders` | 15 min | Sends those reminders |
+| `scan_due_reminders` | 5 min | Finds weeks whose deadline has passed and queues the missed-deadline email |
 | `send_queued_emails` | 2 min | Drains the email delivery table |
 | `incremental_sync` | 30 min | Pulls new repository evidence |
 | `queue_health` | 5 min | Warns when the oldest queued job is over ten minutes old; its runs are the worker heartbeat `/readyz` reads |
-| `retention_sweep` | nightly | Expires the assistant's answer cache |
+| `retention_sweep` | nightly | Expires the assistant's answer cache, and deletes queue jobs finished over seven days ago |
 
 Both calendar tasks are idempotent by construction, so a worker that was down for a day catches up
 rather than skipping a week.
 
 v0.4 changed none of these. The decision retired the reading of notifications, not their
-production or their delivery: `scan_due_reminders`, `dispatch_due_reminders` and
-`send_queued_emails` still run, and `backend/app/notifications/` still holds the invitation and
+production or their delivery: `scan_due_reminders` and `send_queued_emails` still run, and `backend/app/notifications/` still holds the invitation and
 password-reset templates, the SMTP and console senders and the queued-email table. It has to —
 enrolment is invitation-only, so that module is the only door into the system (§5). What changed is
 that it is now the only way out as well.
@@ -837,9 +817,7 @@ it moves is not, and the reason is that **a membership is the entire grant of ac
 status test, so inserting the row is the whole decision.
 
 A student who joins an open project can therefore read, for that project: the record, its
-its tasks
-— including the free-text `blocker` and `completion_reason` another student wrote about their own
-work — its dated decisions and rationales, its repositories and their sync errors, its shared
+repositories and their sync errors, its shared
 evidence, **the documents anyone on it has attached** ([ADR 0018](adr/0018-project-documents-are-shared-with-the-project.md)),
 and the member list including past members. That last one matters more than it looks:
 `user_visible_to` restricts a student to their own account, and `MembershipOut.student_name` is the
@@ -847,8 +825,7 @@ only route by which one student learns another's name. Joining every open projec
 roster gets enumerated.
 
 What it does *not* reach was checked policy by policy and is the more important half. Reports,
-report versions, attachments, obligations, assessments, reviews, feedback, corrections, supervision
-notes, evidence snapshots and plan baselines are keyed to a `student_id`, never to a `project_id`.
+report versions, attachments, obligations, assessments, reviews, supervision notes, evidence snapshots and plan baselines are keyed to a `student_id`, never to a `project_id`.
 Joining a project tells you what the work is. It tells you nothing about how anyone on it is doing.
 
 Two mitigations, and one deliberate refusal. The flag: `open_to_join` defaults closed and is the
@@ -878,28 +855,20 @@ The route inventory is mechanical, and drift here is the kind nobody notices:
 # every route, with the role gate it sits behind
 grep -rnE '^@router\.(get|post|put|patch|delete)' backend/app/api/v1/
 
-# the headline count, checked rather than eyeballed
-python3 scripts/check_docs.py        # "the API inventory matches the tree"
+# every call a screen makes is a route the API serves
+python3 scripts/check_docs.py        # "screens call served endpoints"
 ```
 
-The two numbers in §1 are now derived by `check_api_inventory` in `scripts/check_docs.py` and fail
-CI when the prose drifts from the tree, which is what that script exists for. Read it rather than
-re-deriving them by hand; what follows is why it is written the way it is.
-
-Both counts are **path-and-method pairs**. Until v0.13 they were not: routes were counted with a
-grep over `@router` decorators and callers with a grep over path literals, so "98 endpoints, 50 of
-them called by a screen" set a count of routes against a count of distinct paths. The second number
-was not a subset of the first and the pair could not be checked against anything.
-
-Two exclusions carry the argument, and both matter: the generated OpenAPI types name every route
-whether or not a screen calls it, and the test files mock endpoints the app has no screen for —
-counting either reports coverage the product does not have.
+This document no longer carries an endpoint count. v0.13 to v0.17 did, checked by
+`scripts/check_docs.py`, and keeping the number in lockstep cost more on every change than the drift
+it caught. The script still fails when a screen calls a route that is not served, and skips the
+generated OpenAPI types and the test files, which name routes no screen calls.
 
 Two shapes in the call sites need care, and a grep that ignores them is wrong in both directions.
 A path is written as a template literal, so `${id}` has to become a parameter before anything else
 — and where the expression is not a bare identifier but a ternary building a query string, the
 path ends where the expression begins. `POST /users/{id}/{action}` is one call site standing for
-three routes, so it is counted as three.
+three routes.
 
 Those two commands settle 🖥️ against ⚙️. They cannot see 🚧, because an endpoint a screen calls
 looks identical whether or not anyone can reach that screen. Two more are needed, and they are the
