@@ -17,5 +17,5 @@ typecheck: ## type-check backend and frontend
 check-traceability: ## verify every requirement ID is covered in architecture and tests
 	python3 scripts/check_traceability.py
 
-check-docs: ## verify the docs against the tree: paths, cited API routes, counts, versions
+check-docs: ## verify the docs against the tree: paths, cited and called API routes, the ADR index
 	python3 scripts/check_docs.py

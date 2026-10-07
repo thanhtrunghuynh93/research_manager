@@ -6,15 +6,14 @@ traceability table. That catches an unmapped requirement and nothing else — in
 while a mapped requirement is only half-built, because it compares two documents rather than a
 document against the tree.
 
-The drift it missed came in two shapes, and both are mechanical:
+The drift it missed was mechanical: a path named in a document did not exist, or existed and was
+named nowhere. `repo_layout.md` listed four API routers that had never been written and omitted the
+one that had.
 
-  1. A path named in a document does not exist, or exists and is named nowhere. `repo_layout.md`
-     listed four API routers that had never been written and omitted the one that had.
-  2. A number or a version written into prose. "Fifteen migrations" was wrong by six, and
-     `implementation_status.md` called itself a companion to a requirements version two releases old.
-
-Everything here is derived from the tree, in the spirit of `use_cases.md` §9: an inventory that is
-recomputed is one that cannot quietly go stale. Nothing here checks prose that a human has to judge,
+Only breakage is checked: a cited path that is not on disk, a cited `METHOD /api/...` that is not
+served, a screen calling a route that does not exist, an ADR or a high-churn directory nobody
+documented. Numbers and versions written into prose are not checked — keeping them in lockstep cost
+more on every change than the drift it caught. Nothing here checks prose that a human has to judge,
 because a check people learn to force through is worse than no check at all.
 
 Exit code 1 if any check fails.
@@ -32,7 +31,6 @@ DOCS = ROOT / "docs"
 REPO_LAYOUT = DOCS / "repo_layout.md"
 ADR_INDEX = DOCS / "adr" / "README.md"
 OPENAPI = DOCS / "api" / "openapi.json"
-STATUS = DOCS / "implementation_status.md"
 
 # A tree line: indentation drawn with box characters, then the name, then an optional annotation
 # separated by two or more spaces.
@@ -147,90 +145,26 @@ def check_cited_api_paths_exist() -> list[str]:
     return problems
 
 
-def check_counts() -> list[str]:
-    """The counts table in implementation_status.md, against the tree it describes."""
-    text = STATUS.read_text(encoding="utf-8")
-    actual = {
-        "Alembic migrations": len(list((ROOT / "backend/alembic/versions").glob("*.py"))),
-        "ADRs": len(list((DOCS / "adr").glob("[0-9]*.md"))),
-        "Acceptance scenarios with a test": len(
-            list((ROOT / "backend/tests/acceptance").glob("test_ac_*.py"))
-        ),
-        # The row reads "97 (95 in the schema, 2 include_in_schema=False)"; the leading number is
-        # the one checked, and the hidden two are counted from the routers rather than the spec,
-        # which by definition cannot see them.
-        "`/api/v1` endpoints": _api_inventory()[0]
-        + len(
-            [
-                line
-                for source in (ROOT / "backend/app/api").rglob("*.py")
-                for line in source.read_text(encoding="utf-8").splitlines()
-                if "include_in_schema=False" in line
-            ]
-        ),
-    }
-    problems: list[str] = []
-    for label, count in actual.items():
-        row = re.search(rf"^\|\s*{re.escape(label)}\s*\|\s*(\d+)", text, re.M)
-        if row is None:
-            problems.append(f"implementation_status.md has no counts row for {label!r}")
-        elif int(row.group(1)) != count:
-            problems.append(
-                f"implementation_status.md says {row.group(1)} for {label!r}; the tree has {count}"
-            )
-    return problems
+# `POST /users/{id}/{action}` is written as one call site standing for deactivate, reactivate and
+# remove.
+DYNAMIC_CALLS = {("/api/v1/users/{x}/{x}", "post")}
 
 
-def check_version_cross_references() -> list[str]:
-    """"companion to X.md vN.M" must agree with X.md's own version line."""
-    problems: list[str] = []
-    reference = re.compile(r"\[([\w.]+\.md)\]\([^)]*\)\s+v(\d+\.\d+)")
-    for document in sorted(DOCS.glob("*.md")):
-        text = document.read_text(encoding="utf-8")
-        for name, claimed in reference.findall(text):
-            target = DOCS / name
-            if not target.exists():
-                continue
-            declared = re.search(r"^Version\s+(\d+\.\d+)", target.read_text(encoding="utf-8"), re.M)
-            if declared and declared.group(1) != claimed:
-                problems.append(
-                    f"{document.name} calls {name} v{claimed}; {name} says v{declared.group(1)}"
-                )
-    return problems
+def check_screen_calls_are_served() -> list[str]:
+    """Every `/api/v1` call a screen makes must be a route the API serves.
 
-
-USE_CASES = DOCS / "use_cases.md"
-# `POST /users/{id}/{action}` is written as one call site standing for three routes.
-DYNAMIC_CALLS = {
-    ("/api/v1/users/{x}/{x}", "post"): (
-        ("/api/v1/users/{user_id}/deactivate", "post"),
-        ("/api/v1/users/{user_id}/reactivate", "post"),
-        ("/api/v1/users/{user_id}/remove", "post"),
-    )
-}
-
-
-def _api_inventory() -> tuple[int, int, list[str]]:
-    """How many `/api/v1` endpoints there are, and how many a screen calls.
-
-    Both counts are path-and-method pairs, which use_cases.md v0.12 did not do: it counted routes
-    with one command and callers with another, so "98 endpoints, 50 of them called by a screen"
-    compared two units and could not be checked against anything.
-
-    The two exclusions carry the argument. The generated OpenAPI types name every route whether or
-    not a screen calls it, and the test files mock endpoints the app has no screen for — counting
-    either reports coverage the product does not have.
+    Generated types and test files are skipped: the first name every route, and the second mock
+    endpoints freely.
     """
     spec = json.loads(OPENAPI.read_text(encoding="utf-8"))
     methods = ("get", "post", "put", "patch", "delete")
     served = {
-        (re.sub(r"\{[^}]*\}", "{x}", path), method): (path, method)
+        (re.sub(r"\{[^}]*\}", "{x}", path), method)
         for path, item in spec["paths"].items()
         for method in item
         if method in methods and path.startswith("/api/v1")
     }
 
-    hits: set[tuple[str, str]] = set()
     unresolved: list[str] = []
     call = re.compile(r"api\.(get|post|put|patch|delete)\s*(?:<[^>]*>)?\s*\(\s*[`\"']([^`\"']*)")
     for source in sorted((ROOT / "frontend/src").rglob("*.ts*")):
@@ -245,43 +179,19 @@ def _api_inventory() -> tuple[int, int, list[str]]:
             if not path.startswith("/api/v1"):
                 continue
             key = (path, method)
-            if key in DYNAMIC_CALLS:
-                hits.update(DYNAMIC_CALLS[key])
-            elif key in served:
-                hits.add(served[key])
-            else:
+            if key not in DYNAMIC_CALLS and key not in served:
                 unresolved.append(
                     f"{source.relative_to(ROOT)} calls {method.upper()} {path}, "
                     "which the API does not serve"
                 )
-    return len(served), len(hits), unresolved
-
-
-def check_api_inventory() -> list[str]:
-    """use_cases.md's headline count, against the spec and the screens that call it."""
-    served, called, problems = _api_inventory()
-    text = USE_CASES.read_text(encoding="utf-8")
-    claim = re.search(
-        r"\*\*As of this version: (\d+) endpoints, (\d+) of them called by a screen", text
-    )
-    if claim is None:
-        return [*problems, "use_cases.md has no 'As of this version: N endpoints' line"]
-    if int(claim.group(1)) != served:
-        problems.append(f"use_cases.md says {claim.group(1)} endpoints; the spec serves {served}")
-    if int(claim.group(2)) != called:
-        problems.append(
-            f"use_cases.md says {claim.group(2)} called by a screen; the tree calls {called}"
-        )
-    return problems
+    return unresolved
 
 
 CHECKS = (
     ("tree paths exist", check_tree_paths_exist),
     ("high-churn paths are documented", check_high_churn_paths_are_named),
     ("cited API paths are served", check_cited_api_paths_exist),
-    ("counted values match the tree", check_counts),
-    ("the API inventory matches the tree", check_api_inventory),
-    ("version cross-references agree", check_version_cross_references),
+    ("screens call served endpoints", check_screen_calls_are_served),
 )
 
 
