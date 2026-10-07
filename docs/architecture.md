@@ -72,7 +72,7 @@ Service notes:
 
 - **caddy** terminates TLS with automatic certificates, serves the built SPA, and proxies `/api/*` to `api`. No CORS because the SPA and API share an origin.
 - **api** and **worker** run the same image with different commands. The worker also runs the periodic tasks (section 12), so there is no separate scheduler container.
-- **postgres** uses the `pgvector/pgvector:pg16` image until the switch to stock `postgres:16` that ADR 0024 allows (docs/runbooks/deploy.md). One volume. `shared_buffers` and `work_mem` tuned for the host; the queue and the records share the instance.
+- **postgres** uses the stock `postgres:16-bookworm` image (the pgvector image until ADR 0024; the switch is ordered in docs/runbooks/deploy.md). One volume. `shared_buffers` and `work_mem` tuned for the host; the queue and the records share the instance.
 - **minio** holds one versioned bucket per environment. The API never streams file bodies; it issues presigned PUT and GET URLs after an authorization check.
 - **backup** runs nightly `pg_dump -Fc`, encrypts with `age`, mirrors the MinIO bucket, and syncs both to an offsite bucket with `rclone`. Retention 30 daily and 12 monthly. A restore drill against a scratch Compose stack is part of the launch checklist (AC-16).
 - Health: `/api/healthz` (process up), `/api/readyz` (DB and MinIO reachable, queue lag under threshold). Compose `restart: unless-stopped`.

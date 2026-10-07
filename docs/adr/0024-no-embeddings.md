@@ -31,8 +31,8 @@ project's local embedder, the embedding prices and the `RM_OPENAI_EMBED_MODEL` s
 `evidence_chunks.tsv` with its GIN index, and the `vector` extension.
 
 The database then needs nothing beyond stock PostgreSQL 16, so the compose service moves from
-`pgvector/pgvector:pg16` to `postgres:16` in a follow-up change, deployed after 0030 has run
-(docs/runbooks/deploy.md).
+`pgvector/pgvector:pg16` to `postgres:16-bookworm` — the base the pgvector image is built on — in a
+follow-up change, deployed after 0030 has run (docs/runbooks/deploy.md).
 
 ## Consequences
 

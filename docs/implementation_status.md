@@ -42,8 +42,8 @@ index, the generated `evidence_chunks.tsv` and its GIN index — no reader eithe
 extension. Indexing is chunking alone and calls no provider for any project; `ai_restricted` still
 stops the assessment's calls. Migrations 0001 and 0009 now create the extension and the column only
 where pgvector is present, so a fresh database on plain `postgres:16` replays the history; the
-compose image switches to `postgres:16` in a separate change, deployed after 0030 has run
-(docs/runbooks/deploy.md).
+compose image then switches to `postgres:16-bookworm` — the base the pgvector image was built on —
+in a separate change, deployed after 0030 has run (docs/runbooks/deploy.md).
 
 **7 October 2026 — the research assistant is removed** ([ADR 0023](adr/0023-no-research-assistant.md),
 requirements 0.12). Built in step 8, it was never used: migration 0029 dropped `conversations`,

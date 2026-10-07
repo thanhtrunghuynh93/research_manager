@@ -216,7 +216,7 @@ forbidden_modules = ["app.identity.models", "app.projects.models", "app.reportin
 
 ```
 backend/tests/
-├── conftest.py               Postgres via testcontainers (pgvector image), transactional session per test,
+├── conftest.py               Postgres via testcontainers (postgres:16-bookworm), transactional session per test,
 │                             FakeAIGateway, frozen clock fixture, scope fixtures (prof, student_a, student_b)
 ├── factories.py              factory_boy factories for every model
 ├── unit/                     pure functions: metrics, calendar, redaction, chunking, validate_output

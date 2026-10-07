@@ -114,6 +114,26 @@ Record the deploy (tag, time, operator) in the operations log. There is no opera
 repository; if one is being kept, it is somewhere else, and if it is not, this line is the thing
 to fix rather than to follow.
 
+## Leaving the pgvector image (ADR 0024, migration 0030)
+
+A one-time transition, in two deploys, in this order. Doing the second before the first leaves a
+database with a `vector` column on a server that cannot read the type.
+
+1. Deploy the commit that adds migration 0030 as usual (steps 1–9 above), still on
+   `pgvector/pgvector:pg16`. Confirm `docker compose ... exec api alembic current` shows `0030`
+   and that `docker compose ... exec postgres psql -U rm -d rm -c 'select extname from
+   pg_extension'` no longer lists `vector`.
+2. Only then deploy the commit that changes the postgres image to `postgres:16-bookworm`, take a
+   backup (step 4), and `docker compose ... up -d postgres`, then `up -d` for the rest. The data
+   directory is reused as it is: same PostgreSQL major version and build (16.15, pgdg12) on the
+   same Debian base the pgvector image was built from, and nothing left in it needs the extension.
+   Not the floating `postgres:16` tag, which is Debian trixie with a newer glibc and so a different
+   collation library under the existing indexes.
+
+Rolling back the image after 0030 is harmless — the pgvector image runs the same server. Rolling
+back the *migration* (`alembic downgrade 0029`) needs the pgvector image again, because the
+downgrade recreates the extension and the `vector(1536)` column; the column comes back empty.
+
 ## Loading a demo workspace
 
 Never on the production deployment: `app.cli seed demo` creates a professor with a published

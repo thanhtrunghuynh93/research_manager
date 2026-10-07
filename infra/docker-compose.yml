@@ -67,7 +67,10 @@ services:
       disable: true
 
   postgres:
-    image: pgvector/pgvector:pg16
+    # Stock Postgres since migration 0030 dropped the vector extension (ADR 0024). Bookworm, not the
+    # floating `16` tag (now trixie): pgvector/pgvector:pg16 was built on postgres:16-bookworm, so
+    # the same server build and the same glibc read the existing data directory and its collations.
+    image: postgres:16-bookworm
     env_file: .env
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     volumes:

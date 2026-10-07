@@ -1,7 +1,8 @@
 """Shared fixtures.
 
-Database: set RM_TEST_DATABASE_URL to reuse a running Postgres (pgvector required); otherwise a
-pgvector/pgvector:pg16 container is started once per session via testcontainers.
+Database: set RM_TEST_DATABASE_URL to reuse a running Postgres 16; otherwise a postgres:16-bookworm
+container — the production image — is started once per session via testcontainers. No extension
+beyond pg_trgm is needed since migration 0030 (ADR 0024).
 
 Each test runs inside a connection-level transaction that is rolled back afterwards, so services
 may commit freely (`join_transaction_mode="create_savepoint"`) without leaking rows between tests.
@@ -44,7 +45,7 @@ def postgres_container() -> Iterator[object | None]:
     except ImportError:  # older testcontainers
         from testcontainers.postgres import PostgresContainer
 
-    with PostgresContainer("pgvector/pgvector:pg16", driver="psycopg") as pg:
+    with PostgresContainer("postgres:16-bookworm", driver="psycopg") as pg:
         yield pg
 
 
