@@ -1563,6 +1563,40 @@
         "title": "Page[ProjectOut]",
         "type": "object"
       },
+      "Page_ReportListItemOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportListItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[ReportListItemOut]",
+        "type": "object"
+      },
       "Page_UserOut_": {
         "properties": {
           "items": {
@@ -2145,6 +2179,115 @@
         "title": "Readiness",
         "type": "object"
       },
+      "ReportAssessmentOut": {
+        "description": "The latest assessment of one project's entry, and where its review stands.",
+        "properties": {
+          "assessment_id": {
+            "format": "uuid",
+            "title": "Assessment Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved",
+              "superseded",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assessment_id",
+          "status"
+        ],
+        "title": "ReportAssessmentOut",
+        "type": "object"
+      },
+      "ReportListItemOut": {
+        "description": "One submitted weekly report, as a row in a list (UI-01, UI-04).",
+        "properties": {
+          "deadline_utc": {
+            "format": "date-time",
+            "title": "Deadline Utc",
+            "type": "string"
+          },
+          "first_submitted_at": {
+            "format": "date-time",
+            "title": "First Submitted At",
+            "type": "string"
+          },
+          "last_submitted_at": {
+            "format": "date-time",
+            "title": "Last Submitted At",
+            "type": "string"
+          },
+          "late": {
+            "title": "Late",
+            "type": "boolean"
+          },
+          "local_end": {
+            "format": "date",
+            "title": "Local End",
+            "type": "string"
+          },
+          "local_start": {
+            "format": "date",
+            "title": "Local Start",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ReportProjectOut"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          },
+          "version_count": {
+            "title": "Version Count",
+            "type": "integer"
+          },
+          "workflow_state": {
+            "$ref": "#/components/schemas/ReportState"
+          }
+        },
+        "required": [
+          "report_id",
+          "student_id",
+          "student_name",
+          "period_id",
+          "local_start",
+          "local_end",
+          "deadline_utc",
+          "workflow_state",
+          "first_submitted_at",
+          "last_submitted_at",
+          "version_count",
+          "late"
+        ],
+        "title": "ReportListItemOut",
+        "type": "object"
+      },
       "ReportOut": {
         "properties": {
           "current_version_id": {
@@ -2215,6 +2358,35 @@
           "draft_content"
         ],
         "title": "ReportOut",
+        "type": "object"
+      },
+      "ReportProjectOut": {
+        "properties": {
+          "assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportAssessmentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "title"
+        ],
+        "title": "ReportProjectOut",
         "type": "object"
       },
       "ReportState": {
@@ -5222,6 +5394,154 @@
           }
         },
         "summary": "Read one submitted version",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/reports": {
+      "get": {
+        "description": "Reports handed in at least once: the workspace's for a professor, a student's own for them.\n\nDrafts are never listed. `state` may be repeated; `needs_review` keeps submitted and\nresubmitted reports, the ones not yet marked reviewed.",
+        "operationId": "list_reports_api_v1_reports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "student_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportState"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "needs_review",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Needs Review",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ReportListItemOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submitted weekly reports",
         "tags": [
           "reporting"
         ]

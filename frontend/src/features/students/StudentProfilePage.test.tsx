@@ -52,8 +52,14 @@ function user(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderProfile(rows: unknown[]) {
+function renderProfile(rows: unknown[], reports: unknown[] = []) {
   server.use(
+    http.get("/api/v1/reports", ({ request }) =>
+      // Only this student's: the page asks for them by id.
+      new URL(request.url).searchParams.get("student_id") === "s1"
+        ? HttpResponse.json({ items: reports, next_cursor: null, limit: 20 })
+        : HttpResponse.json({ items: [], next_cursor: null, limit: 20 }),
+    ),
     http.get("/api/v1/assessments", () => HttpResponse.json([])),
     http.get("/api/v1/artifacts", () => HttpResponse.json(rows)),
     // The page has always read this — it is where the student's name comes from — and the weekly
@@ -157,22 +163,62 @@ function period(id: string, offsetDays: number) {
   };
 }
 
+/** A submitted report for one of the periods above, as `GET /reports` lists it. */
+function submitted(periodId: string, workflowState: string) {
+  return {
+    report_id: `r-${periodId}`,
+    student_id: "s1",
+    student_name: "Bao Tran",
+    period_id: periodId,
+    local_start: "2026-09-14",
+    local_end: "2026-09-20",
+    deadline_utc: "2026-09-20T16:59:00Z",
+    workflow_state: workflowState,
+    first_submitted_at: "2026-09-19T03:00:00Z",
+    last_submitted_at: "2026-09-19T03:00:00Z",
+    version_count: 1,
+    late: false,
+    projects: [],
+  };
+}
+
 test("the weekly list holds the weeks that have begun, not the ones the calendar has opened", async () => {
   server.use(
     http.get("/api/v1/periods", () =>
       HttpResponse.json([period("past", -28), period("current", -1), period("future", 21)]),
     ),
   );
-  renderProfile([]);
+  renderProfile([], [submitted("past", "reviewed"), submitted("current", "submitted")]);
 
   const list = await screen.findByTestId("weekly-reports");
-  await waitFor(() => expect(within(list).getAllByRole("link").length).toBeGreaterThan(0));
+  await waitFor(() => expect(within(list).getAllByRole("link").length).toBe(2));
 
   const weeks = within(list).getAllByRole("link");
   const hrefs = weeks.map((link) => link.getAttribute("href"));
-  expect(hrefs).toContain("/students/s1/reports/current");
-  expect(hrefs).toContain("/students/s1/reports/past");
   expect(hrefs).not.toContain("/students/s1/reports/future");
   // Newest first, so the week just gone is the one at the top rather than the oldest on record.
-  expect(hrefs[0]).toBe("/students/s1/reports/current");
+  expect(hrefs).toEqual(["/students/s1/reports/current", "/students/s1/reports/past"]);
+  expect(
+    within(list)
+      .getAllByTestId("report-state-chip")
+      .map((chip) => chip.textContent),
+  ).toEqual(["Submitted", "Reviewed"]);
+});
+
+test("a week with nothing submitted reads as no report, and is not a link", async () => {
+  server.use(
+    http.get("/api/v1/periods", () =>
+      HttpResponse.json([period("past", -28), period("current", -1)]),
+    ),
+  );
+  renderProfile([], [submitted("past", "revision_requested")]);
+
+  const list = await screen.findByTestId("weekly-reports");
+  await waitFor(() => expect(within(list).getByText("No report")).toBeInTheDocument());
+
+  const rows = within(list).getAllByRole("listitem");
+  expect(within(rows[0]!).queryByRole("link")).not.toBeInTheDocument();
+  expect(rows[0]).toHaveTextContent("No report");
+  expect(within(rows[1]!).getByRole("link")).toHaveAttribute("href", "/students/s1/reports/past");
+  expect(within(rows[1]!).getByTestId("report-state-chip")).toHaveTextContent("Revision requested");
 });

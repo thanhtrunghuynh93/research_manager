@@ -93,6 +93,11 @@ export function AppShell() {
             </NavLink>
           )}
           {isProf && (
+            <NavLink to="/reports" className={item}>
+              {t("reports.title")}
+            </NavLink>
+          )}
+          {isProf && (
             <NavLink to="/people" className={item}>
               {t("people.title")}
             </NavLink>

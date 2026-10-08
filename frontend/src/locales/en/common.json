@@ -60,7 +60,8 @@
     "partlySubmitted_other": "Submitted — {{count}} projects still owed",
     "releasedNote": "An assessment appears here once your professor has approved it.",
     "pastWeeks": "Earlier weeks",
-    "toProfile": "Your assessments and your progress on every project →"
+    "toProfile": "Your assessments and your progress on every project →",
+    "notSubmitted": "Not submitted · write it"
   },
   "report": {
     "title": "Weekly package",
@@ -156,7 +157,7 @@
       "seeSubmitted": "Read what you submitted →",
       "toEditor": "← Back to this week’s editor",
       "weekly": "Weekly reports",
-      "openWeek": "Read this week"
+      "noReport": "No report"
     }
   },
   "overview": {
@@ -182,6 +183,33 @@
     "extendedUntil": "extended to {{when}}",
     "deriveObligations": "Derive this week's obligations",
     "deriveNote": "The nightly job does this too."
+  },
+  "reports": {
+    "title": "Reports",
+    "eyebrow": "Weekly reports",
+    "intro": "Every report a student has submitted, newest week first. Drafts are not listed: a draft is the student's working copy until it is submitted.",
+    "noneYet": "No report has been submitted yet.",
+    "noMatch": "No submitted report matches these filters.",
+    "submitted": "Submitted {{when}}",
+    "latest": "Latest version {{when}}",
+    "late": "Late",
+    "versions_one": "{{count}} version",
+    "versions_other": "{{count}} versions",
+    "assessment": "Assessment · {{state}}",
+    "read": "Read report",
+    "loadMore": "Load more",
+    "filter": {
+      "week": "Week",
+      "allWeeks": "All weeks",
+      "student": "Student",
+      "allStudents": "All students",
+      "project": "Project",
+      "allProjects": "All projects",
+      "state": "State",
+      "allStates": "Any state",
+      "needsReview": "Needs review",
+      "clear": "Clear filters"
+    }
   },
   "assessment": {
     "notRated": "Not rated — insufficient evidence",

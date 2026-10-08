@@ -2,23 +2,32 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection, Sequence
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Scope, visible_to
+from app.core.errors import ValidationError
+from app.core.pagination import decode_cursor, encode_cursor
+from app.identity.models import User
 from app.reporting.models import (
     CalendarConfig,
     ObligationState,
     ProjectReportEntry,
     ReportingObligation,
     ReportingPeriod,
+    ReportState,
     ReportVersion,
     RevisionRequest,
     WeeklyReport,
 )
+
+# One row of the submitted-reports list: the report, its week, the student's name, how many
+# versions it has, and when the newest of them was handed in.
+SubmittedReportRow = tuple[WeeklyReport, ReportingPeriod, str, int, datetime]
 
 
 async def latest_calendar(session: AsyncSession, workspace_id: UUID) -> CalendarConfig | None:
@@ -393,6 +402,160 @@ async def list_revision_requests(
                     visible_to(scope, RevisionRequest),
                 )
                 .order_by(RevisionRequest.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def list_submitted_reports(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    limit: int,
+    cursor: str | None,
+    period_id: UUID | None = None,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    states: Collection[ReportState] | None = None,
+) -> tuple[list[SubmittedReportRow], str | None]:
+    """Reports handed in at least once, newest week first, then by student name (UI-01, UI-04).
+
+    A draft is never listed, to anyone: `first_submitted_at` is the line between the student's
+    working copy and the record. The order is a keyset on (week, name, id), so a page boundary
+    cannot drop or repeat a row when a name or a week is shared.
+
+    The version count and the newest submission are correlated subqueries rather than a grouped
+    join, so they are computed for the page and not for every report in the workspace. The
+    versions are read through their report, which the visibility predicate has already admitted.
+    """
+    version_count = (
+        select(func.count(ReportVersion.id))
+        .where(ReportVersion.report_id == WeeklyReport.id)
+        .correlate(WeeklyReport)
+        .scalar_subquery()
+    )
+    last_submitted = (
+        select(func.max(ReportVersion.submitted_at))
+        .where(ReportVersion.report_id == WeeklyReport.id)
+        .correlate(WeeklyReport)
+        .scalar_subquery()
+    )
+    statement = (
+        select(WeeklyReport, ReportingPeriod, User.display_name, version_count, last_submitted)
+        .join(ReportingPeriod, ReportingPeriod.id == WeeklyReport.period_id)
+        # Joined rather than read through identity's service, because the list is ordered by it and
+        # a keyset page has to be cut in SQL — as `projects.repository.list_memberships` joins it.
+        .join(User, User.id == WeeklyReport.student_id)
+        .where(visible_to(scope, WeeklyReport), WeeklyReport.first_submitted_at.is_not(None))
+        .order_by(ReportingPeriod.local_start.desc(), User.display_name, WeeklyReport.id)
+    )
+    if period_id is not None:
+        statement = statement.where(WeeklyReport.period_id == period_id)
+    if student_id is not None:
+        statement = statement.where(WeeklyReport.student_id == student_id)
+    if states is not None:
+        statement = statement.where(WeeklyReport.workflow_state.in_(list(states)))
+    if project_id is not None:
+        # The project as the current version has it: an entry carried forward still counts.
+        statement = statement.where(
+            select(ProjectReportEntry.id)
+            .where(
+                ProjectReportEntry.report_version_id == WeeklyReport.current_version_id,
+                ProjectReportEntry.project_id == project_id,
+            )
+            .exists()
+        )
+    position = _report_list_position(cursor)
+    if position is not None:
+        local_start, name, after = position
+        statement = statement.where(
+            or_(
+                ReportingPeriod.local_start < local_start,
+                and_(
+                    ReportingPeriod.local_start == local_start,
+                    or_(
+                        User.display_name > name,
+                        and_(User.display_name == name, WeeklyReport.id > after),
+                    ),
+                ),
+            )
+        )
+
+    rows: list[SubmittedReportRow] = [
+        (report, period, name, int(count), last)
+        for report, period, name, count, last in await session.execute(statement.limit(limit + 1))
+    ]
+    if len(rows) <= limit:
+        return rows, None
+    report, period, name, _, _ = rows[limit - 1]
+    return rows[:limit], encode_cursor(
+        {"local_start": period.local_start.isoformat(), "name": name, "after": str(report.id)}
+    )
+
+
+def _report_list_position(cursor: str | None) -> tuple[date, str, UUID] | None:
+    """Where a page of the report list resumes; a malformed cursor is a 422, not a 500."""
+    decoded = decode_cursor(cursor)
+    if decoded is None:
+        return None
+    try:
+        return (
+            date.fromisoformat(str(decoded["local_start"])),
+            str(decoded["name"]),
+            UUID(str(decoded["after"])),
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        raise ValidationError("invalid cursor") from exc
+
+
+async def projects_of_versions(
+    session: AsyncSession, scope: Scope, version_ids: Collection[UUID]
+) -> dict[UUID, list[UUID]]:
+    """The projects each of these versions has an entry for, in one query."""
+    if not version_ids:
+        return {}
+    rows = await session.execute(
+        select(ProjectReportEntry.report_version_id, ProjectReportEntry.project_id).where(
+            ProjectReportEntry.report_version_id.in_(list(version_ids)),
+            visible_to(scope, ProjectReportEntry),
+        )
+    )
+    out: dict[UUID, list[UUID]] = {}
+    for version_id, project_id in rows:
+        out.setdefault(version_id, []).append(project_id)
+    return out
+
+
+async def obligations_for_weeks(
+    session: AsyncSession, scope: Scope, weeks: Sequence[tuple[UUID, UUID]]
+) -> dict[tuple[UUID, UUID], list[ReportingObligation]]:
+    """Every obligation of these (student, period) pairs, in one query, keyed by the pair."""
+    if not weeks:
+        return {}
+    rows = (
+        await session.execute(
+            select(ReportingObligation).where(
+                tuple_(ReportingObligation.student_id, ReportingObligation.period_id).in_(
+                    list(weeks)
+                ),
+                visible_to(scope, ReportingObligation),
+            )
+        )
+    ).scalars()
+    out: dict[tuple[UUID, UUID], list[ReportingObligation]] = {}
+    for row in rows:
+        out.setdefault((row.student_id, row.period_id), []).append(row)
+    return out
+
+
+async def calendars(session: AsyncSession, workspace_id: UUID) -> list[CalendarConfig]:
+    """Every calendar version of the workspace. A handful of rows, read once per list page."""
+    return list(
+        (
+            await session.execute(
+                select(CalendarConfig).where(CalendarConfig.workspace_id == workspace_id)
             )
         )
         .scalars()

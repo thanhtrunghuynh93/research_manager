@@ -1,6 +1,6 @@
 /** The header: who you are, how the page looks, and the way out. */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
@@ -89,6 +89,18 @@ test("the professor is offered Projects, which is how UI-03 becomes reachable", 
   await screen.findByTestId("greeting");
 
   expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute("href", "/projects");
+});
+
+test("the professor's menu has Reports between Overview and People", async () => {
+  renderShell();
+
+  await screen.findByTestId("greeting");
+
+  const nav = screen.getByRole("navigation");
+  const links = within(nav)
+    .getAllByRole("link")
+    .map((link) => link.getAttribute("href"));
+  expect(links.slice(0, 3)).toEqual(["/overview", "/reports", "/people"]);
 });
 
 test("a student is offered their own progress, and never the professor's screens", async () => {

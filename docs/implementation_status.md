@@ -1,6 +1,6 @@
 # Implementation status
 
-Version 0.14 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.14, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md) and [use_cases.md](use_cases.md)
+Version 0.15 — 8 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.14, [architecture.md](architecture.md), [repo_layout.md](repo_layout.md) and [use_cases.md](use_cases.md)
 
 What is built, what is deliberately not, and what is still open. How it was built is in git history,
 not here. Counts (tests, coverage, migrations, endpoints) are deliberately not recorded: §5 says how
@@ -24,7 +24,7 @@ Every backend module below is complete, tested and reachable from a screen or a 
 | `overview/` | The professor's week: next deadline, outstanding reports with an as-of instant, the week's board, review queue, stalled analyses — plain SQL-backed functions | UI-01, REP-08, AC-15 |
 | `notifications/` | Missed-deadline email at 00:00 local on the meeting day (state read at send time, keyed so a retry is a no-op), invitation and reset emails, queued delivery with retries, mail health on the overview | REP-08, UI-07 |
 | `api/v1/` | One router per area; `/api/healthz`, `/api/readyz` (database, object store, worker, SMTP), `/api/metrics` | §10, §11 |
-| Frontend | Sign-in, invitation and reset pages; student week, report editor and reader, own progress and released assessments; professor overview, people, workspaces (with the calendar), student profile, review; project list and project page for both roles | UI-01..05, UI-08 |
+| Frontend | Sign-in, invitation and reset pages; student week, report editor and reader, own progress and released assessments; professor overview, submitted reports, people, workspaces (with the calendar), student profile, review; project list and project page for both roles | UI-01..05, UI-08 |
 | Operations | Single-host Compose stack (Caddy, api, worker, Postgres 16, MinIO, backup), encrypted nightly backups, restore drill, `scripts/preflight.sh`, demo seed and missed-deadline drill | §11, AC-16 |
 
 Periodic tasks (architecture §12): `ensure_periods`, `freeze_baselines`, `scan_due_reminders`
@@ -61,7 +61,7 @@ enum users. A project's repository is the plain link `projects.repo_url`, which 
 | --- | --- | --- |
 | OCR for scanned documents | REP-04 | Later work by the specification. A scanned PDF is recorded as "no text layer", not as a failure |
 | Markdown or rich-text editing, equation rendering | REP-04, §11 Usability | The editor is plain textareas per entry field; content is stored as written |
-| Overview filters by student, project, stage and week | UI-01 | The overview is the current week of the workspace being worked in |
+| Filtering by research stage | UI-01 | `/reports` filters submitted reports by week, student, project and state; the overview is the current week of the workspace being worked in, and no screen filters by stage |
 | Source freshness on the review screen | UI-05 | The freshness badges were the connector's (ADR 0022); the review screen shows claims, evidence and the draft. Revision requests are made on the report reader, not the review screen |
 | Professor-authored feedback beyond the released assessment and revision requests | REP-07 | No code path writes one |
 | Withdrawing a published assessment, excusing or extending an obligation, attachment version history, editing one's own profile, reading/setting AI budgets | ASSESS-08, REP-06, REP-04, AUTH-01, §11 Cost control | The endpoints work; no screen calls them (⚙️ rows in use_cases.md) |

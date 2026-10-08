@@ -362,3 +362,13 @@ async def baseline_items(session: AsyncSession, baseline_id: UUID) -> list[PlanB
         .scalars()
         .all()
     )
+
+
+async def titles(session: AsyncSession, project_ids: Collection[UUID]) -> dict[UUID, str]:
+    """Each project's title by id. Unscoped, like `project_title`: a name and nothing else."""
+    if not project_ids:
+        return {}
+    rows = await session.execute(
+        select(Project.id, Project.title).where(Project.id.in_(list(project_ids)))
+    )
+    return {project_id: title for project_id, title in rows}

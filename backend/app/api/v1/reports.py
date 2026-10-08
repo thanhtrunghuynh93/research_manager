@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import IdempotencyKeyDep, ProfScopeDep, ScopeDep, SessionDep
+from app.assessment import service as assessment_service
+from app.core.pagination import Page
 from app.reporting import service
 from app.reporting.schemas import (
     CalendarConfigIn,
@@ -17,7 +20,9 @@ from app.reporting.schemas import (
     ExtensionIn,
     ObligationOut,
     PeriodOut,
+    ReportListItemOut,
     ReportOut,
+    ReportState,
     RevisionRequestIn,
     RevisionRequestOut,
     SubmitIn,
@@ -139,6 +144,37 @@ async def submit_report(
 @router.get("/report-versions/{version_id}", summary="Read one submitted version")
 async def get_version(version_id: UUID, scope: ScopeDep, session: SessionDep) -> VersionOut:
     return await service.get_version(session, scope, version_id)
+
+
+@router.get("/reports", summary="Submitted weekly reports")
+async def list_reports(
+    scope: ScopeDep,
+    session: SessionDep,
+    period_id: UUID | None = None,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    state: Annotated[list[ReportState] | None, Query()] = None,
+    needs_review: bool = False,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    cursor: str | None = None,
+) -> Page[ReportListItemOut]:
+    """Reports handed in at least once: the workspace's for a professor, a student's own for them.
+
+    Drafts are never listed. `state` may be repeated; `needs_review` keeps submitted and
+    resubmitted reports, the ones not yet marked reviewed.
+    """
+    page = await service.list_submitted_reports(
+        session,
+        scope,
+        period_id=period_id,
+        student_id=student_id,
+        project_id=project_id,
+        states=state,
+        needs_review=needs_review,
+        limit=limit,
+        cursor=cursor,
+    )
+    return await assessment_service.with_assessments(session, scope, page)
 
 
 @router.post(

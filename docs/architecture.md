@@ -1,6 +1,6 @@
 # Research Management System — Architecture
 
-Version 0.10 — 7 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.14
+Version 0.11 — 8 October 2026 — implements [research_management_requirements.md](research_management_requirements.md) v0.14
 
 This document turns the logical boundaries in section 10 of the requirements into a concrete design. Each section names the requirement IDs it satisfies; section 16 maps every ID in the specification to the section that covers it.
 
@@ -115,11 +115,12 @@ A module reads another module's data only through that module's `service.py`; it
 | Route | Screen | Requirement |
 | --- | --- | --- |
 | `/overview` | Professor overview: next deadline, the week's reports by project and student, outstanding reports with an as-of time, review queue, stalled analyses with retry, budget and mail warnings | UI-01 |
-| `/me` | Student overview: this week's obligations, draft or submitted state, deadline, earlier weeks | UI-02 |
+| `/me` | Student overview: this week's obligations, draft or submitted state, deadline, earlier weeks with each one's report state | UI-02 |
 | `/me/profile`, `/me/assessments/:id` | The student's own trajectory and released assessments | UI-02, UI-04 |
 | `/projects` | Project list for both roles; create; for a student, projects open to joining | PROJ-01, PROJ-07 |
 | `/projects/:id` | Project workspace: research questions, members, related documents, the repository link; stage and standing controls for the professor, record editing for the creator | UI-03 |
-| `/students/:id` | Student research profile (professor) | UI-04 |
+| `/reports` | Every submitted weekly report, by week, newest first, filtered by week, student, project, state and needs review (in the URL); late flag, versions, state, assessment links. Drafts are never listed (`GET /api/v1/reports`) | UI-01, REP-05 |
+| `/students/:id` | Student research profile (professor), with each recent week's report state | UI-04 |
 | `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left; mark reviewed, request a revision | REP-02, REP-05, UI-04 |
 | `/people` | The roll of the workspace being worked in: invite, resend, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |
 | `/workspaces` | The workspace being worked in — rename (owner only) and its weekly schedule, whose save opens the weeks and derives this week's obligations — then the others belonged to or owned: join, leave, archive; create. Switching is the header's own control on every screen | UI-08, AUTH-04, AUTH-05, REP-01 |
@@ -571,10 +572,10 @@ class EmailSender(Protocol):
 | QA-05 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
 | QA-06 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
 | QA-07 | Withdrawn in requirements 0.12 with the research assistant ([ADR 0023](adr/0023-no-research-assistant.md)); tables dropped by migration 0029 |
-| UI-01 | 4.2, 11 (`backend/app/overview/service.py`, `backend/app/api/v1/overview.py`; tests `backend/tests/module/overview/test_service.py`, `backend/tests/api/test_overview.py`) |
+| UI-01 | 4.2, 11 (`backend/app/overview/service.py`, `backend/app/api/v1/overview.py`; tests `backend/tests/module/overview/test_service.py`, `backend/tests/api/test_overview.py`); the week filter and late submissions across weeks are `/reports` (`backend/app/api/v1/reports.py`, test `backend/tests/api/test_reports_list.py`) |
 | UI-02 | 4.2 |
 | UI-03 | 4.2 |
-| UI-04 | 4.2 |
+| UI-04 | 4.2 (`/students/:id` reads the weeks' states from `GET /api/v1/reports`) |
 | UI-05 | 4.2, 14 (source freshness withdrawn with the connector) |
 | UI-06 | *withdrawn* — exports retired in use cases v0.4; no section implements it |
 | UI-07 | 13 — delivery only; `missed_deadline` is the one record written |

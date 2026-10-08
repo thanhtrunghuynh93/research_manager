@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -66,6 +66,44 @@ async def reviews_for(
     # Ascending, so the last write for an id wins and each entry is that id's newest review —
     # the same choice `review_for` makes for a single assessment.
     return {row.assessment_version_id: row for row in rows}
+
+
+async def latest_for_weeks(
+    session: AsyncSession, scope: Scope, weeks: Sequence[tuple[UUID, UUID]]
+) -> list[AssessmentVersion]:
+    """The newest version the caller may see of each project assessed in these student-weeks.
+
+    One query for any number of (student, period) pairs. A student sees only approved versions,
+    so for them this is the newest *published* one, never a draft that replaced it.
+    """
+    if not weeks:
+        return []
+    return list(
+        (
+            await session.execute(
+                select(AssessmentVersion)
+                .where(
+                    tuple_(AssessmentVersion.student_id, AssessmentVersion.period_id).in_(
+                        list(weeks)
+                    ),
+                    visible_to(scope, AssessmentVersion),
+                )
+                .distinct(
+                    AssessmentVersion.student_id,
+                    AssessmentVersion.project_id,
+                    AssessmentVersion.period_id,
+                )
+                .order_by(
+                    AssessmentVersion.student_id,
+                    AssessmentVersion.project_id,
+                    AssessmentVersion.period_id,
+                    AssessmentVersion.version_no.desc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 async def snapshot_items_with_text(session: AsyncSession, snapshot_id: UUID) -> list[object]:

@@ -737,6 +737,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Submitted weekly reports
+         * @description Reports handed in at least once: the workspace's for a professor, a student's own for them.
+         *
+         *     Drafts are never listed. `state` may be repeated; `needs_review` keeps submitted and
+         *     resubmitted reports, the ones not yet marked reviewed.
+         */
+        get: operations["list_reports_api_v1_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reports/{report_id}/reviewed": {
         parameters: {
             query?: never;
@@ -1778,6 +1801,18 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[ReportListItemOut] */
+        Page_ReportListItemOut_: {
+            /** Items */
+            items: components["schemas"]["ReportListItemOut"][];
+            /**
+             * Limit
+             * @default 50
+             */
+            limit: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[UserOut] */
         Page_UserOut_: {
             /** Items */
@@ -1976,6 +2011,77 @@ export interface components {
              */
             status: "ready" | "degraded";
         };
+        /**
+         * ReportAssessmentOut
+         * @description The latest assessment of one project's entry, and where its review stands.
+         */
+        ReportAssessmentOut: {
+            /**
+             * Assessment Id
+             * Format: uuid
+             */
+            assessment_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved" | "superseded" | "withdrawn";
+        };
+        /**
+         * ReportListItemOut
+         * @description One submitted weekly report, as a row in a list (UI-01, UI-04).
+         */
+        ReportListItemOut: {
+            /**
+             * Deadline Utc
+             * Format: date-time
+             */
+            deadline_utc: string;
+            /**
+             * First Submitted At
+             * Format: date-time
+             */
+            first_submitted_at: string;
+            /**
+             * Last Submitted At
+             * Format: date-time
+             */
+            last_submitted_at: string;
+            /** Late */
+            late: boolean;
+            /**
+             * Local End
+             * Format: date
+             */
+            local_end: string;
+            /**
+             * Local Start
+             * Format: date
+             */
+            local_start: string;
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /** Projects */
+            projects?: components["schemas"]["ReportProjectOut"][];
+            /**
+             * Report Id
+             * Format: uuid
+             */
+            report_id: string;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /** Student Name */
+            student_name: string;
+            /** Version Count */
+            version_count: number;
+            workflow_state: components["schemas"]["ReportState"];
+        };
         /** ReportOut */
         ReportOut: {
             /** Current Version Id */
@@ -2004,6 +2110,17 @@ export interface components {
              */
             student_id: string;
             workflow_state: components["schemas"]["ReportState"];
+        };
+        /** ReportProjectOut */
+        ReportProjectOut: {
+            assessment?: components["schemas"]["ReportAssessmentOut"] | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Title */
+            title: string;
         };
         /**
          * ReportState
@@ -3772,6 +3889,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_reports_get: {
+        parameters: {
+            query?: {
+                period_id?: string | null;
+                student_id?: string | null;
+                project_id?: string | null;
+                state?: components["schemas"]["ReportState"][] | null;
+                needs_review?: boolean;
+                limit?: number | null;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ReportListItemOut_"];
                 };
             };
             /** @description Validation Error */

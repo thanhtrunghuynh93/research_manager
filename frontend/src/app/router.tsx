@@ -16,6 +16,7 @@ import { ProjectListPage } from "@/features/projects/pages/ProjectListPage";
 import { ProjectPage } from "@/features/projects/pages/ProjectPage";
 import { ReportEditorPage } from "@/features/report/pages/ReportEditorPage";
 import { ReportReaderPage } from "@/features/report/pages/ReportReaderPage";
+import { ReportsPage } from "@/features/reports/pages/ReportsPage";
 import { ReviewPage } from "@/features/review/pages/ReviewPage";
 import { StudentProfilePage } from "@/features/students/pages/StudentProfilePage";
 import { WorkspacesPage } from "@/features/workspaces/pages/WorkspacesPage";
@@ -64,6 +65,8 @@ export const router = createBrowserRouter([
         element: <RequireAuth role="prof" />,
         children: [
           { path: "/overview", element: <OverviewPage /> }, // UI-01
+          // Every submitted week, where the overview is only this one. UI-01, REP-05.
+          { path: "/reports", element: <ReportsPage /> },
           { path: "/people", element: <PeoplePage /> }, // AUTH-01
           { path: "/workspaces", element: <WorkspacesPage /> }, // ADR 0012
           { path: "/students/:id", element: <StudentProfilePage /> }, // UI-04

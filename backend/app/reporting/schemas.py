@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
@@ -190,3 +190,42 @@ class RevisionRequestOut(BaseModel):
     requested_by: UUID
     resolved_in_version_id: UUID | None = None
     created_at: datetime
+
+
+# The values of `assessment.ReviewState`, spelled out because reporting sits below assessment and
+# may not import it. `tests/unit/test_report_list_schema.py` keeps the two in step.
+AssessmentStatus = Literal["draft", "approved", "superseded", "withdrawn"]
+
+
+class ReportAssessmentOut(BaseModel):
+    """The latest assessment of one project's entry, and where its review stands."""
+
+    assessment_id: UUID
+    status: AssessmentStatus
+
+
+class ReportProjectOut(BaseModel):
+    project_id: UUID
+    title: str
+    # Per project, not per report: an assessment is of one student, project and week (ASSESS-01),
+    # so a package covering two projects has two.
+    assessment: ReportAssessmentOut | None = None
+
+
+class ReportListItemOut(BaseModel):
+    """One submitted weekly report, as a row in a list (UI-01, UI-04)."""
+
+    report_id: UUID
+    student_id: UUID
+    student_name: str
+    period_id: UUID
+    local_start: date
+    local_end: date
+    deadline_utc: datetime
+    workflow_state: ReportState
+    first_submitted_at: datetime
+    last_submitted_at: datetime
+    version_count: int
+    # First submission against the deadline that applied to it: grace, then any extension.
+    late: bool
+    projects: list[ReportProjectOut] = Field(default_factory=list)

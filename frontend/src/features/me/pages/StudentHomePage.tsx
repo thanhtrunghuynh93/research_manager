@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
+import { ReportStateBadge } from "@/components/ReportStateBadge";
 import {
   currentPeriod,
   useObligations,
@@ -9,6 +10,7 @@ import {
   useReport,
 } from "@/features/report/queries";
 import type { Obligation } from "@/features/report/types";
+import { useRecentReports } from "@/features/reports/queries";
 import { useTimezone } from "@/features/calendar/queries";
 import { formatInstant, formatLocalDate, todayLocal } from "@/lib/dates";
 
@@ -159,32 +161,55 @@ function ObligationState({ obligation }: { obligation: Obligation }) {
 }
 
 /**
- * Every week before this one. `usePeriods` is already loaded for the header, so the history costs
- * no request — and without it the student could only ever see the week they are in.
+ * The weeks before this one, each with what was handed in for it.
+ *
+ * Merged from the weeks and the reports rather than listing the reports alone: a week with nothing
+ * submitted is the one a student most needs to see, and a list of reports cannot show an absence.
+ * A submitted week opens what was submitted. A week with nothing submitted opens the editor: it is
+ * the student's only way to file a late report or finish a draft for an earlier week.
  */
 function PastWeeks({ currentPeriodId, timezone }: { currentPeriodId: string; timezone: string }) {
   const { t } = useTranslation();
   const periods = usePeriods();
+  const reports = useRecentReports({});
   const today = todayLocal(new Date(), timezone);
 
   const past = (periods.data ?? [])
     .filter((one) => one.id !== currentPeriodId && one.local_end < today)
     .sort((a, b) => b.local_start.localeCompare(a.local_start))
     .slice(0, 8);
+  const byWeek = new Map((reports.data?.items ?? []).map((row) => [row.period_id, row]));
 
-  if (!past.length) return null;
+  // Held until the reports answer, so no week is shown as missing while it is still being asked.
+  if (!past.length || !reports.data) return null;
 
   return (
     <>
       <h2 className="section-title mt-8">{t("me.pastWeeks")}</h2>
       <ul className="panel mt-2.5" data-testid="past-weeks">
-        {past.map((one) => (
-          <li key={one.id} className="row">
-            <Link to={`/report/${one.id}`} className="link">
-              {formatLocalDate(one.local_start)} – {formatLocalDate(one.local_end)}
-            </Link>
-          </li>
-        ))}
+        {past.map((one) => {
+          const dates = `${formatLocalDate(one.local_start)} – ${formatLocalDate(one.local_end)}`;
+          const report = byWeek.get(one.id);
+          return (
+            <li key={one.id} className="row">
+              {report ? (
+                <>
+                  <Link to={`/report/${one.id}/submitted`} className="link">
+                    {dates}
+                  </Link>
+                  <ReportStateBadge state={report.workflow_state} />
+                </>
+              ) : (
+                <>
+                  <Link to={`/report/${one.id}`} className="link">
+                    {dates}
+                  </Link>
+                  <span className="font-mono text-meta text-warn">{t("me.notSubmitted")}</span>
+                </>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </>
   );

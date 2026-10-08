@@ -54,9 +54,11 @@ from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.pagination import Page
 from app.identity import service as identity_service
 from app.projects import service as projects_service
 from app.reporting import service as reporting_service
+from app.reporting.schemas import ReportAssessmentOut, ReportListItemOut
 
 log = logging.getLogger(__name__)
 
@@ -825,6 +827,40 @@ async def review_queue(
     """UI-01: the drafts waiting on the professor, oldest first."""
     rows = await repo.review_queue(session, scope, as_of=as_of)
     return await _assessment_outs(session, rows)
+
+
+async def with_assessments(
+    session: AsyncSession, scope: Scope, page: Page[ReportListItemOut]
+) -> Page[ReportListItemOut]:
+    """Link each project on a page of submitted reports to its latest assessment (UI-01, UI-04).
+
+    Reporting lists the reports and cannot see this module, so the link is added here: two
+    queries for the whole page, the versions and their reviews. The status is the review's state,
+    which is what the review screen acts on; a student is only ever linked to an approved one.
+    """
+    rows = await repo.latest_for_weeks(
+        session, scope, list({(item.student_id, item.period_id) for item in page.items})
+    )
+    reviews = await repo.reviews_for(session, [row.id for row in rows])
+    links = {
+        (row.student_id, row.project_id, row.period_id): ReportAssessmentOut(
+            assessment_id=row.id,
+            status=(reviews[row.id].state if row.id in reviews else ReviewState.DRAFT).value,
+        )
+        for row in rows
+    }
+
+    def key(item: ReportListItemOut, project_id: UUID) -> tuple[UUID, UUID, UUID]:
+        return item.student_id, project_id, item.period_id
+
+    items = []
+    for item in page.items:
+        projects = [
+            project.model_copy(update={"assessment": links.get(key(item, project.project_id))})
+            for project in item.projects
+        ]
+        items.append(item.model_copy(update={"projects": projects}))
+    return page.model_copy(update={"items": items})
 
 
 @dataclass(frozen=True, slots=True)

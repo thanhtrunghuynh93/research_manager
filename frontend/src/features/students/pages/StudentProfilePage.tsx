@@ -17,10 +17,12 @@ import {
   ConfidenceReasons,
   ProgressIndex,
 } from "@/components/evidence/Badges";
+import { ReportStateBadge } from "@/components/ReportStateBadge";
 import { Trajectory } from "@/features/assessments/components/Trajectory";
 import { useUser } from "@/features/people/queries";
 import type { Assessment } from "@/features/review/types";
 import { openArtifact, useArtifacts, usePeriods, useProjects } from "@/features/report/queries";
+import { useRecentReports } from "@/features/reports/queries";
 import { useTimezone } from "@/features/calendar/queries";
 import { formatLocalDate, todayLocal } from "@/lib/dates";
 
@@ -44,6 +46,8 @@ export function StudentProfilePage() {
   // and comparing it against UTC would show next week as begun for the first hours of every day
   // in a UTC+7 workspace.
   const today = todayLocal(new Date(), useTimezone());
+  const reports = useRecentReports({ studentId: id }, Boolean(id));
+  const reportByWeek = new Map((reports.data?.items ?? []).map((row) => [row.period_id, row]));
 
   const titleOf = (projectId: string) =>
     projects.data?.items.find((project) => project.id === projectId)?.title ??
@@ -73,9 +77,9 @@ export function StudentProfilePage() {
         />
       ))}
 
-      {/* Every week this student could have reported, each a click from its text. The reader
-          itself says "nothing was started" for a week with nothing in it, so no probing is
-          needed here — and a professor with no list had no way into a report at all.
+      {/* Every week this student could have reported, with the state of what they handed in. A
+          week with nothing submitted says so and is not a link: the reader would only have said
+          the same thing one click later.
 
           Weeks that have not begun are not among them. The calendar materialises periods ahead
           of time — eight weeks out by default, and the nightly job keeps them there — so the
@@ -89,16 +93,30 @@ export function StudentProfilePage() {
           .slice()
           .reverse()
           .slice(0, 8)
-          .map((period) => (
-            <li key={period.id} className="row">
-              <Link to={`/students/${id}/reports/${period.id}`} className="link text-prose">
-                {formatLocalDate(period.local_start)} – {formatLocalDate(period.local_end)}
-              </Link>
-              <span className="font-mono text-meta text-muted-foreground">
-                {t("report.reader.openWeek")}
-              </span>
-            </li>
-          ))}
+          .map((period) => {
+            const dates = `${formatLocalDate(period.local_start)} – ${formatLocalDate(period.local_end)}`;
+            const report = reportByWeek.get(period.id);
+            return (
+              <li key={period.id} className="row">
+                {report ? (
+                  <>
+                    <Link to={`/students/${id}/reports/${period.id}`} className="link text-prose">
+                      {dates}
+                    </Link>
+                    <ReportStateBadge state={report.workflow_state} />
+                  </>
+                ) : (
+                  <>
+                    <span className="text-prose text-muted-foreground">{dates}</span>
+                    {/* Blank until the reports answer, rather than "No report" for every week. */}
+                    <span className="font-mono text-meta text-faint">
+                      {reports.data ? t("report.reader.noReport") : ""}
+                    </span>
+                  </>
+                )}
+              </li>
+            );
+          })}
       </ul>
 
       <Materials studentId={id!} />

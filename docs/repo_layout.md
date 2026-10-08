@@ -300,11 +300,15 @@ frontend/
     │   ├── students/          research profile (UI-04)
     │   ├── report/            weekly package editor: a tab per required project, EntryForm,
     │   │                      Attachments, AutosaveIndicator
+    │   ├── reports/           the professor's list of submitted weekly reports, by week, with
+    │   │                      its filters in the URL (UI-01, REP-05); `useRecentReports` also
+    │   │                      feeds the student home and the research profile
     │   ├── review/            three-pane review workspace (UI-05)
     │   └── workspaces/        the workspaces a professor belongs to or owns, and the header
     │                          switcher: join, leave, create, archive (ADR 0012/14/15/20, UI-08)
     ├── components/
     │   ├── Failure.tsx        the shared error surface
+    │   ├── ReportStateBadge.tsx  a report's workflow state as a chip, one tone on every list
     │   ├── ui/                placeholder
     │   ├── markdown/          placeholder
     │   ├── evidence/          Badges.tsx (Badge, ConfidenceBadge, ProgressIndex)

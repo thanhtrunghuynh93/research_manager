@@ -22,6 +22,7 @@ from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now
 from app.core.errors import NotFoundError, ValidationError
+from app.core.pagination import Page, clamp_limit
 from app.core.types import Role
 from app.identity import service as identity_service
 from app.projects import service as projects_service
@@ -50,7 +51,9 @@ from app.reporting.schemas import (
     EntryOut,
     ObligationOut,
     PeriodOut,
+    ReportListItemOut,
     ReportOut,
+    ReportProjectOut,
     RevisionRequestOut,
     VersionOut,
     VersionSummaryOut,
@@ -694,6 +697,114 @@ async def list_versions(
         raise NotFoundError("report not found")
     rows = await repository.list_versions(session, scope, report_id)
     return [VersionSummaryOut.model_validate(row) for row in rows]
+
+
+# A report waiting on the professor: handed in, or handed in again, and not yet marked reviewed.
+NEEDS_REVIEW = frozenset({ReportState.SUBMITTED, ReportState.RESUBMITTED})
+
+
+async def list_submitted_reports(
+    session: AsyncSession,
+    scope: Scope,
+    *,
+    period_id: UUID | None = None,
+    student_id: UUID | None = None,
+    project_id: UUID | None = None,
+    states: list[ReportState] | None = None,
+    needs_review: bool = False,
+    limit: int | None = None,
+    cursor: str | None = None,
+) -> Page[ReportListItemOut]:
+    """Every weekly report handed in at least once, as the caller may see it (UI-01, UI-04).
+
+    A professor sees the workspace's, a student their own: `visible_to` decides, and drafts are
+    never listed to anyone. `needs_review` narrows to `NEEDS_REVIEW`, and with `states` the two
+    intersect.
+
+    `late` is the label `_timing_status` gives the first submission, recomputed against today's
+    obligations rather than read from version 1: an extension granted after the fact moves the
+    deadline that applied, and REP-06 says it is not a late report. Each assessment link is left
+    empty here — reporting cannot see assessments — and filled in by `assessment.service`.
+
+    Five queries a page whatever its length: the rows, their entries' projects, those projects'
+    titles, their obligations, and the calendar versions.
+    """
+    size = clamp_limit(limit)
+    wanted: set[ReportState] | None = set(states) if states else None
+    if needs_review:
+        wanted = set(NEEDS_REVIEW) if wanted is None else wanted & NEEDS_REVIEW
+    if wanted is not None and not wanted:
+        return Page(items=[], next_cursor=None, limit=size)
+
+    rows, next_cursor = await repository.list_submitted_reports(
+        session,
+        scope,
+        limit=size,
+        cursor=cursor,
+        period_id=period_id,
+        student_id=student_id,
+        project_id=project_id,
+        states=wanted,
+    )
+    projects = await repository.projects_of_versions(
+        session, scope, [row[0].current_version_id for row in rows if row[0].current_version_id]
+    )
+    titles = await projects_service.project_titles(
+        session, {project for ids in projects.values() for project in ids}
+    )
+    obligations = await repository.obligations_for_weeks(
+        session, scope, [(report.student_id, report.period_id) for report, *_ in rows]
+    )
+    configs = await repository.calendars(session, scope.workspace_id) if rows else []
+
+    items = []
+    for report, period, name, version_count, last_submitted in rows:
+        # Never the fallback: the query admits no report without a first submission.
+        first_submitted = report.first_submitted_at or last_submitted
+        timing = _timing_status(
+            period,
+            obligations.get((report.student_id, report.period_id), []),
+            first_submitted,
+            grace_minutes=_grace_in_force(configs, period.local_start),
+        )
+        items.append(
+            ReportListItemOut(
+                report_id=report.id,
+                student_id=report.student_id,
+                student_name=name,
+                period_id=period.id,
+                local_start=period.local_start,
+                local_end=period.local_end,
+                deadline_utc=period.deadline_utc,
+                workflow_state=report.workflow_state,
+                first_submitted_at=first_submitted,
+                last_submitted_at=last_submitted,
+                version_count=version_count,
+                late=timing is TimingStatus.LATE,
+                # Titled by the project's record rather than its policy, as `project_title` is: a
+                # student who has since left a project still reported on it that week.
+                projects=sorted(
+                    (
+                        ReportProjectOut(project_id=project, title=titles.get(project, ""))
+                        for project in (
+                            projects.get(report.current_version_id, [])
+                            if report.current_version_id is not None
+                            else []
+                        )
+                    ),
+                    key=lambda one: (one.title, str(one.project_id)),
+                ),
+            )
+        )
+    return Page(items=items, next_cursor=next_cursor, limit=size)
+
+
+def _grace_in_force(configs: list[CalendarConfig], local_start: date) -> int:
+    """`grace_minutes_for` over calendars already in hand: the same rule `calendar_for` queries."""
+    in_force = [config for config in configs if config.effective_from <= local_start]
+    if not in_force:
+        return 0
+    return max(in_force, key=lambda config: (config.effective_from, config.version)).grace_minutes
 
 
 # ------------------------------------------------------------------ job-level reads (REP-08)

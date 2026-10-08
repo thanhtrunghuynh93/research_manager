@@ -13,6 +13,7 @@ import type {
   Version,
   VersionSummary,
 } from "@/features/report/types";
+import { reportsKey } from "@/features/reports/queries";
 import { todayLocal } from "@/lib/dates";
 
 export const periodsKey = ["periods"] as const;
@@ -127,6 +128,8 @@ export function useSubmitReport(periodId: string) {
       // student on version 2 while still telling them one project had nothing in it and marking
       // that project Required — the state they had just left.
       void queryClient.invalidateQueries({ queryKey: obligationsKey(periodId) });
+      // A new version changes the row on every list of submitted reports.
+      void queryClient.invalidateQueries({ queryKey: reportsKey });
     },
   });
 }
@@ -243,6 +246,7 @@ export function useRequestRevision(
       void queryClient.invalidateQueries({
         queryKey: reportKey(scope.periodId, scope.studentId),
       });
+      void queryClient.invalidateQueries({ queryKey: reportsKey });
     },
   });
 }
@@ -252,7 +256,9 @@ export function useMarkReviewed(reportId: string, scope: { periodId: string; stu
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<Report>(`/api/v1/reports/${reportId}/reviewed`),
-    onSuccess: (report) =>
-      queryClient.setQueryData(reportKey(scope.periodId, scope.studentId), report),
+    onSuccess: (report) => {
+      queryClient.setQueryData(reportKey(scope.periodId, scope.studentId), report);
+      void queryClient.invalidateQueries({ queryKey: reportsKey });
+    },
   });
 }

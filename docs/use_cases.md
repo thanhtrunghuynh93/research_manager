@@ -1,6 +1,6 @@
 # Use cases
 
-Version 0.22 — 7 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.14, [architecture.md](architecture.md) and [implementation_status.md](implementation_status.md)
+Version 0.23 — 8 October 2026 — companion to [research_management_requirements.md](research_management_requirements.md) v0.14, [architecture.md](architecture.md) and [implementation_status.md](implementation_status.md)
 
 What each role can do with the system as built: the endpoint, and the screen that calls it. It is
 compiled from `backend/app/api/v1/` and `frontend/src/`, not from the specification. Paths are
@@ -25,21 +25,22 @@ a note naming the page they could not open.
 | `/accept-invitation` | public | the invitation email | Set a password, then the role's home |
 | `/reset-password` | public | the reset email | Set a new password |
 | `/status` | public | typed | Readiness of database, object store, worker and mail relay |
-| `/me` | student | nav; student home | This week's deadline and report state, obligations per project, earlier weeks, links to the editor, the submitted week and own progress |
+| `/me` | student | nav; student home | This week's deadline and report state, obligations per project, earlier weeks with the state of each one submitted (a week with none reads "No report"), links to the editor, the submitted week and own progress |
 | `/me/profile` | student | link on `/me` | Trajectory per project; every released assessment |
 | `/me/assessments/:id` | student | `/me/profile` | One released assessment: ratings, rationales, its week |
 | `/report/:periodId` | student | `/me` | Weekly editor: a tab per required project, autosave, attachments, submit |
-| `/report/:periodId/submitted` | student | `/me` | What was submitted: every version, every entry, open revision requests |
+| `/report/:periodId/submitted` | student | `/me`, an earlier week on `/me` | What was submitted: every version, every entry, open revision requests |
 | `/overview` | professor | nav; professor home | Budget and mail warnings, this week's reports by project and student, outstanding reports, review queue, stalled analyses with retry |
+| `/reports` | professor | nav | Every submitted weekly report, grouped by week, newest first: student, projects, submission time, Late, version count, state, each project's assessment. Filters for week, student, project, state and needs review live in the URL. Drafts are never listed |
 | `/people` | professor | nav | The roll of the workspace being worked in: invite, resend, move, suspend, restore, remove |
 | `/workspaces` | professor | nav | The workspace being worked in (rename for its owner; the weekly schedule), the others belonged to (join, leave, archive), create one. Switching is the workspace name in the header, on every screen |
-| `/students/:id` | professor | `/people`, the overview, a project's member list | Approved assessments, trajectory per project, submitted weeks |
-| `/students/:studentId/reports/:periodId` | professor | `/students/:id` | One submitted week: versions, entries (including projects since left), mark reviewed, request a revision |
-| `/review/:assessmentId` | professor | overview review queue, `/students/:id` | Claims and discrepancies, evidence snapshot, draft ratings; approve, or override with a rationale |
+| `/students/:id` | professor | `/people`, the overview, `/reports`, a project's member list | Approved assessments, trajectory per project, the last eight weeks with each one's report state (a week with none reads "No report") |
+| `/students/:studentId/reports/:periodId` | professor | `/students/:id`, `/reports` | One submitted week: versions, entries (including projects since left), mark reviewed, request a revision |
+| `/review/:assessmentId` | professor | overview review queue, `/students/:id`, `/reports` | Claims and discrepancies, evidence snapshot, draft ratings; approve, or override with a rationale |
 | `/projects` | signed in | nav (both roles) | Projects the caller may see; create one; for a student, projects open to joining and Join |
 | `/projects/:id` | signed in | `/projects`, a project title on `/me` | Research questions, description, repository link, members, related documents. Professor: stage, activate, open to joining, assign a student, end a membership. Creator: edit the record. Anyone on it: attach a document |
 
-Navigation: a professor sees Overview, People, Projects, Workspaces; a student sees their week and
+Navigation: a professor sees Overview, Reports, People, Projects, Workspaces; a student sees their week and
 Projects. Member names on `/projects/:id` link to `/students/:id`, which a student cannot open.
 
 ## 2 Professor
@@ -109,6 +110,7 @@ exists and `ensure_periods` skips the workspace.
 
 | Use case | Endpoint | |
 | --- | --- | --- |
+| List every submitted report, by week; filter by week, student, project, state, needs review | `GET /reports` | 🖥️ `/reports`; per student on `/students/:id` |
 | Read a student's weekly report | `GET /periods/{id}/report?student_id=` | 🖥️ |
 | Read every submitted version, and one by id | `GET /reports/{id}/versions`, `GET /report-versions/{id}` | 🖥️ |
 | Open an attachment | `GET /artifacts`, `GET /artifacts/{id}/download` | 🖥️ |
@@ -116,7 +118,9 @@ exists and `ensure_periods` skips the workspace.
 | Mark a report reviewed | `POST /reports/{id}/reviewed` | 🖥️ |
 | Read every stored version of one attachment | `GET /artifacts/{id}/versions` | ⚙️ |
 
-The reader never shows `draft_content`: an unsubmitted draft is not a submission.
+The reader never shows `draft_content`: an unsubmitted draft is not a submission. For the same
+reason the list never shows a draft. Its Late flag is the first submission against the deadline that
+applied — grace, then any extension, including one granted afterwards.
 
 ### 2.6 Assessment (ASSESS-01..10, UI-05)
 
@@ -149,6 +153,7 @@ The evidence index has no route of its own: the pipeline reads it when it builds
 | Attach a file straight to the object store | `POST /artifacts/uploads`, `POST /artifacts/{id}/confirm` | 🖥️ |
 | Remove a file they attached, submitted week or not | `DELETE /artifacts/{id}` | 🖥️ |
 | Submit the weekly package (idempotent) | `POST /periods/{id}/report/submit` | 🖥️ |
+| See their earlier weeks and the state of each one submitted | `GET /reports` | 🖥️ `/me` |
 | Read what they submitted, every version, and any revision requested | `GET /reports/{id}/versions`, `/report-versions/{id}`, `/reports/{id}/revisions` | 🖥️ |
 | Read their projects, members and documents; attach and remove their own documents | `GET /projects/...`, `GET /artifacts?project_id=`, `POST /artifacts/uploads`, `DELETE /artifacts/{id}` | 🖥️ |
 | Start a project (active at once) | `POST /projects` | 🖥️ |

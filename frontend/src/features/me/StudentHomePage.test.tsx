@@ -1,6 +1,6 @@
 /** UI-02: obligations, the next deadline, draft state, and one way into the weekly flow. */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 
@@ -47,9 +47,14 @@ function handlers({
   report = null as unknown,
   reportStatus = 404,
   released = [] as object[],
+  periods = [PERIOD] as object[],
+  reports = [] as object[],
 } = {}) {
   return [
-    http.get("/api/v1/periods", () => HttpResponse.json([PERIOD])),
+    http.get("/api/v1/periods", () => HttpResponse.json(periods)),
+    http.get("/api/v1/reports", () =>
+      HttpResponse.json({ items: reports, next_cursor: null, limit: 20 }),
+    ),
     http.get("/api/v1/periods/p1/obligations", () => HttpResponse.json(obligations)),
     http.get("/api/v1/projects", () =>
       HttpResponse.json({ items: [{ id: "pr1", title: "Baseline evaluation", status: "active" }] }),
@@ -336,4 +341,55 @@ test("never says the week is untouched while it is still asking", async () => {
   expect(screen.queryByRole("link", { name: /start this week/i })).not.toBeInTheDocument();
 
   expect(await screen.findByTestId("report-state")).toHaveTextContent(/submitted/i);
+});
+
+test("earlier weeks show what was handed in, and a week with nothing opens the editor", async () => {
+  // Weeks long before the current one, so they have ended whatever day the suite runs on.
+  const week = (id: string, start: string, end: string) => ({
+    ...PERIOD,
+    id,
+    local_start: start,
+    local_end: end,
+  });
+  server.use(
+    ...handlers({
+      periods: [
+        week("p-1", "2026-08-31", "2026-09-06"),
+        week("p0", "2026-09-07", "2026-09-13"),
+        PERIOD,
+      ],
+      reports: [
+        {
+          report_id: "r0",
+          student_id: "s1",
+          student_name: "An",
+          period_id: "p0",
+          local_start: "2026-09-07",
+          local_end: "2026-09-13",
+          deadline_utc: "2026-09-13T16:59:00Z",
+          workflow_state: "reviewed",
+          first_submitted_at: "2026-09-12T03:00:00Z",
+          last_submitted_at: "2026-09-12T03:00:00Z",
+          version_count: 1,
+          late: false,
+          projects: [],
+        },
+      ],
+    }),
+  );
+  renderPage();
+
+  const list = await screen.findByTestId("past-weeks");
+  const rows = within(list).getAllByRole("listitem");
+  expect(rows).toHaveLength(2);
+
+  // Newest first. The submitted week opens what was submitted, with its state beside it.
+  const submitted = within(rows[0]!).getByRole("link");
+  expect(submitted).toHaveAttribute("href", "/report/p0/submitted");
+  expect(within(rows[0]!).getByTestId("report-state-chip")).toHaveTextContent("Reviewed");
+
+  // The week with nothing in it says so, and opens the editor: it is the only way to file it late.
+  expect(rows[1]).toHaveTextContent("Aug 31, 2026 – Sep 06, 2026");
+  expect(rows[1]).toHaveTextContent(/not submitted/i);
+  expect(within(rows[1]!).getByRole("link")).toHaveAttribute("href", "/report/p-1");
 });

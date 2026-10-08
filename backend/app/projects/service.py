@@ -664,6 +664,11 @@ async def project_title(session: AsyncSession, project_id: UUID) -> str:
     return "" if project is None else project.title
 
 
+async def project_titles(session: AsyncSession, project_ids: Collection[UUID]) -> dict[UUID, str]:
+    """`project_title` for many projects in one query, for a list that names one per row."""
+    return await repository.titles(session, project_ids)
+
+
 # ------------------------------------------------------------------ helpers
 
 
