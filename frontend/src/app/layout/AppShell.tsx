@@ -117,6 +117,11 @@ export function AppShell() {
               {t("me.title")}
             </NavLink>
           )}
+          {user && !isProf && (
+            <NavLink to="/reports" className={item}>
+              {t("reports.title")}
+            </NavLink>
+          )}
           {/* Listed per role rather than once for both: since PROJ-07 a student has something to
               do here too, but the two menus order it differently — a student's week comes before
               the projects it is about, and a professor's projects sit with the other records. */}

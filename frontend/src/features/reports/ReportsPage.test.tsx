@@ -140,9 +140,15 @@ function Location() {
 function renderPage(
   pages: Record<string, Page> = { "": { items: ROWS, next_cursor: null, limit: 50 } },
   entry = "/reports",
+  role: "prof" | "student" = "prof",
 ) {
   const asked: URLSearchParams[] = [];
-  server.use(...handlers(pages, asked));
+  server.use(
+    ...handlers(pages, asked),
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({ id: role === "prof" ? "u1" : "s1", role, workspace_id: "w1" }),
+    ),
+  );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -273,5 +279,63 @@ test("a filter that matches nothing says so, rather than that nothing exists", a
   renderPage({ "": { items: [], next_cursor: null, limit: 50 } }, "/reports?state=reviewed");
   expect(await screen.findByTestId("reports-empty")).toHaveTextContent(
     "No submitted report matches these filters.",
+  );
+});
+
+test("a student sees their own reports, without names, the roll or review, linked to their pages", async () => {
+  // The API scopes the list to the student; the page drops what would be noise or a dead end.
+  const mine = [
+    row({
+      report_id: "r1",
+      projects: [
+        {
+          project_id: "pr1",
+          title: "Retrieval baselines",
+          assessment: { assessment_id: "as1", status: "approved" },
+        },
+      ],
+    }),
+  ];
+  let rollAsked = false;
+  server.use(
+    http.get("/api/v1/users", () => {
+      rollAsked = true;
+      return HttpResponse.json({ items: [], next_cursor: null, limit: 100 });
+    }),
+  );
+  const asked = renderPage(
+    { "": { items: mine, next_cursor: null, limit: 50 } },
+    // A bookmark carrying the professor's filters must not narrow a student's list to nothing.
+    "/reports?student=s2&review=1",
+    "student",
+  );
+
+  await waitFor(() =>
+    expect(screen.getByText(/every report you have submitted/i)).toBeInTheDocument(),
+  );
+  const rowEl = (await screen.findAllByTestId("report-row"))[0]!;
+
+  expect(within(rowEl).queryByText("An Nguyen")).not.toBeInTheDocument();
+  expect(within(rowEl).getByTestId("open-report")).toHaveAttribute("href", "/report/p2/submitted");
+  expect(within(rowEl).getByTestId("assessment-link")).toHaveAttribute(
+    "href",
+    "/me/assessments/as1",
+  );
+
+  const filters = screen.getByTestId("report-filters");
+  expect(within(filters).queryByLabelText(/^student$/i)).not.toBeInTheDocument();
+  expect(within(filters).queryByText(/needs review/i)).not.toBeInTheDocument();
+  expect(rollAsked).toBe(false);
+
+  const last = asked[asked.length - 1]!;
+  expect(last.get("student_id")).toBeNull();
+  expect(last.get("needs_review")).toBeNull();
+});
+
+test("a student with nothing submitted is told so in their own words", async () => {
+  renderPage({ "": { items: [], next_cursor: null, limit: 50 } }, "/reports", "student");
+
+  expect(await screen.findByTestId("reports-empty")).toHaveTextContent(
+    /you have not submitted a report yet/i,
   );
 });

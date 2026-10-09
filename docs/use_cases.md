@@ -25,11 +25,12 @@ a note naming the page they could not open.
 | `/accept-invitation` | public | the invitation email | Set a password, then the role's home |
 | `/reset-password` | public | the reset email | Set a new password |
 | `/status` | public | typed | Readiness of database, object store, worker and mail relay |
-| `/me` | student | nav; student home | This week's deadline and report state, obligations per project, earlier weeks with the state of each one submitted (a week with none reads "No report"), links to the editor, the submitted week and own progress |
+| `/me` | student | nav; student home | This week's deadline and report state, obligations per project, earlier weeks with the state of each one submitted (a week with none reads "Not submitted" and opens the editor, to file it late), links to the editor, the submitted week and own progress |
 | `/me/profile` | student | link on `/me` | Trajectory per project; every released assessment |
 | `/me/assessments/:id` | student | `/me/profile` | One released assessment: ratings, rationales, its week |
 | `/report/:periodId` | student | `/me` | Weekly editor: a tab per required project, autosave, attachments, submit |
-| `/report/:periodId/submitted` | student | `/me`, an earlier week on `/me` | What was submitted: every version, every entry, open revision requests |
+| `/reports` | student | nav | Every report they have submitted, by week, newest first: projects, submission time, Late, versions, state, and released assessments. Filters for week, project and state. No names, no roll, no "needs review" |
+| `/report/:periodId/submitted` | student | `/me`, an earlier week on `/me`, `/reports` | What was submitted: every version, every entry, open revision requests |
 | `/overview` | professor | nav; professor home | Budget and mail warnings, this week's reports by project and student, outstanding reports, review queue, stalled analyses with retry |
 | `/reports` | professor | nav | Every submitted weekly report, grouped by week, newest first: student, projects, submission time, Late, version count, state, each project's assessment. Filters for week, student, project, state and needs review live in the URL. Drafts are never listed |
 | `/people` | professor | nav | The roll of the workspace being worked in: invite, resend, move, suspend, restore, remove |
@@ -110,7 +111,7 @@ exists and `ensure_periods` skips the workspace.
 
 | Use case | Endpoint | |
 | --- | --- | --- |
-| List every submitted report, by week; filter by week, student, project, state, needs review | `GET /reports` | 🖥️ `/reports`; per student on `/students/:id` |
+| List every submitted report, by week; filter by week, student, project, state, needs review | `GET /reports` | 🖥️ `/reports` (a student's own for a student); per student on `/students/:id` |
 | Read a student's weekly report | `GET /periods/{id}/report?student_id=` | 🖥️ |
 | Read every submitted version, and one by id | `GET /reports/{id}/versions`, `GET /report-versions/{id}` | 🖥️ |
 | Open an attachment | `GET /artifacts`, `GET /artifacts/{id}/download` | 🖥️ |

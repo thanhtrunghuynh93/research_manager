@@ -7,6 +7,11 @@
  *
  * The filters live in the address bar, so a view — "everything still waiting on me", "Bao's weeks
  * on the retrieval project" — can be bookmarked and sent.
+ *
+ * A student reaches the same page and sees only their own reports, because the API scopes the list.
+ * What changes is what would be noise or a dead end for them: no name on every row, no student
+ * filter (the roll is the professor's), no "needs review", and links to their own reader and
+ * assessment pages rather than the professor's.
  */
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -14,6 +19,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
 import { ReportStateBadge } from "@/components/ReportStateBadge";
+import { useSession } from "@/features/auth/queries";
 import { useTimezone } from "@/features/calendar/queries";
 import { usePeople } from "@/features/people/queries";
 import { usePeriods, useProjects } from "@/features/report/queries";
@@ -32,13 +38,16 @@ const PARAMS = {
 
 export function ReportsPage() {
   const { t } = useTranslation();
+  const session = useSession();
+  const isStudent = session.data?.role === "student";
   const [search, setSearch] = useSearchParams();
   const filters: ReportFilters = {
     periodId: search.get(PARAMS.periodId) ?? undefined,
-    studentId: search.get(PARAMS.studentId) ?? undefined,
+    // A student's list is already only theirs; a stale bookmark must not narrow it to nothing.
+    studentId: isStudent ? undefined : (search.get(PARAMS.studentId) ?? undefined),
     projectId: search.get(PARAMS.projectId) ?? undefined,
     state: search.get(PARAMS.state) ?? undefined,
-    needsReview: search.get(PARAMS.needsReview) === "1",
+    needsReview: !isStudent && search.get(PARAMS.needsReview) === "1",
   };
   const filtered = Object.values(filters).some(Boolean);
   const reports = useReportPages(filters);
@@ -58,10 +67,13 @@ export function ReportsPage() {
       <header className="border-b border-border pb-5">
         <p className="eyebrow mb-1.5">{t("reports.eyebrow")}</p>
         <h1 className="page-title">{t("reports.title")}</h1>
-        <p className="mt-2 max-w-2xl text-prose text-muted-foreground">{t("reports.intro")}</p>
+        <p className="mt-2 max-w-2xl text-prose text-muted-foreground">
+          {isStudent ? t("reports.introStudent") : t("reports.intro")}
+        </p>
       </header>
 
       <FilterBar
+        isStudent={isStudent}
         filters={filters}
         onChange={update}
         onClear={filtered ? () => setSearch(new URLSearchParams(), { replace: true }) : undefined}
@@ -76,7 +88,11 @@ export function ReportsPage() {
 
       {reports.data && items.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground" data-testid="reports-empty">
-          {filtered ? t("reports.noMatch") : t("reports.noneYet")}
+          {filtered
+            ? t("reports.noMatch")
+            : isStudent
+              ? t("reports.noneYetStudent")
+              : t("reports.noneYet")}
         </p>
       ) : null}
 
@@ -87,7 +103,7 @@ export function ReportsPage() {
           </h2>
           <ul className="panel mt-2.5">
             {week.rows.map((row) => (
-              <ReportRow key={row.report_id} row={row} />
+              <ReportRow key={row.report_id} row={row} isStudent={isStudent} />
             ))}
           </ul>
         </section>
@@ -126,7 +142,7 @@ function groupByWeek(items: ReportListItem[]): Week[] {
   return weeks;
 }
 
-function ReportRow({ row }: { row: ReportListItem }) {
+function ReportRow({ row, isStudent }: { row: ReportListItem; isStudent: boolean }) {
   const { t } = useTranslation();
   const timezone = useTimezone();
   const projects = row.projects ?? [];
@@ -134,17 +150,23 @@ function ReportRow({ row }: { row: ReportListItem }) {
   return (
     <li className="row items-start" data-testid="report-row">
       <div className="min-w-0 flex-1 basis-60">
-        <Link to={`/students/${row.student_id}`} className="link font-medium">
-          {row.student_name}
-        </Link>
-        <ul className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        {isStudent ? null : (
+          <Link to={`/students/${row.student_id}`} className="link font-medium">
+            {row.student_name}
+          </Link>
+        )}
+        <ul className={`${isStudent ? "" : "mt-1 "}flex flex-wrap items-center gap-x-3 gap-y-1.5`}>
           {projects.map((project) => (
             <li key={project.project_id} className="flex items-center gap-1.5 text-ui">
               <span className="text-muted-foreground">{project.title}</span>
               {/* One per project: an assessment is of one student, project and week. */}
               {project.assessment ? (
                 <Link
-                  to={`/review/${project.assessment.assessment_id}`}
+                  to={
+                    isStudent
+                      ? `/me/assessments/${project.assessment.assessment_id}`
+                      : `/review/${project.assessment.assessment_id}`
+                  }
                   className="no-underline hover:no-underline"
                   data-testid="assessment-link"
                 >
@@ -180,7 +202,11 @@ function ReportRow({ row }: { row: ReportListItem }) {
         ) : null}
         <ReportStateBadge state={row.workflow_state} />
         <Link
-          to={`/students/${row.student_id}/reports/${row.period_id}`}
+          to={
+            isStudent
+              ? `/report/${row.period_id}/submitted`
+              : `/students/${row.student_id}/reports/${row.period_id}`
+          }
           className="btn-quiet"
           data-testid="open-report"
         >
@@ -192,10 +218,12 @@ function ReportRow({ row }: { row: ReportListItem }) {
 }
 
 function FilterBar({
+  isStudent,
   filters,
   onChange,
   onClear,
 }: {
+  isStudent: boolean;
   filters: ReportFilters;
   onChange: (key: keyof typeof PARAMS, value: string) => void;
   onClear?: () => void;
@@ -203,7 +231,6 @@ function FilterBar({
   const { t } = useTranslation();
   const timezone = useTimezone();
   const periods = usePeriods();
-  const people = usePeople();
   const projects = useProjects();
 
   // Weeks that have begun: the calendar opens weeks ahead, and none of those can hold a report.
@@ -211,7 +238,6 @@ function FilterBar({
   const weeks = (periods.data ?? [])
     .filter((period) => period.local_start <= today)
     .sort((a, b) => b.local_start.localeCompare(a.local_start));
-  const students = (people.data?.users ?? []).filter((user) => user.role === "student");
 
   return (
     <div className="mt-6 flex flex-wrap items-end gap-4" data-testid="report-filters">
@@ -231,22 +257,9 @@ function FilterBar({
           ))}
         </select>
       </label>
-      <label className="block">
-        <span className="field-label">{t("reports.filter.student")}</span>
-        <select
-          aria-label={t("reports.filter.student")}
-          value={filters.studentId ?? ""}
-          onChange={(event) => onChange("studentId", event.target.value)}
-          className="select mt-1 max-w-full"
-        >
-          <option value="">{t("reports.filter.allStudents")}</option>
-          {students.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.display_name}
-            </option>
-          ))}
-        </select>
-      </label>
+      {isStudent ? null : (
+        <StudentFilter value={filters.studentId} onChange={(id) => onChange("studentId", id)} />
+      )}
       <label className="block">
         <span className="field-label">{t("reports.filter.project")}</span>
         <select
@@ -279,19 +292,53 @@ function FilterBar({
           ))}
         </select>
       </label>
-      <label className="flex items-center gap-2 pb-1 text-sm">
-        <input
-          type="checkbox"
-          checked={Boolean(filters.needsReview)}
-          onChange={(event) => onChange("needsReview", event.target.checked ? "1" : "")}
-        />
-        {t("reports.filter.needsReview")}
-      </label>
+      {isStudent ? null : (
+        <label className="flex items-center gap-2 pb-1 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(filters.needsReview)}
+            onChange={(event) => onChange("needsReview", event.target.checked ? "1" : "")}
+          />
+          {t("reports.filter.needsReview")}
+        </label>
+      )}
       {onClear ? (
         <button type="button" onClick={onClear} className="btn-quiet pb-1.5">
           {t("reports.filter.clear")}
         </button>
       ) : null}
     </div>
+  );
+}
+
+/** Its own component so the roll is only asked for where it is shown: it is the professor's. */
+function StudentFilter({
+  value,
+  onChange,
+}: {
+  value: string | undefined;
+  onChange: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const people = usePeople();
+  const students = (people.data?.users ?? []).filter((user) => user.role === "student");
+
+  return (
+    <label className="block">
+      <span className="field-label">{t("reports.filter.student")}</span>
+      <select
+        aria-label={t("reports.filter.student")}
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value)}
+        className="select mt-1 max-w-full"
+      >
+        <option value="">{t("reports.filter.allStudents")}</option>
+        {students.map((user) => (
+          <option key={user.id} value={user.id}>
+            {user.display_name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

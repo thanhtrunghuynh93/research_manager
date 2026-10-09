@@ -119,7 +119,7 @@ A module reads another module's data only through that module's `service.py`; it
 | `/me/profile`, `/me/assessments/:id` | The student's own trajectory and released assessments | UI-02, UI-04 |
 | `/projects` | Project list for both roles; create; for a student, projects open to joining | PROJ-01, PROJ-07 |
 | `/projects/:id` | Project workspace: research questions, members, related documents, the repository link; stage and standing controls for the professor, record editing for the creator | UI-03 |
-| `/reports` | Every submitted weekly report, by week, newest first, filtered by week, student, project, state and needs review (in the URL); late flag, versions, state, assessment links. Drafts are never listed (`GET /api/v1/reports`) | UI-01, REP-05 |
+| `/reports` | Both roles: the workspace's for a professor, a student's own for a student (the API scopes it; the student's view drops names, the student filter and needs review, and links to their own reader and assessments). Every submitted weekly report, by week, newest first, filtered by week, student, project, state and needs review (in the URL); late flag, versions, state, assessment links. Drafts are never listed (`GET /api/v1/reports`) | UI-01, REP-05 |
 | `/students/:id` | Student research profile (professor), with each recent week's report state | UI-04 |
 | `/students/:studentId/reports/:periodId` | One submitted week, read back: every version, every entry including projects since left; mark reviewed, request a revision | REP-02, REP-05, UI-04 |
 | `/people` | The roll of the workspace being worked in: invite, resend, move, suspend, restore, remove | AUTH-01, AUTH-06, UI-08 |

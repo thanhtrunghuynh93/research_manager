@@ -44,6 +44,9 @@ export const router = createBrowserRouter([
           // is on the projects they report against.
           { path: "/projects", element: <ProjectListPage /> }, // PROJ-01
           { path: "/projects/:id", element: <ProjectPage /> }, // UI-03
+          // Every submitted week: a professor's of everyone, a student's of their own — the API
+          // scopes it, so one page serves both. UI-01, UI-02, REP-05.
+          { path: "/reports", element: <ReportsPage /> },
         ],
       },
       {
@@ -65,8 +68,6 @@ export const router = createBrowserRouter([
         element: <RequireAuth role="prof" />,
         children: [
           { path: "/overview", element: <OverviewPage /> }, // UI-01
-          // Every submitted week, where the overview is only this one. UI-01, REP-05.
-          { path: "/reports", element: <ReportsPage /> },
           { path: "/people", element: <PeoplePage /> }, // AUTH-01
           { path: "/workspaces", element: <WorkspacesPage /> }, // ADR 0012
           { path: "/students/:id", element: <StudentProfilePage /> }, // UI-04
