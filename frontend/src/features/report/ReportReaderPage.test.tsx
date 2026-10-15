@@ -171,6 +171,8 @@ test("a professor can request a revision, and it names the project", async () =>
   });
   const user = userEvent.setup();
 
+  // Closed until asked for, so reading a report is not mostly an empty form.
+  await user.click(await screen.findByTestId("open-revision-pr1"));
   const button = await screen.findByTestId("request-revision-pr1");
   // The rule is taught before the round trip, as ReviewPage does for an override's rationale.
   expect(button).toBeDisabled();

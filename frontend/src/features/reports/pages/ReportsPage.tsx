@@ -47,9 +47,17 @@ export function ReportsPage() {
     studentId: isStudent ? undefined : (search.get(PARAMS.studentId) ?? undefined),
     projectId: search.get(PARAMS.projectId) ?? undefined,
     state: search.get(PARAMS.state) ?? undefined,
-    needsReview: !isStudent && search.get(PARAMS.needsReview) === "1",
+    // A professor opens on what is waiting for them; unticking it writes `review=0`, so the
+    // choice survives in the address like every other filter.
+    needsReview: !isStudent && search.get(PARAMS.needsReview) !== "0",
   };
-  const filtered = Object.values(filters).some(Boolean);
+  // The default is not a filter the professor chose, so it does not count as one.
+  const filtered = Object.entries(filters).some(([key, value]) =>
+    key === "needsReview" ? !isStudent && !value : Boolean(value),
+  );
+  const narrowed = Object.entries(filters).some(([key, value]) =>
+    key === "needsReview" ? false : Boolean(value),
+  );
   const reports = useReportPages(filters);
 
   const update = (key: keyof typeof PARAMS, value: string) => {
@@ -88,11 +96,13 @@ export function ReportsPage() {
 
       {reports.data && items.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground" data-testid="reports-empty">
-          {filtered
+          {narrowed
             ? t("reports.noMatch")
-            : isStudent
-              ? t("reports.noneYetStudent")
-              : t("reports.noneYet")}
+            : filters.needsReview
+              ? t("reports.nothingToReview")
+              : isStudent
+                ? t("reports.noneYetStudent")
+                : t("reports.noneYet")}
         </p>
       ) : null}
 
@@ -297,7 +307,7 @@ function FilterBar({
           <input
             type="checkbox"
             checked={Boolean(filters.needsReview)}
-            onChange={(event) => onChange("needsReview", event.target.checked ? "1" : "")}
+            onChange={(event) => onChange("needsReview", event.target.checked ? "1" : "0")}
           />
           {t("reports.filter.needsReview")}
         </label>

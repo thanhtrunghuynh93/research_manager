@@ -221,11 +221,12 @@ test("each filter goes into the address bar and onto the request", async () => {
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Student" }), "s2");
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Project" }), "pr2");
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "State" }), "reviewed");
+  // A professor opens on what is waiting, so ticking is the default and unticking is the change.
   await userEvent.click(screen.getByRole("checkbox", { name: "Needs review" }));
 
   await waitFor(() =>
     expect(screen.getByTestId("location")).toHaveTextContent(
-      "?week=p1&student=s2&project=pr2&state=reviewed&review=1",
+      "?week=p1&student=s2&project=pr2&state=reviewed&review=0",
     ),
   );
   await waitFor(() => {
@@ -234,7 +235,7 @@ test("each filter goes into the address bar and onto the request", async () => {
     expect(last.get("student_id")).toBe("s2");
     expect(last.get("project_id")).toBe("pr2");
     expect(last.get("state")).toBe("reviewed");
-    expect(last.get("needs_review")).toBe("true");
+    expect(last.get("needs_review")).toBeNull();
   });
 
   await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
@@ -269,10 +270,15 @@ test("loads the next page on request, and stops offering when there is none", as
 });
 
 test("an empty workspace and an empty filter say different things", async () => {
-  renderPage({ "": { items: [], next_cursor: null, limit: 50 } });
+  renderPage({ "": { items: [], next_cursor: null, limit: 50 } }, "/reports?review=0");
   expect(await screen.findByTestId("reports-empty")).toHaveTextContent(
     "No report has been submitted yet.",
   );
+});
+
+test("a professor with nothing waiting is told so, and how to see the rest", async () => {
+  renderPage({ "": { items: [], next_cursor: null, limit: 50 } });
+  expect(await screen.findByTestId("reports-empty")).toHaveTextContent(/nothing is waiting/i);
 });
 
 test("a filter that matches nothing says so, rather than that nothing exists", async () => {

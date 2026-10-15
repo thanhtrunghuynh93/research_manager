@@ -225,7 +225,7 @@ export function Attachments({
             value={claim}
             onChange={(event) => setClaim(event.target.value)}
             placeholder={t("report.attachments.claimPlaceholder")}
-            className="input"
+            className="input placeholder:text-faint"
           />
           <span className="stamp mt-1.5 block">{t("report.attachments.claimNote")}</span>
         </label>

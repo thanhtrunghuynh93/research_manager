@@ -24,6 +24,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/evidence/Badges";
 import { Failure } from "@/components/Failure";
+import { useAssessments } from "@/features/assessments/queries";
 import { useSession } from "@/features/auth/queries";
 import { useTimezone } from "@/features/calendar/queries";
 import { useUser } from "@/features/people/queries";
@@ -40,6 +41,7 @@ import {
   useRevisionRequests,
   useVersion,
 } from "@/features/report/queries";
+import { useReportPages } from "@/features/reports/queries";
 import { formatInstant, formatLocalDate } from "@/lib/dates";
 
 export function ReportReaderPage() {
@@ -61,6 +63,14 @@ export function ReportReaderPage() {
   const versions = useReportVersions(report.data?.id);
   const revisions = useRevisionRequests(report.data?.id);
   const obligations = useObligations(periodId, fromRoute);
+
+  // The professor's way on: the drafts for this week, and the next report still waiting. Both are
+  // asked only for a professor — a student has no assessment to review and no queue.
+  const assessments = useAssessments({ studentId: canReview ? studentId : undefined, periodId });
+  const waiting = useReportPages({ needsReview: true }, canReview);
+  const nextWaiting = (waiting.data?.items ?? []).find(
+    (item) => !(String(item.student_id) === studentId && String(item.period_id) === periodId),
+  );
 
   const [selected, setSelected] = useState<string | null>(null);
   const shownVersionId = selected ?? report.data?.current_version_id ?? null;
@@ -125,6 +135,34 @@ export function ReportReaderPage() {
             </span>
           ) : null}
         </div>
+        {canReview ? (
+          <nav className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-ui">
+            <Link to="/reports" className="link">
+              {t("report.reader.allReports")}
+            </Link>
+            {(assessments.data ?? []).map((assessment) => (
+              <Link
+                key={assessment.id}
+                to={`/review/${assessment.id}`}
+                className="link"
+                data-testid="to-assessment"
+              >
+                {t("report.reader.assessmentFor", {
+                  project: titleOf(String(assessment.project_id)),
+                })}
+              </Link>
+            ))}
+            {nextWaiting ? (
+              <Link
+                to={`/students/${nextWaiting.student_id}/reports/${nextWaiting.period_id}`}
+                className="link ml-auto"
+                data-testid="next-report"
+              >
+                {t("report.reader.nextReport")}
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
         {/* The one link back, and only while the week is still the student's to edit. */}
         {!canReview ? (
           <Link to={`/report/${periodId}`} className="link mt-3 inline-block text-ui">
@@ -241,7 +279,9 @@ function MarkReviewed({
   const mark = useMarkReviewed(reportId, { periodId, studentId });
 
   return (
-    <div className="mt-7 flex flex-wrap items-center gap-4 border-t border-border pt-5">
+    // Sticky: the decision comes after reading every entry, and on a long package the button was
+    // a full screen below the last thing read.
+    <div className="sticky bottom-0 mt-7 flex flex-wrap items-center gap-4 border-t border-border bg-background py-4">
       <button
         type="button"
         disabled={mark.isPending || reviewed}

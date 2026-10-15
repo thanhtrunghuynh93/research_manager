@@ -52,6 +52,7 @@ export function ReportEditorPage() {
   const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [active, setActive] = useState<string | null>(null);
+  const alertRef = useRef<HTMLParagraphElement | null>(null);
 
   const period = periods.data?.find((candidate) => candidate.id === periodId);
   const required = (obligations.data ?? []).filter((item) => item.state === "required");
@@ -163,6 +164,8 @@ export function ReportEditorPage() {
     } finally {
       setSubmitting(false);
     }
+    const blank = (draft: EntryDraft) =>
+      !draft.progress.trim() && !draft.challenges.trim() && !draft.next_plan_text.trim();
     submit.mutate(
       // Three sections out, five field names in: `results` and `questions` are no longer asked
       // for and are sent empty, because the record keeps the columns it was written with and the
@@ -176,6 +179,20 @@ export function ReportEditorPage() {
         questions: "",
         next_plan: planOfText(draft.next_plan_text),
       })),
+      {
+        // The result is announced at the top, where the "Submitted" line also changes, so the
+        // student does not have to scroll to the foot of a long form to learn it went in.
+        onSuccess: () => window.scrollTo({ top: 0, behavior: "smooth" }),
+        // The error used to sit under the form with nothing pointing at the entry it was about.
+        // Open the first entry that has nothing in it and bring the message into view.
+        onError: () => {
+          const first = Object.values(drafts ?? {}).find(blank);
+          if (first) setActive(first.project_id);
+          requestAnimationFrame(() =>
+            alertRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" }),
+          );
+        },
+      },
     );
   }
 
@@ -188,7 +205,7 @@ export function ReportEditorPage() {
           </p>
           <h1 className="page-title">{t("report.title")}</h1>
         </div>
-        <div className="text-right">
+        <div className="ml-auto text-right">
           <p className="font-mono text-note text-muted-foreground" data-testid="deadline">
             {t("me.dueBy")} {formatInstant(period.deadline_utc, timezone)}
           </p>
@@ -229,12 +246,35 @@ export function ReportEditorPage() {
         </div>
       </header>
 
+      {submit.isSuccess && (
+        <p
+          role="status"
+          className="mt-4 border-l-[3px] border-l-good bg-muted px-3.5 py-2.5 text-ui text-good"
+          data-testid="submit-success"
+        >
+          {t("report.submitted", { version: submit.data.version_no })}
+        </p>
+      )}
+
       <EntryTabs
         tabs={required.map((obligation) => ({
           projectId: obligation.project_id,
           title: titleOf(obligation.project_id),
           submitted: obligation.submitted,
           revisionRequested: requestsFor(obligation.project_id).length > 0,
+          written: Boolean(
+            drafts[obligation.project_id]?.progress.trim() ||
+            drafts[obligation.project_id]?.challenges.trim() ||
+            drafts[obligation.project_id]?.next_plan_text.trim(),
+          ),
+          empty:
+            submit.isError &&
+            Boolean(drafts[obligation.project_id]) &&
+            !(
+              drafts[obligation.project_id]?.progress.trim() ||
+              drafts[obligation.project_id]?.challenges.trim() ||
+              drafts[obligation.project_id]?.next_plan_text.trim()
+            ),
         }))}
         active={active}
         onSelect={setActive}
@@ -276,29 +316,42 @@ export function ReportEditorPage() {
       )}
 
       {problem && (
-        <p role="alert" className="mt-5 text-sm text-bad">
-          {missing ? t("report.missingEntries", { projects: missing }) : problem.detail}
-        </p>
-      )}
-      {submit.isSuccess && (
-        <p className="mt-5 font-mono text-note text-good">
-          {t("report.submitted", { version: submit.data.version_no })}
+        <p ref={alertRef} role="alert" className="mt-5 text-sm text-bad">
+          {missing
+            ? t("report.missingEntries", { projects: missing })
+            : sentenceCase(problem.detail ?? "")}
         </p>
       )}
 
       <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">
-        <AutosaveIndicator state={autosave.state} savedAt={autosave.savedAt} timezone={timezone} />
+        {/* "Not saved yet" under a package that has just been submitted read as the opposite of
+            what happened. */}
+        {submit.isSuccess && autosave.state === "idle" ? (
+          <span className="font-mono text-ui text-good">{t("report.autosave.submitted")}</span>
+        ) : (
+          <AutosaveIndicator
+            state={autosave.state}
+            savedAt={autosave.savedAt}
+            timezone={timezone}
+          />
+        )}
         <button
           type="button"
           onClick={() => void onSubmit()}
           disabled={submitting || submit.isPending}
           className="btn-primary"
         >
-          {t("report.submit")}
+          {t(report.data?.first_submitted_at ? "report.resubmit" : "report.submit")}
         </button>
       </div>
     </section>
   );
+}
+
+/** The API's `detail` is a clause ("nothing was written for …"); on screen it is a sentence. */
+function sentenceCase(text: string): string {
+  // Only a plain leading word: `entries[0].hours: …` is a field path, and capitalising it is wrong.
+  return text.replace(/^[a-z]+(?=\s)/, (word) => word.charAt(0).toUpperCase() + word.slice(1));
 }
 
 type TabDescriptor = {
@@ -306,6 +359,10 @@ type TabDescriptor = {
   title: string;
   submitted: boolean;
   revisionRequested: boolean;
+  /** Something is typed in this entry, though it is not in the submitted package yet. */
+  written: boolean;
+  /** The last submit was refused and this entry has nothing in it. */
+  empty: boolean;
 };
 
 /**
@@ -377,18 +434,24 @@ function EntryTabs({
                 thing on this screen that still wants doing. */}
             <span
               className={
-                tab.revisionRequested || !tab.submitted
-                  ? "ml-2 font-mono text-tag uppercase tracking-[0.06em] text-warn"
-                  : "ml-2 font-mono text-tag uppercase tracking-[0.06em] text-good"
+                tab.empty
+                  ? "ml-2 font-mono text-tag uppercase tracking-[0.06em] text-bad"
+                  : tab.revisionRequested || (!tab.submitted && !tab.written)
+                    ? "ml-2 font-mono text-tag uppercase tracking-[0.06em] text-warn"
+                    : "ml-2 font-mono text-tag uppercase tracking-[0.06em] text-good"
               }
               data-testid={`tab-state-${tab.projectId}`}
             >
               {t(
-                tab.revisionRequested
-                  ? "report.state.revision_requested"
-                  : tab.submitted
-                    ? "report.obligation.submitted"
-                    : "report.obligation.required",
+                tab.empty
+                  ? "report.obligation.empty"
+                  : tab.revisionRequested
+                    ? "report.state.revision_requested"
+                    : tab.submitted
+                      ? "report.obligation.submitted"
+                      : tab.written
+                        ? "report.obligation.written"
+                        : "report.obligation.required",
               )}
             </span>
           </button>

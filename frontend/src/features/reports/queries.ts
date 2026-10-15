@@ -18,8 +18,9 @@ function reportsUrl(filters: ReportFilters, limit: number, cursor?: string | nul
 }
 
 /** Submitted reports a page at a time, newest week first, for the professor's list (UI-01). */
-export function useReportPages(filters: ReportFilters) {
+export function useReportPages(filters: ReportFilters, enabled = true) {
   return useInfiniteQuery({
+    enabled,
     queryKey: [...reportsKey, "pages", filters],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => api.get<ReportListPage>(reportsUrl(filters, 50, pageParam)),

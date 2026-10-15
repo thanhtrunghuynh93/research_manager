@@ -13,11 +13,19 @@ import { Failure } from "@/components/Failure";
 import { useEnsureObligations, useOverview, useRetryAnalysis } from "@/features/overview/queries";
 import type { WeekStudent, WeekWorkspace } from "@/features/overview/types";
 import { useTimezone } from "@/features/calendar/queries";
+import { usePeriods } from "@/features/report/queries";
 import { formatInstant, formatLocalDate } from "@/lib/dates";
 
 export function OverviewPage() {
   const { t } = useTranslation();
   const overview = useOverview();
+  const periods = usePeriods();
+  const weekOf = (periodId: string) => {
+    const period = periods.data?.find((one) => one.id === periodId);
+    return period
+      ? `${formatLocalDate(period.local_start)} – ${formatLocalDate(period.local_end)}`
+      : "";
+  };
   const timezone = useTimezone();
   const retry = useRetryAnalysis();
 
@@ -123,6 +131,13 @@ export function OverviewPage() {
                 })}
                 {draft.project_title ? (
                   <span className="ml-2 text-muted-foreground">{String(draft.project_title)}</span>
+                ) : null}
+                {/* Three drafts for one student and project read as three copies of one row until
+                    the week is on them. */}
+                {weekOf(String(draft.period_id)) ? (
+                  <span className="ml-2 font-mono text-meta text-faint">
+                    {weekOf(String(draft.period_id))}
+                  </span>
                 ) : null}
               </Link>
               <Badge tone={draft.confidence === "high" ? "good" : "warn"}>

@@ -38,7 +38,10 @@ const EMPTY = {
 };
 
 function renderPage(overview: Record<string, unknown> = EMPTY) {
-  server.use(http.get("/api/v1/overview", () => HttpResponse.json(overview)));
+  server.use(
+    http.get("/api/v1/overview", () => HttpResponse.json(overview)),
+    http.get("/api/v1/periods", () => HttpResponse.json([])),
+  );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -191,7 +194,7 @@ test("shows the week's reports by workspace, project and student", async () => {
   expect(board).toHaveTextContent("An Nguyen");
   expect(board).toHaveTextContent("Bao Tran");
   expect(board).toHaveTextContent("Chi Le");
-  expect(board).toHaveTextContent("1 of 3 in");
+  expect(board).toHaveTextContent("1 of 3 reports in");
 });
 
 test("each of the three states says what it means, not just which colour it is", async () => {

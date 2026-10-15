@@ -8,6 +8,7 @@ import {
   usePeriods,
   useProjects,
   useReport,
+  useRevisionRequests,
 } from "@/features/report/queries";
 import type { Obligation } from "@/features/report/types";
 import { useRecentReports } from "@/features/reports/queries";
@@ -23,6 +24,7 @@ export function StudentHomePage() {
   const obligations = useObligations(period?.id);
   const projects = useProjects();
   const report = useReport(period?.id);
+  const revisions = useRevisionRequests(report.data?.id);
 
   if (periods.isPending) return <p className="stamp">{t("common.loading")}</p>;
   if (!period) return <p className="text-sm text-muted-foreground">{t("me.noPeriod")}</p>;
@@ -41,6 +43,11 @@ export function StudentHomePage() {
   const owed = (obligations.data ?? []).filter(
     (obligation) => obligation.state === "required" && !obligation.submitted,
   ).length;
+  // What the professor asked for, per project: it is the one thing on this screen that is not
+  // finished, and "Submitted" beside the project it was asked about read as the opposite.
+  const open = (revisions.data ?? []).filter((request) => !request.resolved_in_version_id);
+  const askedOf = (projectId: string) =>
+    open.filter((request) => String(request.project_id) === projectId);
   const workflowState = report.data?.workflow_state ?? "not_started";
   const partly = owed > 0 && (workflowState === "submitted" || workflowState === "resubmitted");
   const state = report.isPending
@@ -95,9 +102,27 @@ export function StudentHomePage() {
         {/* "Open" while the answer is outstanding: it is true either way, where "Start this
             week" on a week already submitted is not. */}
         <Link to={`/report/${period.id}`} className="btn-primary no-underline">
-          {report.isPending || report.data ? t("me.openWeek") : t("me.startWeek")}
+          {open.length > 0
+            ? t("me.reviseWeek")
+            : report.isPending || report.data
+              ? t("me.openWeek")
+              : t("me.startWeek")}
         </Link>
       </div>
+
+      {open.length > 0 && (
+        <div className="mt-4 space-y-2" data-testid="home-revisions">
+          {open.map((request) => (
+            <p
+              key={request.id}
+              className="border-l-[3px] border-l-warn-rule bg-muted px-3.5 py-2.5 text-ui text-warn"
+            >
+              <span className="font-medium">{titleOf(String(request.project_id))}.</span>{" "}
+              {t("me.revisionAsked")} {request.reason}
+            </p>
+          ))}
+        </div>
+      )}
 
       <h2 className="section-title mt-8">{t("me.obligations")}</h2>
       <ul className="panel mt-2.5">
@@ -107,7 +132,10 @@ export function StudentHomePage() {
             <Link to={`/projects/${obligation.project_id}`} className="link">
               {titleOf(obligation.project_id)}
             </Link>
-            <ObligationState obligation={obligation} />
+            <ObligationState
+              obligation={obligation}
+              revisionRequested={askedOf(obligation.project_id).length > 0}
+            />
           </li>
         ))}
         {obligations.data?.length === 0 && (
@@ -137,13 +165,26 @@ export function StudentHomePage() {
  * and it is computed from the report's current version, so this agrees with the professor's
  * outstanding list by construction.
  */
-function ObligationState({ obligation }: { obligation: Obligation }) {
+function ObligationState({
+  obligation,
+  revisionRequested,
+}: {
+  obligation: Obligation;
+  revisionRequested: boolean;
+}) {
   const { t } = useTranslation();
   if (obligation.state === "excused") {
     return (
       <span className="font-mono text-meta text-faint">
         {t("report.obligation.excused")}
         {obligation.excuse_reason ? ` — ${obligation.excuse_reason}` : ""}
+      </span>
+    );
+  }
+  if (revisionRequested) {
+    return (
+      <span className="font-mono text-meta uppercase tracking-[0.06em] text-warn">
+        {t("report.state.revision_requested")}
       </span>
     );
   }

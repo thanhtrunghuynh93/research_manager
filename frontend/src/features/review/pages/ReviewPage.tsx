@@ -11,7 +11,7 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import {
   Badge,
@@ -92,6 +92,15 @@ export function ReviewPage() {
             <p className="mt-2 font-mono text-ui text-muted-foreground">
               {week} {project ? `on ${project}` : ""}
             </p>
+            {/* The draft is about what the student wrote, and the report was one click away only
+                from the other direction. */}
+            <Link
+              to={`/students/${data.student_id}/reports/${data.period_id}`}
+              className="link mt-2 inline-block text-ui"
+              data-testid="to-report"
+            >
+              {t("review.readReport")}
+            </Link>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{t("review.version", { n: data.version_no })}</Badge>

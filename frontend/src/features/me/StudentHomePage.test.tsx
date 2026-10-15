@@ -390,6 +390,6 @@ test("earlier weeks show what was handed in, and a week with nothing opens the e
 
   // The week with nothing in it says so, and opens the editor: it is the only way to file it late.
   expect(rows[1]).toHaveTextContent("Aug 31, 2026 – Sep 06, 2026");
-  expect(rows[1]).toHaveTextContent(/not submitted/i);
+  expect(rows[1]).toHaveTextContent(/overdue/i);
   expect(within(rows[1]!).getByRole("link")).toHaveAttribute("href", "/report/p-1");
 });

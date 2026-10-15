@@ -56,17 +56,20 @@
     "noPeriod": "No reporting period has been configured yet.",
     "startWeek": "Start this week",
     "openWeek": "Open this week",
+    "reviseWeek": "Revise this week",
+    "revisionAsked": "Your professor asked for a change:",
     "partlySubmitted_one": "Submitted — {{count}} project still owed",
     "partlySubmitted_other": "Submitted — {{count}} projects still owed",
     "releasedNote": "An assessment appears here once your professor has approved it.",
     "pastWeeks": "Earlier weeks",
     "toProfile": "Your assessments and your progress on every project →",
-    "notSubmitted": "Not submitted · write it"
+    "notSubmitted": "Overdue · write it →"
   },
   "report": {
     "title": "Weekly package",
     "tabs": "Project entries",
     "submit": "Submit report",
+    "resubmit": "Resubmit report",
     "submitted": "Submitted as version {{version}}.",
     "alreadySubmitted": "Submitted {{when}} — sending again adds a version; this one is kept",
     "resubmitted": "Resubmitted {{when}} as version {{version}} — sending again adds a version; every earlier one is kept",
@@ -84,11 +87,14 @@
     },
     "obligation": {
       "required": "Required",
+      "written": "Written",
+      "empty": "Nothing written",
       "submitted": "Submitted",
       "excused": "Excused"
     },
     "autosave": {
       "idle": "Not saved yet",
+      "submitted": "Everything on this screen is submitted",
       "saving": "Saving…",
       "saved": "Saved",
       "failed": "Not saved — retrying"
@@ -109,7 +115,7 @@
     "attachments": {
       "title": "Evidence",
       "claim": "What does this show?",
-      "claimPlaceholder": "The run log behind the nDCG number",
+      "claimPlaceholder": "e.g. The run log behind the nDCG number",
       "claimNote": "Your description of what this supports, applied to the next file or link you attach. Recorded as your claim, not as a finding.",
       "file": "Attach a file",
       "download": "Download",
@@ -145,6 +151,7 @@
       },
       "departedProject": "Left this project",
       "nothingWritten": "Nothing was written here.",
+      "noEvidence": "No evidence attached to this entry.",
       "hours": "{{hours}} hour(s), self-reported",
       "noHours": "No hours were recorded.",
       "requestRevision": "Ask for a revision",
@@ -156,6 +163,12 @@
       "reviewed": "Reviewed",
       "seeSubmitted": "Read what you submitted →",
       "toEditor": "← Back to this week’s editor",
+      "assessmentFor": "Assessment draft · {{project}} →",
+      "assessmentApproved": "Assessment · {{project}} →",
+      "nextReport": "Next report waiting for review →",
+      "allReports": "← All reports",
+      "askRevision": "Ask for a revision",
+      "cancel": "Cancel",
       "weekly": "Weekly reports",
       "noReport": "No report"
     }
@@ -175,7 +188,7 @@
     "asOf": "as of {{when}}",
     "currentPeriod": "Current period",
     "week": "This week's reports",
-    "weekCount": "{{submitted}} of {{total}} in",
+    "weekCount": "{{submitted}} of {{total}} reports in",
     "weekEmpty": "No reports are owed this week. Derive the obligations below once projects are active and students are on them.",
     "weekNoCalendar": "This workspace has no weekly schedule, so no week has started and no report is owed, however many projects are active.",
     "setCalendar": "Set a weekly schedule on Workspaces.",
@@ -192,6 +205,7 @@
     "noneYet": "No report has been submitted yet.",
     "noneYetStudent": "You have not submitted a report yet.",
     "noMatch": "No submitted report matches these filters.",
+    "nothingToReview": "Nothing is waiting for review. Untick “Needs review” to see every report.",
     "submitted": "Submitted {{when}}",
     "latest": "Latest version {{when}}",
     "late": "Late",
@@ -230,6 +244,7 @@
   },
   "review": {
     "title": "Review",
+    "readReport": "Read the submitted report →",
     "subject": "This student",
     "unavailable": "This assessment could not be loaded.",
     "version": "Version {{n}}",

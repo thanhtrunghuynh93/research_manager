@@ -29,6 +29,9 @@ export function RevisionRequestForm({
   const { t } = useTranslation();
   const ask = useRequestRevision(reportId, { periodId, studentId });
   const [reason, setReason] = useState("");
+  // Closed until asked for. Open by default, every entry carried a text box and a button that
+  // did nothing until typed in, which made reading a report look like filling in a form.
+  const [open, setOpen] = useState(false);
 
   return (
     <form
@@ -38,30 +41,54 @@ export function RevisionRequestForm({
         if (!reason.trim()) return;
         ask.mutate(
           { project_id: projectId, reason: reason.trim() },
-          { onSuccess: () => setReason("") },
+          {
+            onSuccess: () => {
+              setReason("");
+              setOpen(false);
+            },
+          },
         );
       }}
     >
-      <label className="block">
-        <span className="field-label">{t("report.reader.requestRevision")}</span>
-        <textarea
-          rows={2}
-          value={reason}
-          placeholder={t("report.reader.revisionPlaceholder")}
-          onChange={(event) => setReason(event.target.value)}
-          className="input"
-        />
-      </label>
-      <div className="mt-2.5 flex flex-wrap items-center gap-4">
-        <button
-          type="submit"
-          disabled={ask.isPending || reason.trim() === ""}
-          className="btn-quiet"
-          data-testid={`request-revision-${projectId}`}
-        >
-          {t("report.reader.sendRevision")}
-        </button>
-        {ask.isSuccess ? (
+      {open ? (
+        <label className="block">
+          <span className="field-label">{t("report.reader.requestRevision")}</span>
+          <textarea
+            rows={2}
+            autoFocus
+            value={reason}
+            placeholder={t("report.reader.revisionPlaceholder")}
+            onChange={(event) => setReason(event.target.value)}
+            className="input"
+          />
+        </label>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-4" style={{ marginTop: open ? 10 : 0 }}>
+        {open ? (
+          <>
+            <button
+              type="submit"
+              disabled={ask.isPending || reason.trim() === ""}
+              className="btn-primary"
+              data-testid={`request-revision-${projectId}`}
+            >
+              {t("report.reader.sendRevision")}
+            </button>
+            <button type="button" className="btn-quiet" onClick={() => setOpen(false)}>
+              {t("report.reader.cancel")}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="btn-quiet"
+            onClick={() => setOpen(true)}
+            data-testid={`open-revision-${projectId}`}
+          >
+            {t("report.reader.askRevision")}
+          </button>
+        )}
+        {ask.isSuccess && !open ? (
           <span className="stamp" role="status">
             {t("report.reader.revisionSent")}
           </span>

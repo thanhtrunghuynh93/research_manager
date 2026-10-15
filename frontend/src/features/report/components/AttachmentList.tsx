@@ -25,7 +25,15 @@ export function AttachmentList({
   const { t } = useTranslation();
   const artifacts = useArtifacts({ periodId, projectId, studentId }, false);
 
-  if (!artifacts.data?.length) return null;
+  if (!artifacts.data) return null;
+  // Said rather than left out: a reader cannot tell "no evidence" from "evidence did not load"
+  // when the section is simply absent, and the absence is a fact about the week.
+  if (artifacts.data.length === 0)
+    return (
+      <p className={cn("text-ui text-faint", className)} data-testid="no-evidence">
+        {t("report.reader.noEvidence")}
+      </p>
+    );
 
   return (
     <div className={cn(className)}>
