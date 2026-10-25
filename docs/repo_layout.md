@@ -82,6 +82,7 @@ backend/
 │   │   ├── pagination.py      cursor pagination helpers
 │   │   └── types.py           shared enums (Role, Visibility, JobState)
 │   ├── identity/              module shape in 3.2
+│   ├── api/oauth.py           /oauth/* and /.well-known/oauth-* (ADR 0025); api/v1/oauth.py is the consent step
 │   ├── projects/
 │   ├── reporting/
 │   │   ├── artifacts.py       uploads, confirm, removal, versions, download, extraction hand-off (REP-04)
@@ -105,6 +106,14 @@ backend/
 │   │   ├── __init__.py        no routes of its own, no AI
 │   │   └── service.py         next_deadline, missing_reports, week_reports, review_queue,
 │   │                          stalled_analyses, display_name
+│   ├── oauth/                 the app as an OAuth 2.1 authorization server for the MCP connector
+│   │   ├── models.py          oauth_clients, oauth_codes, oauth_tokens (ADR 0025)
+│   │   ├── service.py         registration, PKCE codes, token mint/refresh/revoke, bearer → Scope
+│   │   └── schemas.py         registration, consent and token shapes
+│   ├── mcp/                   the read-only MCP endpoint at /mcp (ADR 0025); no models
+│   │   ├── router.py          POST /mcp: bearer auth, JSON-RPC in, JSON out
+│   │   ├── server.py          initialize, ping, tools/list, tools/call; audit and truncation
+│   │   └── tools.py           the thirteen read tools, each a call into a service with the Scope
 │   ├── notifications/
 │   │   ├── email/
 │   │   │   ├── base.py        EmailSender protocol
@@ -291,6 +300,7 @@ frontend/
     │   ├── auth/              login, accept-invitation, reset-password
     │   ├── calendar/          the reporting calendar and the weeks it opens; rendered on the
     │   │                      workspaces screen, because a calendar is a workspace setting (REP-01)
+    │   ├── connect/           the page a connector sends a professor to, to allow it (ADR 0025)
     │   ├── overview/          professor overview (UI-01)
     │   ├── me/                student overview, own progress, one released assessment (UI-02, UI-04)
     │   ├── people/            the roll of the workspace being worked in: invite, resend, move,

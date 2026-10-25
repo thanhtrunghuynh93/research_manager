@@ -109,11 +109,13 @@ include_external_packages = true  # needed to forbid the external `openai` packa
 name = "Layered bounded contexts"
 type = "layers"
 layers = [
+  "app.mcp",
   "app.overview",
   "app.assessment",
   "app.evidence",
   "app.reporting",
   "app.projects",
+  "app.oauth",
   "app.identity",
   "app.core",
 ]
@@ -156,7 +158,7 @@ type = "forbidden"
 # Direct imports only: the API reaches models through each module's service.py by design, which is
 # exactly the arrangement this contract protects (docs/repo_layout.md 3.2).
 allow_indirect_imports = "true"
-source_modules = ["app.api"]
+source_modules = ["app.api", "app.mcp"]
 forbidden_modules = [
   "app.identity.models",
   "app.projects.models",
@@ -164,4 +166,5 @@ forbidden_modules = [
   "app.evidence.models",
   "app.assessment.models",
   "app.notifications.models",
+  "app.oauth.models",
 ]

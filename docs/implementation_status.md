@@ -55,6 +55,15 @@ Residue kept on purpose: `plan_baseline_items.task_id` (no FK), the `proposed`/`
 `evidence_snapshot_items.integration_of_earlier_work` (always false) — each has historical rows or
 enum users. A project's repository is the plain link `projects.repo_url`, which nothing reads.
 
+## 2.1 Added since
+
+| Feature | Decision | Migration |
+| --- | --- | --- |
+| Read-only MCP endpoint for professors, with OAuth 2.1 sign-in and a consent page | [ADR 0025](adr/0025-mcp-access-for-professors.md) | 0031 |
+
+Not built, by decision: MCP write tools (review, revision requests, approval), a student's MCP
+access, and reading an attachment's extracted text through MCP.
+
 ## 3 Known gaps
 
 | Gap | Requirement | Why |

@@ -38,6 +38,11 @@ def auth_rate_limits() -> dict[str, tuple[int, int]]:
         "/api/v1/auth/login": (300, get_settings().auth_login_attempts),
         "/api/v1/auth/password-reset": (3600, 5),
         "/api/v1/auth/accept-invitation": (3600, 10),
+        # ADR 0025. Registration is open by design (a connector has no account), so it is capped
+        # per address; each call leaves a row. The token endpoint is capped too: codes and refresh
+        # tokens are 32 random bytes, so this is about volume rather than guessing.
+        "/oauth/register": (3600, 20),
+        "/oauth/token": (300, 60),
     }
 
 

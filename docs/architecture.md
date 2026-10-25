@@ -70,7 +70,7 @@ flowchart TB
 
 Service notes:
 
-- **caddy** terminates TLS with automatic certificates, serves the built SPA, and proxies `/api/*` to `api`. No CORS because the SPA and API share an origin.
+- **caddy** terminates TLS with automatic certificates, serves the built SPA, and proxies `/api/*` to `api`, and likewise `/mcp`, `/oauth/*` and `/.well-known/oauth-*` for the MCP connector (ADR 0025). No CORS because the SPA and API share an origin.
 - **api** and **worker** run the same image with different commands. The worker also runs the periodic tasks (section 12), so there is no separate scheduler container.
 - **postgres** uses the stock `postgres:16-bookworm` image (ADR 0024). One volume. `shared_buffers` and `work_mem` tuned for the host; the queue and the records share the instance.
 - **minio** holds one versioned bucket per environment. The API never streams file bodies; it issues presigned PUT and GET URLs after an authorization check.
@@ -283,6 +283,19 @@ Downloads reuse the same predicates: a presigned GET is issued only after `visib
 - Recovery: password reset by emailed single-use token for every user, requested from the sign-in screen.
 - Token emails: notifications subscribes to `InvitationCreated` and `PasswordResetRequested` and defers a `notifications.send_token_email` job, which is sent only after the issuing transaction commits. They bypass `email_deliveries` because a token message has no in-app counterpart — the addressee has no session — and the queue row would hold a live credential until the next sweep.
 - Break-glass: `python -m app.cli breakglass recover-professor --email …` (also reachable as `python -m app.identity.breakglass`) runs only with shell access on the host, requires the `.env` secret, writes an `audit_events` row with `actor_kind = system`, and emails the previous professor address. It issues a single-use recovery link valid for 15 minutes rather than a password, so the secret is handed over out of band. `transfer-professor --from … --to …` deactivates the outgoing account in the same transaction and moves `workspaces.owner_id`, the workspace's break-glass contact. `demote-professor` and `deactivate-professor` eject a co-supervisor; every command that could reduce the professor count refuses to leave a workspace with none. None of this is reachable through the API (ADR 0011).
+
+### 6.2.1 The MCP connector (ADR 0025)
+
+A connector reaches the same services through `/mcp`, which accepts only an OAuth bearer token. The
+app is its own authorization server: authorization code with PKCE (S256), public clients registered
+dynamically, opaque tokens stored as SHA-256 digests, refresh tokens that rotate (a replayed one
+revokes everything issued to that user and client). Consent is the SPA's `/connect` page behind the
+ordinary login, so no password reaches an OAuth endpoint. Only a professor can consent. A token is
+bound to the workspace the professor was in at consent and is not rewritten when the account moves,
+so it dies with the move. `identity.service.scope_for` builds its Scope, so every tool sees what the
+professor sees. The tools are read-only, each call is audited as `mcp.tool_called`, and results that
+quote student text are prefixed with a notice that it is data. The transport is stateless JSON over
+POST; `GET /mcp` is 405.
 
 ### 6.3 Access changes (AUTH-03, AC-11)
 

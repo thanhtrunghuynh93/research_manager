@@ -163,6 +163,21 @@ because it recreates the extension and an empty `vector(1536)` column; 0029, 002
 downgrade to the earlier, empty table shapes, and the code that used them must be deployed with
 them.
 
+## Connecting Claude (MCP)
+
+The connector needs nothing beyond the stack: Caddy already forwards `/mcp`, `/oauth/*` and
+`/.well-known/oauth-*` to the api (ADR 0025), and migration 0031 creates its tables. What it does
+need is a correct `RM_PUBLIC_URL`: the discovery documents advertise it as the issuer, so a wrong
+value makes every client send the professor to an address that does not serve the app.
+
+1. Check `curl -s https://$RM_DOMAIN/.well-known/oauth-authorization-server` names `https://$RM_DOMAIN`.
+2. In claude.ai, Settings → Connectors → Add custom connector, URL `https://$RM_DOMAIN/mcp`.
+3. Claude opens `/connect`. Sign in as a professor and choose Allow.
+
+Cut a connection off by deactivating the account, or with
+`UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = '<id>'`. A professor who moves to
+another workspace loses it automatically and reconnects.
+
 ## Loading a demo workspace
 
 Never on the production deployment: `app.cli seed demo` creates a professor with a published

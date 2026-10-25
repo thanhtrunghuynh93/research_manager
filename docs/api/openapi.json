@@ -595,6 +595,98 @@
         "title": "AssessmentOut",
         "type": "object"
       },
+      "AuthorizeIn": {
+        "description": "What the SPA consent page posts back: the query string it was opened with.",
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "code_challenge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Challenge"
+          },
+          "code_challenge_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Challenge Method"
+          },
+          "redirect_uri": {
+            "title": "Redirect Uri",
+            "type": "string"
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource"
+          },
+          "response_type": {
+            "default": "code",
+            "title": "Response Type",
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "client_id",
+          "redirect_uri"
+        ],
+        "title": "AuthorizeIn",
+        "type": "object"
+      },
+      "AuthorizeOut": {
+        "properties": {
+          "redirect_to": {
+            "title": "Redirect To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirect_to"
+        ],
+        "title": "AuthorizeOut",
+        "type": "object"
+      },
       "BudgetState": {
         "properties": {
           "analysis_delayed": {
@@ -717,6 +809,29 @@
           "effective_from"
         ],
         "title": "CalendarConfigOut",
+        "type": "object"
+      },
+      "ConsentOut": {
+        "properties": {
+          "client_name": {
+            "title": "Client Name",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_name",
+          "scope",
+          "workspace_name"
+        ],
+        "title": "ConsentOut",
         "type": "object"
       },
       "CurrentPeriod": {
@@ -4357,6 +4472,129 @@
         "summary": "Configure the reporting calendar",
         "tags": [
           "reporting"
+        ]
+      }
+    },
+    "/api/v1/oauth/authorize": {
+      "post": {
+        "operationId": "authorize_api_v1_oauth_authorize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Allow the connector to read this workspace",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/api/v1/oauth/consent": {
+      "post": {
+        "operationId": "consent_api_v1_oauth_consent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What a connector is asking for, before the professor decides",
+        "tags": [
+          "oauth"
+        ]
+      }
+    },
+    "/api/v1/oauth/deny": {
+      "post": {
+        "operationId": "deny_api_v1_oauth_deny_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refuse the connector",
+        "tags": [
+          "oauth"
         ]
       }
     },

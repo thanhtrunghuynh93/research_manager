@@ -13,6 +13,7 @@ from contextlib import ExitStack, asynccontextmanager
 from fastapi import FastAPI
 
 from app.ai import bootstrap as ai_bootstrap
+from app.api import oauth as oauth_api
 from app.api.middleware import (
     AuthRateLimitMiddleware,
     RequestContextMiddleware,
@@ -25,6 +26,7 @@ from app.core import storage
 from app.core.config import Settings, get_settings
 from app.core.db import dispose_engine, init_engine
 from app.core.jobs import connector_for, procrastinate_app
+from app.mcp import router as mcp_router
 
 
 def configure_logging(settings: Settings) -> None:
@@ -81,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.add_middleware(RequestContextMiddleware)
     register_exception_handlers(application)
     include_routers(application)
+    application.include_router(oauth_api.router)
+    application.include_router(mcp_router.router)
     return application
 
 

@@ -439,6 +439,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/oauth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Allow the connector to read this workspace */
+        post: operations["authorize_api_v1_oauth_authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What a connector is asking for, before the professor decides */
+        post: operations["consent_api_v1_oauth_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refuse the connector */
+        post: operations["deny_api_v1_oauth_deny_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/obligations/{obligation_id}/excuse": {
         parameters: {
             query?: never;
@@ -1304,6 +1355,36 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /**
+         * AuthorizeIn
+         * @description What the SPA consent page posts back: the query string it was opened with.
+         */
+        AuthorizeIn: {
+            /** Client Id */
+            client_id: string;
+            /** Code Challenge */
+            code_challenge?: string | null;
+            /** Code Challenge Method */
+            code_challenge_method?: string | null;
+            /** Redirect Uri */
+            redirect_uri: string;
+            /** Resource */
+            resource?: string | null;
+            /**
+             * Response Type
+             * @default code
+             */
+            response_type: string;
+            /** Scope */
+            scope?: string | null;
+            /** State */
+            state?: string | null;
+        };
+        /** AuthorizeOut */
+        AuthorizeOut: {
+            /** Redirect To */
+            redirect_to: string;
+        };
         /** BudgetState */
         BudgetState: {
             /** Analysis Delayed */
@@ -1367,6 +1448,15 @@ export interface components {
             version: number;
             /** Week Start Weekday */
             week_start_weekday: number;
+        };
+        /** ConsentOut */
+        ConsentOut: {
+            /** Client Name */
+            client_name: string;
+            /** Scope */
+            scope: string;
+            /** Workspace Name */
+            workspace_name: string;
         };
         /** CurrentPeriod */
         CurrentPeriod: {
@@ -3246,6 +3336,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_api_v1_oauth_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthorizeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    consent_api_v1_oauth_consent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthorizeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deny_api_v1_oauth_deny_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthorizeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizeOut"];
                 };
             };
             /** @description Validation Error */

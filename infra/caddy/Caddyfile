@@ -40,6 +40,18 @@
 		}
 	}
 
+	# The MCP connector (ADR 0025): the endpoint, the OAuth protocol endpoints and the discovery
+	# documents a client fetches before it can sign in. `/connect`, the consent page the browser
+	# lands on, is a client route and is served by the single-page app below. Unbuffered like the
+	# API, and not under /api because a connector derives these paths from the server's address.
+	@connector path /mcp /mcp/* /oauth/* /.well-known/oauth-*
+	handle @connector {
+		reverse_proxy api:8000 {
+			flush_interval -1
+			header_up X-Request-ID {http.request.uuid}
+		}
+	}
+
 	# Single-page app: static assets, then index.html fallback for client routes.
 	#
 	# The two caching rules are not symmetrical, and the asymmetry is the point. Vite fingerprints

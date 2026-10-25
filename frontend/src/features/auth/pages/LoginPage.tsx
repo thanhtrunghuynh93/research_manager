@@ -17,9 +17,16 @@ export function LoginPage() {
   // Set by the reset page on its way here, so the person is told the change took effect.
   const justReset = (location.state as { reset?: boolean } | null)?.reset === true;
 
+  // Only an in-app path: a `from` of "//host" or "https:..." would make sign-in an open redirect.
+  const from = (location.state as { from?: string } | null)?.from;
+  const returnTo = from && /^\/(?!\/)/.test(from) ? from : null;
+
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
-    login.mutate({ email, password }, { onSuccess: (user) => navigate(homeFor(user.role)) });
+    login.mutate(
+      { email, password },
+      { onSuccess: (user) => navigate(returnTo ?? homeFor(user.role)) },
+    );
   }
 
   // The API answers a wrong password and an unknown address identically; show what it said.

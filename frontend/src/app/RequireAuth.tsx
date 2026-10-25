@@ -15,7 +15,11 @@ export function RequireAuth({ role }: { role?: Role }) {
   const location = useLocation();
 
   if (session.isPending) return <p className="stamp">{t("common.loading")}</p>;
-  if (!session.data) return <Navigate to="/login" replace />;
+  // `from` lets the login page bring them back: a connector's consent link (ADR 0025) is a deep
+  // link that nobody should have to find again after signing in.
+  if (!session.data) {
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  }
   // To their own home, not a fixed one: a student-only page sending a professor to `/me` would
   // bounce them straight back here.
   //

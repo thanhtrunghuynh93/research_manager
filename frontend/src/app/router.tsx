@@ -7,6 +7,7 @@ import { StatusPage } from "@/app/StatusPage";
 import { AcceptInvitationPage } from "@/features/auth/pages/AcceptInvitationPage";
 import { LoginPage } from "@/features/auth/pages/LoginPage";
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
+import { ConnectPage } from "@/features/connect/pages/ConnectPage";
 import { MyAssessmentPage } from "@/features/me/pages/MyAssessmentPage";
 import { MyProfilePage } from "@/features/me/pages/MyProfilePage";
 import { StudentHomePage } from "@/features/me/pages/StudentHomePage";
@@ -70,6 +71,8 @@ export const router = createBrowserRouter([
           { path: "/overview", element: <OverviewPage /> }, // UI-01
           { path: "/people", element: <PeoplePage /> }, // AUTH-01
           { path: "/workspaces", element: <WorkspacesPage /> }, // ADR 0012
+          // Where a connector sends the professor to allow it (ADR 0025).
+          { path: "/connect", element: <ConnectPage /> },
           { path: "/students/:id", element: <StudentProfilePage /> }, // UI-04
           // The read half of REP-02..05, which had no surface at either end until now.
           { path: "/students/:studentId/reports/:periodId", element: <ReportReaderPage /> },

@@ -11,6 +11,7 @@ screen; §8 has the commands that check it.
 | --- | --- |
 | 🖥️ | A screen calls it, and this role can reach that screen |
 | ⚙️ | The endpoint works and no screen calls it — reachable only with an HTTP client |
+| 🔌 | Called by an MCP client the professor connected, not by a screen. Not under `/api/v1` |
 
 ## 1 The screens
 
@@ -144,6 +145,19 @@ The evidence index has no route of its own: the pipeline reads it when it builds
 | Model spend this month | `GET /admin/ai/usage` | ⚙️ |
 | Read and set monthly AI budgets (none set means no limit) | `GET`/`PUT /admin/ai/budgets` | ⚙️ |
 
+### 2.8 Connecting an assistant over MCP (ADR 0025)
+
+A professor can let Claude, or another MCP client, read their workspace. The connector is added by
+URL (`https://<domain>/mcp`) and signs in through the app: the client sends the professor to
+`/connect`, which names the client and the workspace and asks Allow or Deny. What it reads is what
+the professor sees in the app, in the workspace they consented in; it cannot change anything. The
+token stops working if the account is deactivated, stops being a professor, or moves workspace.
+
+| Use case | Endpoint | |
+| --- | --- | --- |
+| See what a connector is asking for, then allow or refuse it | `POST /oauth/consent`, `POST /oauth/authorize`, `POST /oauth/deny` | 🖥️ |
+| Ask questions of the workspace: students, projects, weeks, obligations, overview, submitted reports and versions, assessments and their evidence, trends, attachment names | `POST /mcp` (tools `whoami`, `list_students`, `list_projects`, `list_periods`, `list_obligations`, `get_overview`, `list_reports`, `get_report_version`, `list_report_versions`, `list_assessments`, `get_assessment_evidence`, `get_trend`, `list_attachments`) | 🔌 |
+
 ## 3 Student
 
 | Use case | Endpoint | |
@@ -186,6 +200,7 @@ screen. The professor sees who is outstanding on the overview.
 | Sign in | `POST /auth/login` | 10 per 5 minutes per address |
 | Accept an invitation | `POST /auth/accept-invitation` | 10 per hour |
 | Request a password reset | `POST /auth/password-reset` | 5 per hour; identical answer for known and unknown addresses |
+| Connector discovery and sign-in (a client, not a person; these paths are not under `/api/v1`) | `GET /.well-known/oauth-protected-resource`, `GET /.well-known/oauth-authorization-server`, `POST /oauth/register`, `GET /oauth/authorize`, `POST /oauth/token`, `POST /oauth/revoke` | Registration 20 per hour, token 60 per 5 minutes, per address |
 | Liveness and readiness | `GET /api/healthz`, `GET /api/readyz` | `readyz` covers database, object storage, worker and mail relay |
 | Prometheus metrics | `GET /api/metrics` | Bearer token in production; blocked at the edge |
 
