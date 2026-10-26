@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.errors import DomainError
+from app.identity import service as identity_service
 from app.mcp.tools import BY_NAME, TOOLS
 
 log = logging.getLogger(__name__)
@@ -82,6 +83,13 @@ async def call_tool(
         )
         return _tool_text(f"Invalid arguments. {problems}", error=True)
 
+    try:
+        workspace_id = getattr(args, "workspace_id", None)
+        if workspace_id is not None:
+            scope = await identity_service.scope_in(session, scope, workspace_id)
+    except DomainError as exc:
+        return _tool_text(exc.detail, error=True)
+
     write_audit(
         session,
         scope=scope,
@@ -130,9 +138,11 @@ async def handle_message(
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": SERVER_INFO,
                 "instructions": (
-                    "Read-only access to one professor's research workspace: projects, weekly "
-                    "reports, and AI-drafted assessments. Use list_students and list_periods to "
-                    "find ids before asking for a report."
+                    "Read-only access to a professor's research workspaces (labs): projects, "
+                    "weekly reports, and AI-drafted assessments. Each call reads one lab: call "
+                    "list_workspaces, then pass workspace_id to read a lab other than the "
+                    "default. Use list_students and list_periods to find ids before asking for "
+                    "a report."
                 ),
             },
         )

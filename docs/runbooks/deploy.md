@@ -175,8 +175,8 @@ value makes every client send the professor to an address that does not serve th
 3. Claude opens `/connect`. Sign in as a professor and choose Allow.
 
 Cut a connection off by deactivating the account, or with
-`UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = '<id>'`. A professor who moves to
-another workspace loses it automatically and reconnects.
+`UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = '<id>'`. A professor who belongs to several labs needs one connection: Claude calls `list_workspaces` and
+names the lab per question.
 
 ## Loading a demo workspace
 

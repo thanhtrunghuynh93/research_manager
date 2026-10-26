@@ -11,6 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity import models, service
+from app.identity import repository as identity_repository
 from app.oauth import service as oauth_service
 from tests.factories import login
 
@@ -232,17 +233,38 @@ async def test_a_deactivated_professor_loses_the_token(
     assert await oauth_service.resolve_access_token(db, token=grant["access_token"]) is None
 
 
-async def test_a_token_dies_when_the_account_moves_workspace(
+async def test_a_token_keeps_its_workspace_while_the_account_works_in_another(
+    client: AsyncClient, db: AsyncSession, prof: models.User
+) -> None:
+    """Switching labs in the app does not repoint a connector; it stays where it was consented."""
+    client_id = await _register(client)
+    await login(client, prof)
+    grant = (await _tokens(client, client_id, await _code(client, client_id))).json()
+    original = prof.workspace_id
+    scope = await service.scope_for(db, prof)
+    await service.create_workspace(db, scope, name="Other")  # joins it, so the account moves
+    assert prof.workspace_id != original
+
+    context = await oauth_service.resolve_access_token(db, token=grant["access_token"])
+
+    assert context is not None
+    assert context.scope.workspace_id == original
+
+
+async def test_a_token_falls_back_to_the_active_workspace_after_leaving_its_own(
     client: AsyncClient, db: AsyncSession, prof: models.User
 ) -> None:
     client_id = await _register(client)
     await login(client, prof)
     grant = (await _tokens(client, client_id, await _code(client, client_id))).json()
+    original = prof.workspace_id
     other = await service.create_workspace(db, await service.scope_for(db, prof), name="Other")
+    await identity_repository.remove_membership(db, original, prof.id)
 
-    await service.join_workspace(db, await service.scope_for(db, prof), other.id)
+    context = await oauth_service.resolve_access_token(db, token=grant["access_token"])
 
-    assert await oauth_service.resolve_access_token(db, token=grant["access_token"]) is None
+    assert context is not None
+    assert context.scope.workspace_id == other.id
 
 
 async def test_registration_and_token_endpoints_are_rate_limited(client: AsyncClient) -> None:

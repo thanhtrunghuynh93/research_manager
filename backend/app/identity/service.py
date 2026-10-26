@@ -6,7 +6,7 @@ Every mutation writes its audit row in the caller's transaction (architecture §
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -551,6 +551,38 @@ async def list_workspaces(session: AsyncSession, scope: Scope) -> list[Workspace
         )
         for workspace in [*joined, *(w for w in owned if w.id not in member_of)]
     ]
+
+
+async def joined_workspaces(session: AsyncSession, scope: Scope) -> list[WorkspaceOut]:
+    """The workspaces this professor belongs to now, and no others.
+
+    `list_workspaces` also lists ones they own and have left, which the workspaces screen needs;
+    a reader of workspace content (the MCP connector, ADR 0025) must not be offered those.
+    """
+    scope.require_prof()
+    joined = await repository.workspaces_joined_by(session, scope.user_id)
+    return [WorkspaceOut.model_validate(workspace) for workspace in joined]
+
+
+async def scope_in(session: AsyncSession, scope: Scope, workspace_id: UUID) -> Scope:
+    """The same professor's Scope, reading another workspace they belong to.
+
+    Nothing about the account changes: `Scope.workspace_id` is what every visibility predicate
+    compares against (ADR 0021), so a copy that names a different workspace reads that one and only
+    that one. Membership is the test, not ownership: a workspace they own and have left, or one that
+    is archived, is reported as absent, as every other read here does (AC-02).
+    """
+    scope.require_prof()
+    if workspace_id == scope.workspace_id:
+        return scope
+    workspace = await repository.get_workspace(session, workspace_id)
+    if (
+        workspace is None
+        or workspace.archived_at is not None
+        or await repository.membership(session, workspace_id, scope.user_id) is None
+    ):
+        raise NotFoundError("workspace not found")
+    return replace(scope, workspace_id=workspace.id)
 
 
 async def get_workspace(session: AsyncSession, scope: Scope, workspace_id: UUID) -> WorkspaceOut:

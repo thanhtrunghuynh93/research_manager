@@ -150,13 +150,14 @@ The evidence index has no route of its own: the pipeline reads it when it builds
 A professor can let Claude, or another MCP client, read their workspace. The connector is added by
 URL (`https://<domain>/mcp`) and signs in through the app: the client sends the professor to
 `/connect`, which names the client and the workspace and asks Allow or Deny. What it reads is what
-the professor sees in the app, in the workspace they consented in; it cannot change anything. The
-token stops working if the account is deactivated, stops being a professor, or moves workspace.
+the professor sees in the app; it cannot change anything. A call reads one workspace: the one they
+consented in unless the tool is given another `workspace_id` from `list_workspaces`, and only labs
+they belong to. The token stops working if the account is deactivated or stops being a professor.
 
 | Use case | Endpoint | |
 | --- | --- | --- |
 | See what a connector is asking for, then allow or refuse it | `POST /oauth/consent`, `POST /oauth/authorize`, `POST /oauth/deny` | 🖥️ |
-| Ask questions of the workspace: students, projects, weeks, obligations, overview, submitted reports and versions, assessments and their evidence, trends, attachment names | `POST /mcp` (tools `whoami`, `list_students`, `list_projects`, `list_periods`, `list_obligations`, `get_overview`, `list_reports`, `get_report_version`, `list_report_versions`, `list_assessments`, `get_assessment_evidence`, `get_trend`, `list_attachments`) | 🔌 |
+| Ask questions of the workspace: students, projects, weeks, obligations, overview, submitted reports and versions, assessments and their evidence, trends, attachment names | `POST /mcp` (tools `whoami`, `list_workspaces`, `list_students`, `list_projects`, `list_periods`, `list_obligations`, `get_overview`, `list_reports`, `get_report_version`, `list_report_versions`, `list_assessments`, `get_assessment_evidence`, `get_trend`, `list_attachments`) | 🔌 |
 
 ## 3 Student
 

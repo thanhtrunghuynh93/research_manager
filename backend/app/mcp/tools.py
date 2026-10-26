@@ -37,11 +37,21 @@ LIMIT = Field(default=None, ge=1, le=200, description="Page size, at most 200.")
 CURSOR = Field(default=None, description="`next_cursor` from the previous page.")
 
 
-class NoArgs(BaseModel):
+class WorkspaceArgs(BaseModel):
+    """Every tool takes this: which of the professor's workspaces to read."""
+
+    workspace_id: UUID | None = Field(
+        default=None,
+        description="Which workspace (lab) to read. Omit for the default; "
+        "list_workspaces shows every one you can name.",
+    )
+
+
+class NoArgs(WorkspaceArgs):
     pass
 
 
-class PageArgs(BaseModel):
+class PageArgs(WorkspaceArgs):
     limit: int | None = LIMIT
     cursor: str | None = CURSOR
 
@@ -50,11 +60,11 @@ class ListProjectsArgs(PageArgs):
     status: ProjectStatus | None = None
 
 
-class ListPeriodsArgs(BaseModel):
+class ListPeriodsArgs(WorkspaceArgs):
     through: date | None = Field(default=None, description="Weeks up to this date, ISO format.")
 
 
-class ListObligationsArgs(BaseModel):
+class ListObligationsArgs(WorkspaceArgs):
     period_id: UUID
     student_id: UUID | None = None
 
@@ -69,30 +79,30 @@ class ListReportsArgs(PageArgs):
     )
 
 
-class VersionArgs(BaseModel):
+class VersionArgs(WorkspaceArgs):
     version_id: UUID
 
 
-class ReportArgs(BaseModel):
+class ReportArgs(WorkspaceArgs):
     report_id: UUID
 
 
-class ListAssessmentsArgs(BaseModel):
+class ListAssessmentsArgs(WorkspaceArgs):
     student_id: UUID | None = None
     project_id: UUID | None = None
     period_id: UUID | None = None
 
 
-class AssessmentArgs(BaseModel):
+class AssessmentArgs(WorkspaceArgs):
     assessment_id: UUID
 
 
-class TrendArgs(BaseModel):
+class TrendArgs(WorkspaceArgs):
     student_id: UUID
     project_id: UUID
 
 
-class ListAttachmentsArgs(BaseModel):
+class ListAttachmentsArgs(WorkspaceArgs):
     student_id: UUID | None = None
     project_id: UUID | None = None
     period_id: UUID | None = None
@@ -105,6 +115,17 @@ class Tool:
     args: type[BaseModel]
     handler: Handler
     quotes_student_text: bool = False
+
+
+class ListWorkspacesArgs(BaseModel):
+    pass
+
+
+async def _list_workspaces(session: AsyncSession, scope: Scope, _: ListWorkspacesArgs) -> Any:
+    return {
+        "default_workspace_id": scope.workspace_id,
+        "workspaces": await identity_service.joined_workspaces(session, scope),
+    }
 
 
 async def _whoami(session: AsyncSession, scope: Scope, _: NoArgs) -> Any:
@@ -202,6 +223,13 @@ async def _list_attachments(session: AsyncSession, scope: Scope, args: ListAttac
 
 
 TOOLS: tuple[Tool, ...] = (
+    Tool(
+        "list_workspaces",
+        "The workspaces (labs) you belong to, with their ids and which one is the default. "
+        "Pass a workspace_id to any other tool to read a different lab.",
+        ListWorkspacesArgs,
+        _list_workspaces,
+    ),
     Tool(
         "whoami",
         "The signed-in professor and the workspace this connection reads.",

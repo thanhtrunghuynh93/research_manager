@@ -1,6 +1,6 @@
-# ADR 0025 — MCP access for professors, through OAuth tokens bound to one workspace
+# ADR 0025 — MCP access for professors, one workspace per call
 
-Status: accepted — 2026-10-20
+Status: accepted — 2026-10-20; amended 2026-10-26 (a call names its workspace)
 
 ## Context
 
@@ -17,12 +17,22 @@ server.**
 
 - Only a professor can authorise a connector. A student's account is refused at the consent step.
 - A token is an opaque secret whose SHA-256 digest is stored, like a session (architecture §6.2). It
-  names one user, one client and **one workspace**, fixed when the professor consents.
+  names one professor and one client. It also records the workspace they were in at consent, which
+  is its **default**.
+- **Every tool takes an optional `workspace_id`, and `list_workspaces` names the choices.** One
+  call reads exactly one workspace, and only one the professor belongs to now: ownership without
+  membership, an archived workspace, and another professor's are all reported as absent. The call
+  runs under a copy of the professor's `Scope` with that workspace in it (`identity.service.scope_in`),
+  so ADR 0021 holds: a `Scope` names one workspace and widening a read is not a flag. The account
+  itself is never moved by a connector.
+- The default is the workspace consented in while the professor still belongs to it, and otherwise
+  the one their account is working in. Switching workspaces in the app does not repoint a connector.
 - Resolving a token runs the same `identity.service.scope_for` a session does, so every tool sees
   exactly the rows the professor sees in the app and nothing the visibility predicates hide.
-- If the account is deactivated, demoted, or has moved to another workspace since consent, the
-  token stops resolving. The professor reconnects to bind it to the new one. This is ADR 0021 held
-  at the connector: a `Scope` names one workspace.
+- If the account is deactivated or stops being a professor, the token stops resolving.
+  *(As first accepted, a token also died when the account moved workspace, and a connector could
+  read only the workspace it was consented in. A professor who belongs to two labs could not ask
+  about the second without reconnecting, so the binding became a default.)*
 - Consent happens on a page of the single-page app, behind the ordinary login. The OAuth endpoints
   never see a password.
 - Tools are read-only. Writes (marking a report reviewed, requesting a revision) are a later
@@ -38,5 +48,5 @@ server.**
 - Report and attachment text reaches Claude's context. It is written by students, so tool output
   labels it as quoted data. `ai_restricted` is not consulted: no project uses it (the column stays
   for the assessment step, ADR 0024) and the professor already holds the right to read the text.
-- Every tool call is audited with the user and the tool name.
+- Every tool call is audited with the user and the tool name, in the workspace it read.
 - Caddy forwards `/mcp`, `/oauth/*` and `/.well-known/oauth-*` to the API.

@@ -259,3 +259,94 @@ async def test_a_call_is_audited_with_the_tool_name(
         .all()
     )
     assert [(e.actor_id, e.after) for e in events] == [(prof.id, {"tool": "list_projects"})]
+
+
+async def _second_lab(db: AsyncSession, prof: identity_models.User, name: str = "AI Environment"):
+    """A second workspace the professor belongs to, with a student who has reported there."""
+    from app.identity import service as identity_service
+
+    scope = await identity_service.scope_for(db, prof)
+    lab = await identity_service.create_workspace(db, scope, name=name)  # joins it
+    return lab, await identity_service.scope_for(db, prof)
+
+
+async def test_list_workspaces_names_every_lab_and_the_default(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope,
+    workspace: identity_models.Workspace,
+) -> None:
+    token = await _token(db, prof_scope)
+    lab, _ = await _second_lab(db, prof)
+
+    body = _json(await _call(client, token, "list_workspaces"))
+
+    assert body["default_workspace_id"] == str(workspace.id)
+    assert {item["id"] for item in body["workspaces"]} == {str(workspace.id), str(lab.id)}
+
+
+async def test_a_tool_can_read_the_other_lab_by_naming_it(
+    client: AsyncClient,
+    db: AsyncSession,
+    prof: identity_models.User,
+    prof_scope,
+    student_a: identity_models.User,
+    frozen_now: Callable[[datetime], None],
+) -> None:
+    frozen_now(ON_TIME)
+    week = await make_week(db, prof_scope, [student_a])
+    await submit(db, student_a, week)
+    token = await _token(db, prof_scope)
+    lab, lab_scope = await _second_lab(db, prof)
+    lab_student = await make_user(db, lab, role=Role.STUDENT, display_name="Lab Student")
+    lab_week = await make_week(db, lab_scope, [lab_student])
+    await submit(db, lab_student, lab_week)
+
+    default = _json(await _call(client, token, "list_reports"))["items"]
+    other = _json(await _call(client, token, "list_reports", workspace_id=str(lab.id)))["items"]
+
+    assert [item["student_id"] for item in default] == [str(student_a.id)]
+    assert [item["student_id"] for item in other] == [str(lab_student.id)]
+
+
+async def test_a_workspace_the_professor_does_not_belong_to_is_absent(
+    client: AsyncClient, db: AsyncSession, prof_scope
+) -> None:
+    foreign = await make_workspace(db, name="Somebody else's")
+    token = await _token(db, prof_scope)
+
+    result = await _call(client, token, "list_projects", workspace_id=str(foreign.id))
+
+    assert result["isError"] is True
+    assert "not found" in result["content"][0]["text"]
+
+
+async def test_a_lab_the_professor_left_is_absent_even_if_they_own_it(
+    client: AsyncClient, db: AsyncSession, prof: identity_models.User, prof_scope
+) -> None:
+    from app.identity import repository as identity_repository
+
+    token = await _token(db, prof_scope)
+    lab, _ = await _second_lab(db, prof)
+    await identity_repository.remove_membership(db, lab.id, prof.id)
+
+    result = await _call(client, token, "list_projects", workspace_id=str(lab.id))
+
+    assert result["isError"] is True
+
+
+async def test_a_call_into_another_lab_is_audited_in_that_lab(
+    client: AsyncClient, db: AsyncSession, prof: identity_models.User, prof_scope
+) -> None:
+    token = await _token(db, prof_scope)
+    lab, _ = await _second_lab(db, prof)
+
+    await _call(client, token, "list_projects", workspace_id=str(lab.id))
+
+    events = (
+        (await db.execute(select(AuditEvent).where(AuditEvent.action == "mcp.tool_called")))
+        .scalars()
+        .all()
+    )
+    assert [e.workspace_id for e in events] == [lab.id]

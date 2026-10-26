@@ -26,7 +26,7 @@
   },
   "connect": {
     "title": "Connect {{client}}",
-    "reads": "{{client}} will be able to read the projects, weekly reports and assessments of {{workspace}}, exactly as you can.",
+    "reads": "{{client}} will be able to read the projects, weekly reports and assessments of {{workspace}} and of any other workspace you belong to, exactly as you can.",
     "readOnly": "It cannot change anything: no submitting, reviewing, approving or inviting.",
     "revoke": "Reports contain what students wrote, and that text is sent to the assistant you connect. You can disconnect it from that assistant's settings at any time.",
     "allow": "Allow",

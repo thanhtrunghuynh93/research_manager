@@ -113,7 +113,7 @@ backend/
 │   ├── mcp/                   the read-only MCP endpoint at /mcp (ADR 0025); no models
 │   │   ├── router.py          POST /mcp: bearer auth, JSON-RPC in, JSON out
 │   │   ├── server.py          initialize, ping, tools/list, tools/call; audit and truncation
-│   │   └── tools.py           the thirteen read tools, each a call into a service with the Scope
+│   │   └── tools.py           the fourteen read tools, each a call into a service with the Scope
 │   ├── notifications/
 │   │   ├── email/
 │   │   │   ├── base.py        EmailSender protocol

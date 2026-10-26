@@ -291,8 +291,9 @@ app is its own authorization server: authorization code with PKCE (S256), public
 dynamically, opaque tokens stored as SHA-256 digests, refresh tokens that rotate (a replayed one
 revokes everything issued to that user and client). Consent is the SPA's `/connect` page behind the
 ordinary login, so no password reaches an OAuth endpoint. Only a professor can consent. A token is
-bound to the workspace the professor was in at consent and is not rewritten when the account moves,
-so it dies with the move. `identity.service.scope_for` builds its Scope, so every tool sees what the
+default to the workspace the professor consented in (or, once they have left it, the one they are
+working in); every tool also takes a `workspace_id`, checked against current membership by
+`identity.service.scope_in`, and one call reads one workspace (ADR 0021). `identity.service.scope_for` builds its Scope, so every tool sees what the
 professor sees. The tools are read-only, each call is audited as `mcp.tool_called`, and results that
 quote student text are prefixed with a notice that it is data. The transport is stateless JSON over
 POST; `GET /mcp` is 405.

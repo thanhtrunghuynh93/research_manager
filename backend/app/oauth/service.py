@@ -1,8 +1,9 @@
 """OAuth 2.1 authorization server for the MCP connector (ADR 0025).
 
 Authorization code with PKCE (S256 only), public clients registered dynamically, opaque tokens
-stored as digests. A token is bound to the workspace its professor consented in and stops
-resolving if the account is deactivated, stops being a professor, or moves to another workspace.
+stored as digests. A token identifies a professor and defaults to the workspace they consented in;
+it stops resolving if the account is deactivated or stops being a professor. Which workspace a call
+reads is decided per call, in app.mcp, against current membership.
 
 Failures that belong on the token endpoint are `OAuthError`, which carries the RFC 6749 error code;
 the router turns it into the JSON body the spec asks for. They are caught in the handler rather than
@@ -17,7 +18,7 @@ import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -26,11 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit
 from app.core.authz import Scope
 from app.core.clock import now
+from app.core.errors import NotFoundError
 from app.core.types import Role
 from app.identity import repository as identity_repository
 from app.identity import security
 from app.identity import service as identity_service
-from app.identity.models import UserState
+from app.identity.models import User, UserState
 from app.oauth.models import OAuthClient, OAuthCode, OAuthToken
 
 SCOPE_READ = "rms:read"
@@ -328,8 +330,8 @@ async def revoke(session: AsyncSession, *, token: str) -> None:
 # ------------------------------------------------------------------ resolving a bearer token
 
 
-async def _live_professor(session: AsyncSession, row: OAuthToken) -> object | None:
-    user = await identity_repository.get_user_in_workspace(session, row.workspace_id, row.user_id)
+async def _live_professor(session: AsyncSession, row: OAuthToken) -> User | None:
+    user = await identity_repository.get_user_by_id(session, row.user_id)
     if user is None or user.state is not UserState.ACTIVE or user.role is not Role.PROF:
         return None
     return user
@@ -338,8 +340,9 @@ async def _live_professor(session: AsyncSession, row: OAuthToken) -> object | No
 async def resolve_access_token(session: AsyncSession, *, token: str) -> McpContext | None:
     """The professor's Scope for a bearer token, or None.
 
-    `get_user_in_workspace` filters on the workspace the token was bound to, so an account that has
-    since moved to another workspace is not found and the token is dead (ADR 0025).
+    The token identifies a professor, not a workspace. Its default is the workspace they consented
+    in while they still belong to it, and otherwise the one their account is working in; a tool can
+    name any other workspace they belong to (`identity_service.scope_in`, ADR 0025).
     """
     row = (
         await session.execute(
@@ -348,21 +351,20 @@ async def resolve_access_token(session: AsyncSession, *, token: str) -> McpConte
     ).scalar_one_or_none()
     if row is None or row.revoked_at is not None or row.access_expires_at <= now():
         return None
-    user = await identity_repository.get_user_in_workspace(session, row.workspace_id, row.user_id)
-    if user is None or user.state is not UserState.ACTIVE or user.role is not Role.PROF:
+    user = await _live_professor(session, row)
+    if user is None:
         return None
     row.last_used_at = now()
-    return McpContext(
-        scope=await identity_service.scope_for(session, user),
-        user_id=user.id,
-        token_id=row.id,
-    )
+    scope = await identity_service.scope_for(session, user)
+    try:
+        scope = await identity_service.scope_in(session, scope, row.workspace_id)
+    except NotFoundError:
+        pass  # they have left the workspace they consented in; the active one stands
+    return McpContext(scope=scope, user_id=user.id, token_id=row.id)
 
 
 def redirect_with(request: AuthorizeRequest, **params: str) -> str:
     """The client's redirect URI with `params` (and the caller's `state`, if any) appended."""
-    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
     parts = urlsplit(request.redirect_uri)
     query = parse_qsl(parts.query) + list(params.items())
     if request.state:
