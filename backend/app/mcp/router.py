@@ -54,7 +54,7 @@ async def mcp(
     replies = []
     for message in messages:
         reply = await server.handle_message(
-            session, context.scope, message, token_id=context.token_id
+            session, context.scope, message, token_id=context.token_id, granted=context.granted
         )
         if reply is not None:
             replies.append(reply)

@@ -49,7 +49,11 @@ export function ConnectPage() {
       </h1>
       <div className="panel mt-6 space-y-3 p-5">
         <p>{t("connect.reads", { workspace: consent.data.workspace_name })}</p>
-        <p className="text-ui text-muted-foreground">{t("connect.readOnly")}</p>
+        <p className="text-ui text-muted-foreground">
+          {consent.data.scope.split(" ").includes("rms:feedback")
+            ? t("connect.feedback")
+            : t("connect.readOnly")}
+        </p>
         <p className="text-ui text-muted-foreground">{t("connect.revoke")}</p>
         {failure && (
           <p role="alert" className="text-sm text-bad">

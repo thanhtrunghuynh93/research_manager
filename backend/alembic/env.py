@@ -15,6 +15,7 @@ import app.ai.models  # noqa: F401
 import app.assessment.models  # noqa: F401
 import app.core.audit  # noqa: F401  (every module with ORM models is imported for autogenerate)
 import app.evidence.models  # noqa: F401
+import app.feedback.models  # noqa: F401
 import app.identity.models  # noqa: F401
 import app.notifications.models  # noqa: F401
 import app.oauth.models  # noqa: F401

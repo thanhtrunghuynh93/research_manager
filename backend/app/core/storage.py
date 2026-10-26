@@ -175,6 +175,21 @@ def storage_key(
     return f"{workspace_id}/artifacts/{artifact_id}/{version_no}/{leaf}"
 
 
+def feedback_attachment_key(
+    *, workspace_id: UUID, feedback_id: UUID, attachment_id: UUID, sha256: str, filename: str
+) -> str:
+    """`{workspace}/feedback/{feedback}/{attachment}/{sha256}.{ext}`.
+
+    Every segment is an id of ours or a checked digest, as in `storage_key`: the filename only
+    contributes an extension from the recognised set, never a path.
+    """
+    if not is_sha256_hex(sha256):
+        raise ValueError("a storage key needs a lowercase hex SHA-256 digest")
+    extension = extension_of(filename)
+    leaf = f"{sha256}.{extension}" if extension else sha256
+    return f"{workspace_id}/feedback/{feedback_id}/{attachment_id}/{leaf}"
+
+
 def extracted_text_key(original_key: str) -> str:
     """The extracted text sits beside its original, so the pair is obvious in the bucket."""
     return f"{original_key.rsplit('/', 1)[0]}/extracted.txt"

@@ -166,6 +166,38 @@
     @apply border-bad-line bg-bad-soft text-bad;
   }
 
+  /* A professor's Markdown. Preflight flattens every element, so the few a feedback uses are
+     given their shape back here. */
+  .prose-feedback {
+    @apply text-prose leading-relaxed;
+  }
+  .prose-feedback > * + * {
+    @apply mt-3;
+  }
+  .prose-feedback h1,
+  .prose-feedback h2,
+  .prose-feedback h3 {
+    @apply mt-6 font-display text-lg font-medium;
+  }
+  .prose-feedback ul {
+    @apply list-disc pl-6;
+  }
+  .prose-feedback ol {
+    @apply list-decimal pl-6;
+  }
+  .prose-feedback a {
+    @apply text-accent underline;
+  }
+  .prose-feedback code {
+    @apply rounded bg-surface px-1 font-mono text-sm;
+  }
+  .prose-feedback pre {
+    @apply overflow-x-auto rounded bg-surface p-3;
+  }
+  .prose-feedback blockquote {
+    @apply border-l-2 border-border pl-4 text-muted-foreground;
+  }
+
   .field-label {
     @apply block font-mono text-meta font-medium uppercase tracking-[0.12em] text-faint;
   }

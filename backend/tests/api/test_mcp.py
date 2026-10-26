@@ -110,7 +110,14 @@ async def test_initialize_and_list_tools(client: AsyncClient, db: AsyncSession, 
     assert init["result"]["protocolVersion"] == "2025-06-18"
     assert init["result"]["capabilities"] == {"tools": {"listChanged": False}}
     assert {tool["name"] for tool in tools} >= {"whoami", "list_reports", "get_overview"}
-    assert all(tool["annotations"]["readOnlyHint"] for tool in tools)
+    # Only the feedback tools write (ADR 0026); everything that existed before stays a read.
+    writers = {t["name"] for t in tools if not t["annotations"]["readOnlyHint"]}
+    assert writers == {
+        "create_feedback",
+        "upload_feedback_attachment",
+        "update_feedback",
+        "publish_feedback",
+    }
     assert all(tool["inputSchema"]["type"] == "object" for tool in tools)
 
 

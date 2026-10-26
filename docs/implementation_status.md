@@ -60,9 +60,11 @@ enum users. A project's repository is the plain link `projects.repo_url`, which 
 | Feature | Decision | Migration |
 | --- | --- | --- |
 | Read-only MCP endpoint for professors, with OAuth 2.1 sign-in, a consent page and a workspace per call | [ADR 0025](adr/0025-mcp-access-for-professors.md) | 0031 |
+| Professor feedback written through MCP: drafts, revisions, files, publication to the student (students read it at `/feedback`, API `/api/v1/feedback`) | [ADR 0026](adr/0026-professor-feedback-through-mcp.md) | 0032 |
 
-Not built, by decision: MCP write tools (review, revision requests, approval), a student's MCP
-access, and reading an attachment's extracted text through MCP.
+Not built, by decision: MCP write tools for review, revision requests and approval, a student's MCP
+access, reading an attachment's extracted text through MCP, notifying a student of feedback,
+unpublishing feedback, and an HTML preview.
 
 ## 3 Known gaps
 

@@ -36,7 +36,12 @@ from app.identity.models import User, UserState
 from app.oauth.models import OAuthClient, OAuthCode, OAuthToken
 
 SCOPE_READ = "rms:read"
-SUPPORTED_SCOPES = (SCOPE_READ,)
+# Writing feedback for students (ADR 0026). A token granted before it existed has only rms:read and
+# cannot write: the professor consented to a read-only connector, and that stays true.
+SCOPE_FEEDBACK = "rms:feedback"
+SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_FEEDBACK)
+# What a client that names no scope is asking for. The consent page lists each one.
+DEFAULT_SCOPES = SUPPORTED_SCOPES
 
 CODE_TTL = timedelta(minutes=5)
 ACCESS_TTL = timedelta(hours=1)
@@ -80,6 +85,7 @@ class McpContext:
     scope: Scope
     user_id: UUID
     token_id: UUID
+    granted: frozenset[str] = frozenset({SCOPE_READ})
 
 
 # ------------------------------------------------------------------ clients
@@ -145,7 +151,7 @@ async def validate_authorize_request(
         raise OAuthError("unsupported_response_type", "only response_type=code is supported")
     if not code_challenge or code_challenge_method != "S256":
         raise OAuthError("invalid_request", "PKCE with code_challenge_method=S256 is required")
-    requested = (scope or SCOPE_READ).split()
+    requested = (scope or " ".join(DEFAULT_SCOPES)).split()
     if not requested or any(item not in SUPPORTED_SCOPES for item in requested):
         raise OAuthError("invalid_scope", f"supported scopes: {' '.join(SUPPORTED_SCOPES)}")
     return AuthorizeRequest(
@@ -360,7 +366,9 @@ async def resolve_access_token(session: AsyncSession, *, token: str) -> McpConte
         scope = await identity_service.scope_in(session, scope, row.workspace_id)
     except NotFoundError:
         pass  # they have left the workspace they consented in; the active one stands
-    return McpContext(scope=scope, user_id=user.id, token_id=row.id)
+    return McpContext(
+        scope=scope, user_id=user.id, token_id=row.id, granted=frozenset(row.scope.split())
+    )
 
 
 def redirect_with(request: AuthorizeRequest, **params: str) -> str:

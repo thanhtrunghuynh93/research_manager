@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     metrics_token: SecretStr = SecretStr("")
 
     upload_max_file_mb: int = Field(default=25, ge=1)
+    # A professor's feedback files (ADR 0026). Separate from the students' limit because the two
+    # are tuned for different people. The inline limit is for a connector that cannot make an HTTP
+    # PUT to the presigned URL: it sends the bytes in the tool call itself, so it stays small.
+    feedback_upload_max_file_mb: int = Field(default=20, ge=1)
+    feedback_inline_upload_max_mb: int = Field(default=2, ge=1)
     worker_concurrency: int = Field(default=4, ge=1)
 
     # How many sign-in attempts one address may make in five minutes. The default is the

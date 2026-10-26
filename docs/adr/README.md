@@ -32,4 +32,5 @@ that silently stops is worse than no index — a reader takes the last row for t
 | [0022](0022-no-repository-connector.md) | Accepted | No repository connector: students link a repository and attach their evidence (withdraws 0005, corrects 0014's history keys) |
 | [0023](0023-no-research-assistant.md) | Accepted | No research assistant: the overview computes its own numbers; the access epoch goes with the cache (withdraws 0008, supersedes 0009) |
 | [0024](0024-no-embeddings.md) | Accepted | No embeddings: indexing is chunking; pgvector and the full-text column are dropped (supersedes 0003) |
-| [0025](0025-mcp-access-for-professors.md) | Accepted | A read-only MCP endpoint for professors; the app is its own OAuth server and each call reads one workspace the professor belongs to |
+| [0025](0025-mcp-access-for-professors.md) | Accepted; amended by 0026 | A read-only MCP endpoint for professors; the app is its own OAuth server and each call reads one workspace the professor belongs to |
+| [0026](0026-professor-feedback-through-mcp.md) | Accepted | Professors write feedback drafts and attach files through MCP (its own `rms:feedback` grant); revisions, versioned updates, idempotent publish; students read only what was published |

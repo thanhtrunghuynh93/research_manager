@@ -108,6 +108,11 @@ export function AppShell() {
             </NavLink>
           )}
           {isProf && (
+            <NavLink to="/feedback" className={item}>
+              {t("feedback.title")}
+            </NavLink>
+          )}
+          {isProf && (
             <NavLink to="/workspaces" className={item}>
               {t("workspaces.title")}
             </NavLink>
@@ -128,6 +133,11 @@ export function AppShell() {
           {user && !isProf && (
             <NavLink to="/projects" className={item}>
               {t("projects.title")}
+            </NavLink>
+          )}
+          {user && !isProf && (
+            <NavLink to="/feedback" className={item}>
+              {t("feedback.title")}
             </NavLink>
           )}
         </nav>

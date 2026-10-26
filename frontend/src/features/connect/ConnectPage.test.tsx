@@ -65,3 +65,20 @@ test("a request the API rejects shows no Allow button", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("cannot be completed");
   expect(screen.queryByRole("button", { name: "Allow" })).not.toBeInTheDocument();
 });
+
+test("says so when the connector may write feedback, and not otherwise", async () => {
+  server.use(
+    http.post("/api/v1/oauth/consent", () =>
+      HttpResponse.json({
+        client_name: "Claude",
+        scope: "rms:read rms:feedback",
+        workspace_name: "Vision Lab",
+      }),
+    ),
+  );
+
+  renderPage();
+
+  expect(await screen.findByText(/write feedback for your students/)).toBeInTheDocument();
+  expect(screen.queryByText(/It cannot change anything/)).not.toBeInTheDocument();
+});

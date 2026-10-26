@@ -126,10 +126,15 @@ test("a student is offered their own progress, and never the professor's screens
 
   await screen.findByTestId("greeting");
 
-  // The student's menu is their week, what they have handed in, then the projects it is about.
+  // The student's menu is their week, what they have handed in, then the projects it is about, then feedback.
   // My progress is not on it; the student's home links to it instead.
   const links = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
-  expect(links.filter((href) => href !== "/")).toEqual(["/me", "/reports", "/projects"]);
+  expect(links.filter((href) => href !== "/")).toEqual([
+    "/me",
+    "/reports",
+    "/projects",
+    "/feedback",
+  ]);
   expect(screen.queryByRole("link", { name: /my progress/i })).not.toBeInTheDocument();
 });
 

@@ -8,6 +8,8 @@ import { AcceptInvitationPage } from "@/features/auth/pages/AcceptInvitationPage
 import { LoginPage } from "@/features/auth/pages/LoginPage";
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
 import { ConnectPage } from "@/features/connect/pages/ConnectPage";
+import { FeedbackListPage } from "@/features/feedback/pages/FeedbackListPage";
+import { FeedbackPage } from "@/features/feedback/pages/FeedbackPage";
 import { MyAssessmentPage } from "@/features/me/pages/MyAssessmentPage";
 import { MyProfilePage } from "@/features/me/pages/MyProfilePage";
 import { StudentHomePage } from "@/features/me/pages/StudentHomePage";
@@ -48,6 +50,10 @@ export const router = createBrowserRouter([
           // Every submitted week: a professor's of everyone, a student's of their own — the API
           // scopes it, so one page serves both. UI-01, UI-02, REP-05.
           { path: "/reports", element: <ReportsPage /> },
+          // Feedback a professor wrote (ADR 0026): a student reads what was published to them, a
+          // professor every feedback including drafts. The API scopes it, so one page serves both.
+          { path: "/feedback", element: <FeedbackListPage /> },
+          { path: "/feedback/:id", element: <FeedbackPage /> },
         ],
       },
       {

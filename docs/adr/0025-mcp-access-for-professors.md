@@ -35,8 +35,9 @@ server.**
   about the second without reconnecting, so the binding became a default.)*
 - Consent happens on a page of the single-page app, behind the ordinary login. The OAuth endpoints
   never see a password.
-- Tools are read-only. Writes (marking a report reviewed, requesting a revision) are a later
-  decision and would need their own scope and an audit actor that names the connector.
+- Tools are read-only, with one exception added by ADR 0026: feedback drafts, files and
+  publication, behind a separate `rms:feedback` grant. Other writes (marking a report reviewed,
+  requesting a revision) remain a later decision and would need the same.
 - Refresh tokens rotate. Presenting a refresh token that was already used revokes everything issued
   to that user and client.
 

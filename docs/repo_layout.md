@@ -110,10 +110,15 @@ backend/
 │   │   ├── models.py          oauth_clients, oauth_codes, oauth_tokens (ADR 0025)
 │   │   ├── service.py         registration, PKCE codes, token mint/refresh/revoke, bearer → Scope
 │   │   └── schemas.py         registration, consent and token shapes
-│   ├── mcp/                   the read-only MCP endpoint at /mcp (ADR 0025); no models
+│   ├── feedback/              professor feedback: drafts, revisions, files, publication (ADR 0026)
+│   │   ├── models.py          feedbacks, feedback_revisions, feedback_attachments, links, idempotency
+│   │   ├── policies.py        a student sees only the published revision of feedback about them
+│   │   ├── service.py         create, update, publish, two-step upload, reads
+│   │   └── schemas.py         what the service returns
+│   ├── mcp/                   the MCP endpoint at /mcp (ADR 0025, 0026); no models
 │   │   ├── router.py          POST /mcp: bearer auth, JSON-RPC in, JSON out
 │   │   ├── server.py          initialize, ping, tools/list, tools/call; audit and truncation
-│   │   └── tools.py           the fourteen read tools, each a call into a service with the Scope
+│   │   └── tools.py           the fourteen read tools and the feedback tools, each a call into a service with the Scope
 │   ├── notifications/
 │   │   ├── email/
 │   │   │   ├── base.py        EmailSender protocol
@@ -267,6 +272,8 @@ All read once by `core/config.py`. Prefix `RM_`.
 | `RM_OPENAI_API_KEY`, `RM_OPENAI_MODEL` | worker | Gateway only |
 | `RM_SMTP_HOST`, `RM_SMTP_PORT`, `RM_SMTP_USER`, `RM_SMTP_PASSWORD`, `RM_MAIL_FROM` | worker | Email |
 | `RM_UPLOAD_MAX_FILE_MB` | api | Default 25 |
+| `RM_FEEDBACK_UPLOAD_MAX_FILE_MB` | api | Default 20; a professor's feedback files (ADR 0026) |
+| `RM_FEEDBACK_INLINE_UPLOAD_MAX_MB` | api | Default 2; a feedback file sent inline over MCP |
 | `RM_LOG_LEVEL`, `RM_LOG_JSON` | all | Observability |
 | `RM_METRICS_TOKEN` | api | Bearer token for `/api/metrics`; required in production |
 | `RM_WORKER_CONCURRENCY` | worker | Concurrent jobs |

@@ -150,7 +150,7 @@ The evidence index has no route of its own: the pipeline reads it when it builds
 A professor can let Claude, or another MCP client, read their workspace. The connector is added by
 URL (`https://<domain>/mcp`) and signs in through the app: the client sends the professor to
 `/connect`, which names the client and the workspace and asks Allow or Deny. What it reads is what
-the professor sees in the app; it cannot change anything. A call reads one workspace: the one they
+the professor sees in the app; it cannot change anything except write feedback for students (below). A call reads one workspace: the one they
 consented in unless the tool is given another `workspace_id` from `list_workspaces`, and only labs
 they belong to. The token stops working if the account is deactivated or stops being a professor.
 
@@ -158,6 +158,7 @@ they belong to. The token stops working if the account is deactivated or stops b
 | --- | --- | --- |
 | See what a connector is asking for, then allow or refuse it | `POST /oauth/consent`, `POST /oauth/authorize`, `POST /oauth/deny` | 🖥️ |
 | Ask questions of the workspace: students, projects, weeks, obligations, overview, submitted reports and versions, assessments and their evidence, trends, attachment names | `POST /mcp` (tools `whoami`, `list_workspaces`, `list_students`, `list_projects`, `list_periods`, `list_obligations`, `get_overview`, `list_reports`, `get_report_version`, `list_report_versions`, `list_assessments`, `get_assessment_evidence`, `get_trend`, `list_attachments`) | 🔌 |
+| Write feedback on a student's reports as a draft, attach `.html/.pdf/.docx/.txt/.md` files, revise it with a version check, review it, then publish it to that student (ADR 0026) | `POST /mcp` (tools `create_feedback`, `upload_feedback_attachment`, `update_feedback`, `get_feedback`, `list_feedback`, `publish_feedback`) | 🔌 |
 
 ## 3 Student
 
@@ -172,6 +173,7 @@ they belong to. The token stops working if the account is deactivated or stops b
 | See their earlier weeks and the state of each one submitted | `GET /reports` | 🖥️ `/me` |
 | Read what they submitted, every version, and any revision requested | `GET /reports/{id}/versions`, `/report-versions/{id}`, `/reports/{id}/revisions` | 🖥️ |
 | Read their projects, members and documents; attach and remove their own documents | `GET /projects/...`, `GET /artifacts?project_id=`, `POST /artifacts/uploads`, `DELETE /artifacts/{id}` | 🖥️ |
+| Read the feedback a professor published to them (page `/feedback`), and download its files | `GET /feedback`, `GET /feedback/{id}`, `GET /feedback/attachments/{id}/download` | 🖥️ |
 | Start a project (active at once) | `POST /projects` | 🖥️ |
 | Edit the record of a project they started (not its status, joining or AI restriction) | `PATCH /projects/{id}` | 🖥️ |
 | See projects open to joining, and join one | `GET /projects/joinable`, `POST /projects/{id}/join` | 🖥️ |

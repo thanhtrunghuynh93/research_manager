@@ -174,6 +174,11 @@ value makes every client send the professor to an address that does not serve th
 2. In claude.ai, Settings → Connectors → Add custom connector, URL `https://$RM_DOMAIN/mcp`.
 3. Claude opens `/connect`. Sign in as a professor and choose Allow.
 
+Feedback files (ADR 0026) use the same object store and bucket as attachments, under
+`{workspace}/feedback/`. `RM_FEEDBACK_UPLOAD_MAX_FILE_MB` (default 20) and
+`RM_FEEDBACK_INLINE_UPLOAD_MAX_MB` (default 2) bound them. A connection made before migration 0032
+holds only `rms:read`: the professor reconnects to be able to write feedback.
+
 Cut a connection off by deactivating the account, or with
 `UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = '<id>'`. A professor who belongs to several labs needs one connection: Claude calls `list_workspaces` and
 names the lab per question.
